@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import cognee
 from app.config import settings
 from app.database import engine, Base
+from app.models import user, session, mastery  # noqa: F401
 from app.routers import auth, sessions, users, topics
 from app.websocket.router import ws_router
 
