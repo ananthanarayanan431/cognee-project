@@ -1,12 +1,7 @@
 import cognee
 from cognee.api.v1.search.search import SearchType
 from app.config import settings
-
-PATTERN_TYPES = [
-    "EvidenceBased", "AppealToAuthority", "StrawMan",
-    "AdHominem", "SlipperySlope", "FalseEquivalence",
-    "EmotionalAppeal", "AnecdotalEvidence", "Concession",
-]
+from app.agents.constants import PATTERN_TYPES
 
 def _dataset(user_id: str) -> str:
     return f"user_{user_id}_fingerprint"

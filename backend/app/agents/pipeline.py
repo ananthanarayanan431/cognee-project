@@ -24,6 +24,8 @@ async def _remember_node(state: DebateState) -> DebateState:
 async def _mastery_prune_node(state: DebateState) -> DebateState:
     for pattern in state.get("mastery_events", []):
         await forget_pattern(state["user_id"], pattern)
+    # Clear mastery_events after processing so the next turn starts clean (Bug 1)
+    state["mastery_events"] = []
     return state
 
 

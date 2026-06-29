@@ -2,14 +2,9 @@ import json
 from anthropic import AsyncAnthropic
 from app.config import settings
 from app.agents.state import DebateState
+from app.agents.constants import PATTERN_TYPES
 
 _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-
-PATTERN_TYPES = [
-    "EvidenceBased", "AppealToAuthority", "StrawMan", "AdHominem",
-    "SlipperySlope", "FalseEquivalence", "EmotionalAppeal",
-    "AnecdotalEvidence", "Concession",
-]
 
 
 async def extract_argument(state: DebateState) -> DebateState:

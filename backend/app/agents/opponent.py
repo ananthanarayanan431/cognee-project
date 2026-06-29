@@ -5,6 +5,10 @@ from app.services.cognee_svc import recall_weaknesses
 
 _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+# Bug 3: module-level cache so recall_weaknesses is only called once per user
+# across all pipeline invocations, not re-fetched on every turn.
+_weakness_cache: dict[str, list] = {}
+
 _DIFFICULTY_INSTRUCTIONS = {
     "balanced": "Explore multiple angles; target a known weakness ~60% of the time.",
     "targeted": "Every response MUST target one of the user's listed weakness patterns.",
@@ -13,9 +17,14 @@ _DIFFICULTY_INSTRUCTIONS = {
 
 
 async def generate_opponent(state: DebateState) -> DebateState:
-    # Load fingerprint if not already loaded (session start)
-    if not state.get("weakness_context"):
-        state["weakness_context"] = await recall_weaknesses(state["user_id"])
+    user_id = state["user_id"]
+
+    # Bug 3: use module-level cache; only call recall_weaknesses on first turn per user.
+    if user_id not in _weakness_cache:
+        _weakness_cache[user_id] = await recall_weaknesses(user_id)
+
+    # Also update state so downstream nodes can read it
+    state["weakness_context"] = _weakness_cache[user_id]
 
     weakness_text = "\n".join(
         r.get("text", "") for r in state["weakness_context"][:5]
@@ -45,5 +54,6 @@ Rules:
             {"role": "user", "content": f"Topic: {state['topic']}\n\nUser argues: {state['user_message']}"}
         ],
     )
-    state["opponent_response"] = msg.content[0].text
+    # Bug 5: guard against empty content list before indexing
+    state["opponent_response"] = msg.content[0].text if msg.content else ""
     return state
