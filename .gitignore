@@ -1,5 +1,7 @@
-backend/venv/
-backend/.env
+# Python
+venv/
+.venv/
+.env
 __pycache__/
 *.pyc
 *.pyo
@@ -8,4 +10,16 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.ruff_cache/
+.pytest_cache/
+test.db
+requirements.txt
+
+# Frontend
+node_modules/
+.next/
+.env.local
+tsconfig.tsbuildinfo
+
+# General
 .DS_Store

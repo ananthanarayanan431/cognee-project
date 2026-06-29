@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import { useDebate } from "@/store/debate";
-import { JudgeScore } from "@/types";
+import { JudgeScore, GraphData } from "@/types";
 import { v4 as uuid } from "uuid";
 
 export function useSendMessage() {
-  const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking } = useDebate();
+  const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph } = useDebate();
   const token = useDebate((s) => s.token);
 
   return useCallback(async (text: string) => {
@@ -50,10 +50,13 @@ export function useSendMessage() {
           if (evt.type === "judge") {
             setTimeout(() => revealJudge(evt as JudgeScore), 2000);
           }
+          if (evt.type === "graph") {
+            setGraph(evt.data as GraphData);
+          }
         } catch {
           // ignore malformed SSE events
         }
       }
     }
-  }, [sessionId, token, addMessage, updateLastOpponent, revealJudge, setThinking]);
+  }, [sessionId, token, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph]);
 }
