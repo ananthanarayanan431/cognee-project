@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 
 const DebateView = dynamic(() => import("@/components/debate/DebateView"), { ssr: false });
 const SessionEnd = dynamic(() => import("@/components/session/SessionEnd"), { ssr: false });
+const ProgressDashboard = dynamic(() => import("@/components/progress/ProgressDashboard"), { ssr: false });
 
 export default function Home() {
   const screen = useDebate((s) => s.screen);
@@ -15,5 +16,6 @@ export default function Home() {
   if (screen === "topic") return <TopicSelection />;
   if (screen === "debate") return <DebateView />;
   if (screen === "end") return <SessionEnd />;
+  if (screen === "progress") return <ProgressDashboard />;
   return <TopicSelection />;
 }
