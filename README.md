@@ -49,7 +49,7 @@ An AI-powered debate training app that helps you sharpen your argumentation skil
    Or run separately:
    ```bash
    # Terminal 1: Backend
-   make backend
+   make debatemind-backend
 
    # Terminal 2: Frontend
    make frontend
@@ -62,10 +62,10 @@ An AI-powered debate training app that helps you sharpen your argumentation skil
 
 **Backend:**
 ```bash
-cd backend
+cd debatemind-backend
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn debatemind.main:app --reload --port 8000
 ```
 
 **Frontend:**
@@ -82,15 +82,19 @@ npm run dev
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-### Backend (`backend/.env`)
+### Backend (`debatemind-backend/.env`)
 ```
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/debatemind
-OPENAI_API_KEY=<your-key>
+SECRET_KEY=<random-secret>
+OPENROUTER_API_KEY=<your-openrouter-key>
+# Optional: override default models (any OpenRouter slug works)
+# FAST_MODEL=google/gemini-flash-1.5
+# MAIN_MODEL=meta-llama/llama-3.1-70b-instruct
 ```
 
 ## Available Commands
 
-- `make backend` — Start FastAPI backend on port 8000
+- `make debatemind-backend` — Start FastAPI backend on port 8000
 - `make frontend` — Start Next.js frontend on port 3000
 - `make dev` — Run both simultaneously with parallel jobs
 
