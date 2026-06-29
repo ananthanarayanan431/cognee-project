@@ -5,12 +5,9 @@ import { api } from "@/lib/api";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
-import { useGraphWS } from "@/hooks/useGraphWS";
-
 export default function DebateView() {
   const { messages, thinking, graph, sessionId, sessionConfig, setScreen } = useDebate();
   const scrollRef = useRef<HTMLDivElement>(null);
-  useGraphWS(sessionId);
 
   useEffect(() => {
     if (scrollRef.current) {

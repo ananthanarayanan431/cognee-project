@@ -16,7 +16,6 @@ from debatemind.models.session import DebateSession, Exchange
 from debatemind.schemas.session import MessageIn, SessionOut, SessionStartIn
 from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
-from debatemind.websocket.manager import ws_manager
 
 router = APIRouter()
 
@@ -100,13 +99,6 @@ async def send_message(
     db.add(exchange)
     await db.commit()
 
-    async def _push_graph():
-        await asyncio.sleep(2)
-        graph = await build_graph(user_id, session.topic)
-        await ws_manager.broadcast_graph(session_id, graph.model_dump())
-
-    asyncio.create_task(_push_graph())
-
     opponent_text = final_state.get("opponent_response", "")
 
     async def event_stream():
@@ -125,6 +117,8 @@ async def send_message(
             "mastery": final_state.get("mastery_events", []),
         }
         yield f"data: {json.dumps(judge_payload)}\n\n"
+        graph = await build_graph(user_id, session.topic)
+        yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

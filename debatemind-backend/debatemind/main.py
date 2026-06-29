@@ -9,7 +9,6 @@ from debatemind.config import settings
 from debatemind.database import Base, engine
 from debatemind.models import mastery, session, user  # noqa: F401
 from debatemind.routers import auth, sessions, topics, users
-from debatemind.websocket.router import ws_router
 
 logger = logging.getLogger("debatemind")
 
@@ -48,7 +47,6 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
-app.include_router(ws_router)
 
 
 @app.get("/health")
