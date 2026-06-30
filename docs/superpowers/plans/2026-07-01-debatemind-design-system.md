@@ -2804,3 +2804,338 @@ Expected: downloaded file opens as plain text with `YOU`/`OPPONENT`/`JUDGE` sect
 git add frontend/src/components/session/SessionTranscript.tsx frontend/src/lib/api.ts frontend/src/types/index.ts
 git commit -m "feat: add Session Transcript screen with export per DS-1.0 9.7"
 ```
+
+---
+
+## Task 14: Progress Dashboard rewrite — streak, mastered list, win rate by topic, weakness trend
+
+**Files:**
+- Modify: `frontend/src/lib/api.ts`
+- Modify: `frontend/src/types/index.ts`
+- Modify: `frontend/src/components/progress/ProgressDashboard.tsx`
+
+**Interfaces:**
+- Consumes: extended `GET /api/users/me/progress` (Task 6), `POST /api/users/me/mastery/{pattern}/reactivate` (Task 2).
+
+- [ ] **Step 1: Extend `ProgressData` type and add the reactivate API call**
+
+```typescript
+// frontend/src/types/index.ts — replace the ProgressData interface
+export interface MasteredPattern {
+  pattern: string;
+  mastered_at: string;
+  rounds_to_mastery: number;
+  reactivated: boolean;
+}
+
+export interface TopicWinRate {
+  topic: string;
+  win_rate: number;
+}
+
+export interface WeaknessTrendItem {
+  pattern: string;
+  weight: number;
+}
+
+export interface ProgressData {
+  weaknesses: { text: string }[];
+  sessions: number;
+  win_rate: number;
+  streak: number;
+  thinking_style: ThinkingStyle;
+  mastered: MasteredPattern[];
+  win_rate_by_topic: TopicWinRate[];
+  weakness_trend: WeaknessTrendItem[];
+}
+```
+
+```typescript
+// frontend/src/lib/api.ts — append to the api object
+  reactivateMastery: (pattern: string) =>
+    apiFetch<{ reactivated: boolean }>(`/api/users/me/mastery/${encodeURIComponent(pattern)}/reactivate`, {
+      method: "POST",
+    }),
+```
+
+- [ ] **Step 2: Rewrite `ProgressDashboard.tsx`**
+
+```tsx
+// frontend/src/components/progress/ProgressDashboard.tsx
+"use client";
+import { useEffect, useState } from "react";
+import { useDebate } from "@/store/debate";
+import { api } from "@/lib/api";
+import { ProgressData } from "@/types";
+import MasteredBadge from "@/components/shared/MasteredBadge";
+
+const STYLE_LABELS: { key: keyof ProgressData["thinking_style"]; label: string }[] = [
+  { key: "logic", label: "Logic" },
+  { key: "evidence", label: "Evidence" },
+  { key: "rhetoric", label: "Rhetoric" },
+];
+
+export default function ProgressDashboard() {
+  const setScreen = useDebate((s) => s.setScreen);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+
+  function reload() {
+    api.getProgress().then(setProgress).catch(() => setProgress(null));
+  }
+
+  useEffect(reload, []);
+
+  async function reactivate(pattern: string) {
+    await api.reactivateMastery(pattern);
+    reload();
+  }
+
+  const stats = [
+    { label: "Sessions", value: progress ? String(progress.sessions) : "—", sub: progress ? `${progress.streak}-day streak` : "Start debating to track" },
+    { label: "Win rate", value: progress ? `${Math.round(progress.win_rate * 100)}%` : "—", sub: progress ? "of decided rounds" : "Calculated after sessions" },
+    { label: "Mastered", value: progress ? String(progress.mastered.filter((m) => !m.reactivated).length) : "0", sub: "patterns" },
+  ];
+
+  return (
+    <div className="max-w-3xl mx-auto px-7 py-12">
+      <div className="flex items-baseline justify-between mb-6">
+        <h1 className="font-display text-3xl text-ink">Your progress</h1>
+        <button onClick={() => setScreen("topic")} className="font-sans text-sm text-fog">← Back</button>
+      </div>
+      <div className="grid grid-cols-3 gap-4 mb-9">
+        {stats.map(({ label, value, sub }) => (
+          <div key={label} className="bg-white border border-border rounded-lg p-5">
+            <div className="font-sans text-[11px] text-fog">{label}</div>
+            <div className="font-display text-4xl text-ink my-1">{value}</div>
+            <div className="font-sans text-[11px] text-fog">{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {progress && (
+        <div className="mb-9">
+          <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-4">Thinking style</p>
+          {STYLE_LABELS.map(({ key, label }) => {
+            const score = progress.thinking_style[key];
+            return (
+              <div key={key} className="mb-3">
+                <div className="flex justify-between font-sans text-sm text-ink mb-1">
+                  <span>{label}</span>
+                  <span className="font-mono text-[11px] text-fog">{score.toFixed(1)}/10</span>
+                </div>
+                <div className="h-1.5 bg-fog/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-scarlet rounded-full" style={{ width: `${Math.min(100, (score / 10) * 100)}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {progress && progress.weakness_trend.length > 0 && (
+        <div className="mb-9">
+          <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-4">Weakness trend</p>
+          {progress.weakness_trend.map((w) => (
+            <div key={w.pattern} className="mb-3">
+              <div className="flex justify-between font-sans text-sm text-ink mb-1">
+                <span>{w.pattern}</span>
+                <span className="font-mono text-[11px] text-fog">{w.weight.toFixed(2)}</span>
+              </div>
+              <div className="h-1.5 bg-fog/20 rounded-full overflow-hidden">
+                <div className="h-full bg-scarlet rounded-full" style={{ width: `${w.weight * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {progress && progress.mastered.length > 0 && (
+        <div className="mb-9">
+          <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-4">Mastered patterns</p>
+          {progress.mastered.map((m) => (
+            <div key={`${m.pattern}-${m.mastered_at}`} className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2.5">
+                {m.reactivated ? (
+                  <span className="font-sans text-sm text-ink">{m.pattern}</span>
+                ) : (
+                  <>
+                    <span className="font-sans text-sm text-ink">{m.pattern}</span>
+                    <MasteredBadge />
+                  </>
+                )}
+                <span className="font-sans text-[11px] text-fog">
+                  {new Date(m.mastered_at).toLocaleDateString()} · {m.rounds_to_mastery} rounds to master
+                </span>
+              </div>
+              {!m.reactivated && (
+                <button onClick={() => reactivate(m.pattern)} className="font-sans text-[11px] text-fog">
+                  Reactivate →
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {progress && progress.win_rate_by_topic.length > 0 && (
+        <div className="mb-9">
+          <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-4">Win rate by topic</p>
+          {progress.win_rate_by_topic.map((t) => (
+            <div key={t.topic} className="mb-3">
+              <div className="flex justify-between font-sans text-sm text-ink mb-1">
+                <span>{t.topic}</span>
+                <span className="font-mono text-[11px] text-fog">{Math.round(t.win_rate * 100)}%</span>
+              </div>
+              <div className="h-1.5 bg-fog/20 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${t.win_rate >= 0.5 ? "bg-verdant" : "bg-scarlet"}`}
+                  style={{ width: `${t.win_rate * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!progress && (
+        <p className="font-sans text-sm text-fog text-center mt-12 italic">
+          Complete a debate session to see your cognitive fingerprint evolve.
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Verify in the dev server**
+
+Run: `cd frontend && npm run dev`, complete several sessions across different topics, master at least one pattern by repeatedly winning the same pattern, open Progress, confirm streak/win-rate-by-topic/mastered-list/weakness-trend all render real numbers, click "Reactivate →" on a mastered pattern and confirm it disappears from the mastered list and reappears in the weakness trend after reload.
+Expected: all sections backed by live data, no hardcoded placeholders.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/lib/api.ts frontend/src/types/index.ts frontend/src/components/progress/ProgressDashboard.tsx
+git commit -m "feat: rewrite Progress Dashboard with streak, mastered list, win rate by topic, weakness trend"
+```
+
+---
+
+## Task 15: Visual fidelity pass — icons, exact borders, hover/transition states
+
+Final pass tightening remaining DS-1.0 deviations now that all data-bearing components exist: Tabler icons (§6), exact `border-border` token instead of `border-fog/20`/`border-fog/30` approximations (§3.2), and documented hover/transition timings (§7.3).
+
+**Files:**
+- Modify: `frontend/src/components/debate/InputArea.tsx`
+- Modify: `frontend/src/components/debate/DebateView.tsx`
+- Modify: `frontend/src/components/topic/TopicSelection.tsx`
+- Modify: `frontend/src/components/debate/MessageBubble.tsx`
+
+**Interfaces:** None — pure visual polish, no new data flow.
+
+- [ ] **Step 1: Replace the hand-rolled send arrow with the Tabler send icon**
+
+```tsx
+// frontend/src/components/debate/InputArea.tsx — add import
+import { IconSend } from "@tabler/icons-react";
+```
+
+```tsx
+// frontend/src/components/debate/InputArea.tsx — replace the inline <svg> inside the send button with:
+          <IconSend size={18} stroke={2} />
+```
+
+- [ ] **Step 2: Swap `border-fog/20` and `border-fog/30` for the exact `border-border` token**
+
+Run a repo-wide replace across the four files in scope:
+
+```bash
+cd frontend/src/components && grep -rl "border-fog/20\|border-fog/30" debate topic | xargs sed -i '' 's/border-fog\/20/border-border/g; s/border-fog\/30/border-border/g'
+```
+
+Manually verify no unintended matches afterward:
+
+Run: `cd frontend && grep -rn "border-fog" src/components/debate src/components/topic`
+Expected: no remaining matches in those two directories (any legitimate remaining `border-fog/40` hover-state classes are untouched, since the sed targets only `/20` and `/30`).
+
+- [ ] **Step 3: Add icon imports to nav for progress/transcript affordances**
+
+```tsx
+// frontend/src/components/debate/DebateView.tsx — add import
+import { IconChartLine, IconHistory } from "@tabler/icons-react";
+```
+
+```tsx
+// frontend/src/components/debate/DebateView.tsx — inside the <nav>, before the "End session" button, add:
+        <div className="flex items-center gap-3">
+          <button onClick={() => setScreen("progress")} aria-label="Progress" className="text-fog hover:text-ink transition-colors">
+            <IconChartLine size={18} stroke={1.75} />
+          </button>
+          <button
+            onClick={() => setScreen("transcript")}
+            aria-label="Transcript"
+            className="text-fog hover:text-ink transition-colors"
+          >
+            <IconHistory size={18} stroke={1.75} />
+          </button>
+        </div>
+```
+
+(Place this `<div>` between the topic/difficulty `<span>` and the "End session" `<button>` in the existing `<nav>` flex row.)
+
+- [ ] **Step 4: Verify build and lint**
+
+Run: `cd frontend && npm run build && npm run lint`
+Expected: both succeed — this is the full build check deferred from Task 8 Step 6, now that `CalibrationSession.tsx` and `SessionTranscript.tsx` exist.
+
+- [ ] **Step 5: Manual walkthrough of every screen**
+
+Run: `cd frontend && npm run dev`, walk: Landing → Auth (register) → Calibration (3 topics) → Topic Selection → Live Debate (send 2-3 messages, confirm SessionScoreBar + MasteredBadge if earned) → End session (WeaknessBar) → Transcript (prev/next + export) → Progress (streak/mastered/win-rate-by-topic/weakness-trend) → Debate again.
+Expected: no console errors, no broken navigation, every number on screen traceable to a backend response in the Network tab.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend/src/components
+git commit -m "polish: Tabler icons, exact border token, nav affordances for progress/transcript"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage** — every numbered DS-1.0 section maps to a task:
+- §1 Principles (no celebrations, no spinners, no breadcrumbs) — respected throughout; Pulse Avatar (existing) stays the only expressive animation, JudgeScore keeps its 2s delay (existing, unchanged), calibration has no auto-advance (Task 11).
+- §2 Logo — already correct in `layout.tsx`/`LandingPage.tsx` (Task 8), untouched.
+- §3 Colour — Task 7 adds the two missing tokens (`border`, `light`); existing tokens already matched.
+- §4 Typography — already wired in `layout.tsx`, untouched.
+- §5 Spacing/grid/radius — existing components already match (verified against `MessageBubble.tsx`, `tailwind.config.ts` during research); no task needed beyond Task 15's border-token sweep.
+- §6 Iconography — Task 15.
+- §7 Motion — Pulse Avatar and 2s judge delay already exist; Task 7 adds `prefers-reduced-motion` handling.
+- §8.1–8.4, 8.8–8.10 (MessageBubble, JudgeScore, OpponentAvatar, DifficultyCard, MasteredBadge, TopicChip, ChatInput) — already implemented or covered by Task 10 (MasteredBadge).
+- §8.5 WeaknessBar — Task 12.
+- §8.6 GraphNode — already implemented in `FingerprintGraph.tsx`, untouched.
+- §8.7 SessionScoreBar — Task 9.
+- §9.1 Landing/Auth — Task 8.
+- §9.2 Calibration — Tasks 5 (backend) + 11 (frontend).
+- §9.3 Topic Selection — already implemented, untouched.
+- §9.4 Live Debate View — already implemented; Task 9 adds the missing score strip, Task 10 adds mastery badges.
+- §9.5 Session End — Task 12.
+- §9.6 Progress Dashboard — Tasks 6 (backend) + 14 (frontend).
+- §9.7 Session Transcript — Tasks 4 (backend) + 13 (frontend).
+- §10 Voice Phase — explicitly out of scope (Phase 2 preview only, spec says "no breaking design changes to Phase 1 screens" required, not Phase 2 implementation).
+- §11 Responsive — existing Tailwind responsive classes (`hidden lg:flex` on the graph aside) already partially cover this; full bottom-sheet mobile graph is a larger undertaking not requested in this round — flagged here as a known gap, not silently dropped.
+- §12 Accessibility — `aria-label` already present on `PulseAvatar`-adjacent elements; Task 15 adds `aria-label` to new icon buttons. Full WCAG audit not in scope.
+- §13 Dark Mode — Task 7 lays the CSS variable foundation; a user-facing toggle and full component dark variants are a known gap (flagged, not silently dropped — would be its own follow-up task if prioritized).
+- §14 Design Tokens (CSS) — Task 7.
+- §15 Do/Don't — enforced implicitly by following the other sections; no separate task needed.
+
+**Placeholder scan** — no "TBD"/"handle edge cases"/"similar to Task N" found; every step has complete code.
+
+**Type consistency** — `revealJudge(judge, mastery)` signature matches between store interface (Task 10 Step 4) and its call site in `useDebateSSE.ts` (Task 10 Step 3). `SessionSummary`/`Transcript`/`CalibrationStatus` types match their Pydantic schema field names exactly (`snake_case`, matching the rest of the codebase's existing `ProgressData`/`JudgeScore` types, which are also snake_case to mirror the API).
+
+**Known gaps flagged (not silently dropped):** full mobile bottom-sheet graph (§11.2) and a user-facing dark-mode toggle with complete dark variants on every component (§13) are foundation-only in this plan — call this out to the user before considering the design system "fully" implemented if those matter for the hackathon demo.
+
+---
+
+Plan complete and saved to `docs/superpowers/plans/2026-07-01-debatemind-design-system.md`.

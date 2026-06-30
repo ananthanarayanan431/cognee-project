@@ -35,14 +35,18 @@ Add to the top of `debatemind-backend/tests/test_sessions_router.py`, alongside 
 ```python
 import json
 from unittest.mock import AsyncMock, MagicMock
-```//replace the existing `from unittest.mock import MagicMock` line with the above (adds `AsyncMock` and `json`).
+```
+
+Replace the existing `from unittest.mock import MagicMock` line with the above (adds `AsyncMock` and `json`).
 
 Add these imports alongside the existing `debatemind` imports:
 
 ```python
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.schemas.graph import GraphOut
-```//`Exchange` is new; `DebateSession` is already imported — merge into the existing import line rather than duplicating it. `GraphOut` is new.
+```
+
+`Exchange` is new; `DebateSession` is already imported, so merge into the existing import line rather than duplicating it. `GraphOut` is new.
 
 Add this helper and the two new tests anywhere after `_make_session`:
 
