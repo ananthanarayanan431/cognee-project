@@ -7,7 +7,7 @@ from debatemind.config import settings
 
 
 async def extract_argument(state: DebateState) -> DebateState:
-    prompt = extractor_prompt(state["topic"], state["user_message"])
+    prompt = extractor_prompt(state["topic"], state["user_message"], state.get("description") or "")
     msg = await openrouter.chat.completions.create(
         model=settings.fast_model,
         max_tokens=200,

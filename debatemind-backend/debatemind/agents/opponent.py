@@ -2,7 +2,7 @@ from debatemind.agents.client import openrouter
 from debatemind.agents.prompts.opponent import opponent_system_prompt, opponent_user_message
 from debatemind.agents.state import DebateState
 from debatemind.config import settings
-from debatemind.services.cognee_svc import recall_weaknesses
+from debatemind.services.cognee_svc import recall_source_context, recall_weaknesses
 
 # module-level cache so recall_weaknesses is only called once per user
 # across all pipeline invocations, not re-fetched on every turn.
@@ -17,10 +17,16 @@ async def generate_opponent(state: DebateState) -> DebateState:
 
     state["weakness_context"] = _weakness_cache[user_id]
 
+    source_context: list[dict] = []
+    if state.get("has_source"):
+        source_context = await recall_source_context(state["session_id"], state["user_message"])
+    state["source_context"] = source_context
+
     weakness_text = (
         "\n".join(r.get("text", "") for r in state["weakness_context"][:5])
         or "No prior weaknesses recorded — probe broadly."
     )
+    source_text = "\n".join(r.get("text", "") for r in source_context[:5])
 
     difficulty = state.get("difficulty", "targeted")
 
@@ -30,11 +36,13 @@ async def generate_opponent(state: DebateState) -> DebateState:
         messages=[
             {
                 "role": "system",
-                "content": opponent_system_prompt(weakness_text, difficulty),
+                "content": opponent_system_prompt(weakness_text, difficulty, source_text),
             },
             {
                 "role": "user",
-                "content": opponent_user_message(state["topic"], state["user_message"]),
+                "content": opponent_user_message(
+                    state["topic"], state["user_message"], state.get("description") or ""
+                ),
             },
         ],
     )
