@@ -18,6 +18,7 @@ async def remember_argument(
 ) -> None:
     text = (
         f"User: {user_id}\n"
+        f"Session: {session_id}\n"
         f"Topic: {topic}\n"
         f"Claim: {claim_text}\n"
         f"ArgumentPattern: {pattern_type}\n"
@@ -25,42 +26,34 @@ async def remember_argument(
         f"Evidence: {evidence_quality}\n"
         f"Outcome: {outcome}\n"
     )
-    await cognee.remember(
-        text,
-        dataset_name=_dataset(user_id),
-        session_id=session_id,
-        run_in_background=True,
-        self_improvement=True,
-    )
+    dataset = _dataset(user_id)
+    await cognee.add(text, dataset_name=dataset)
+    await cognee.cognify(datasets=dataset)
 
 
 async def recall_weaknesses(user_id: str) -> list[dict]:
-    results = await cognee.recall(
-        f"top weakness patterns and fallacies for user {user_id}",
+    results = await cognee.search(
+        query_text=f"top weakness patterns and fallacies for user {user_id}",
         query_type=SearchType.GRAPH_COMPLETION,
         datasets=[_dataset(user_id)],
         top_k=10,
     )
-    return [{"text": getattr(r, "text", str(r))} for r in results]
+    return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]
 
 
 async def improve_fingerprint(user_id: str, session_id: str) -> None:
-    await cognee.improve(
-        dataset=_dataset(user_id),
-        session_ids=[session_id],
-        build_global_context_index=True,
-        run_in_background=True,
-    )
+    # cognee 0.1.40 has no separate "improve" step; re-cognifying the dataset
+    # incorporates anything added since the last cognify call.
+    await cognee.cognify(datasets=_dataset(user_id))
 
 
 async def forget_pattern(user_id: str, pattern_type: str) -> None:
-    # Cognee forget operates on datasets; we mark the pattern as mastered
-    # so the opponent stops targeting it.
-    await cognee.remember(
-        (
-            f"User: {user_id}\nPattern: {pattern_type}\n"
-            "Status: MASTERED\nAction: prune from opponent strategy"
-        ),
-        dataset_name=_dataset(user_id),
-        run_in_background=True,
+    # cognee has no forget primitive; mark the pattern as mastered so the
+    # opponent stops targeting it.
+    dataset = _dataset(user_id)
+    text = (
+        f"User: {user_id}\nPattern: {pattern_type}\n"
+        "Status: MASTERED\nAction: prune from opponent strategy"
     )
+    await cognee.add(text, dataset_name=dataset)
+    await cognee.cognify(datasets=dataset)
