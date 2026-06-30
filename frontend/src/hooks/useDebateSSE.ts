@@ -4,13 +4,15 @@ import { JudgeScore, GraphData } from "@/types";
 import { v4 as uuid } from "uuid";
 
 export function useSendMessage() {
-  const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph } = useDebate();
+  const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage } =
+    useDebate();
   const token = useDebate((s) => s.token);
 
   return useCallback(async (text: string) => {
     if (!sessionId || !text.trim()) return;
     addMessage({ id: uuid(), role: "user", text });
     setThinking(true);
+    setCurrentStage(null);
 
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/sessions/${sessionId}/message`, {
       method: "POST",
@@ -20,12 +22,12 @@ export function useSendMessage() {
 
     if (!res.body) {
       setThinking(false);
+      setCurrentStage(null);
       return;
     }
 
     const opponentId = uuid();
-    addMessage({ id: opponentId, role: "opponent", text: "" });
-    setThinking(false);
+    let opponentAdded = false;
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -43,7 +45,16 @@ export function useSendMessage() {
         if (raw === "[DONE]") break;
         try {
           const evt = JSON.parse(raw);
+          if (evt.type === "stage") {
+            setCurrentStage(evt.stage);
+          }
           if (evt.type === "token") {
+            if (!opponentAdded) {
+              addMessage({ id: opponentId, role: "opponent", text: "" });
+              opponentAdded = true;
+              setThinking(false);
+              setCurrentStage(null);
+            }
             const current = useDebate.getState().messages.find((m) => m.id === opponentId);
             updateLastOpponent((current?.text ?? "") + evt.text);
           }
@@ -53,10 +64,22 @@ export function useSendMessage() {
           if (evt.type === "graph") {
             setGraph(evt.data as GraphData);
           }
+          if (evt.type === "error") {
+            setThinking(false);
+            setCurrentStage(null);
+            if (!opponentAdded) {
+              addMessage({
+                id: opponentId,
+                role: "opponent",
+                text: "Something went wrong generating a response. Please try again.",
+              });
+              opponentAdded = true;
+            }
+          }
         } catch {
           // ignore malformed SSE events
         }
       }
     }
-  }, [sessionId, token, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph]);
+  }, [sessionId, token, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage]);
 }
