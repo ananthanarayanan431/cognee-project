@@ -9,6 +9,7 @@ from debatemind.database import Base, engine
 from debatemind.models import mastery, session, user  # noqa: F401
 from debatemind.routers import auth, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
+from debatemind.services.storage_svc import ensure_bucket
 
 logger = logging.getLogger("debatemind")
 
@@ -22,6 +23,11 @@ async def lifespan(_: FastAPI):
         logger.warning("DB not reachable at startup: %s", exc)
 
     configure_cognee(settings)
+
+    try:
+        ensure_bucket()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MinIO not reachable at startup: %s", exc)
 
     yield
 
