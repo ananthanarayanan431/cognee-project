@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -40,6 +41,13 @@ router = APIRouter()
 _session_wins: dict[str, int] = {}
 
 MAX_SOURCE_BYTES = 20 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
+
+# User-meaningful pipeline nodes, in execution order. remember/prune are
+# internal bookkeeping (memory-graph writes, mastery pruning) with no
+# user-facing meaning and are intentionally not surfaced as stage events.
+STAGE_ORDER = ["extract", "opponent", "judge", "mastery"]
 
 
 @router.post(
@@ -237,32 +245,61 @@ async def send_message(
         mastery_events=[],
     )
 
-    final_state = await debate_pipeline.ainvoke(initial_state)
-    _session_wins[session_id] = final_state.get("consecutive_wins", 0)
-
-    exchange = Exchange(
-        session_id=session_id,
-        turn_number=turn,
-        user_message=body.text,
-        opponent_response=final_state.get("opponent_response", ""),
-        detected_pattern=final_state.get("extracted_pattern"),
-        fallacy=final_state.get("judge_fallacy") or final_state.get("extracted_fallacy"),
-        judge_logic=final_state.get("judge_logic"),
-        judge_evidence=final_state.get("judge_evidence"),
-        judge_rhetoric=final_state.get("judge_rhetoric"),
-        outcome=final_state.get("outcome"),
-    )
-    db.add(exchange)
-    await db.commit()
-
-    opponent_text = final_state.get("opponent_response", "")
-
     async def event_stream():
-        words = opponent_text.split()
-        for i, word in enumerate(words):
-            chunk = word + (" " if i < len(words) - 1 else "")
-            yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"
-            await asyncio.sleep(0.055)
+        final_state = dict(initial_state)
+        stage_idx = 0
+        yield f"data: {json.dumps({'type': 'stage', 'stage': STAGE_ORDER[0]})}\n\n"
+        try:
+            async for update in debate_pipeline.astream(initial_state, stream_mode="updates"):
+                node_name, node_state = next(iter(update.items()))
+                final_state.update(node_state)
+
+                if node_name == "opponent":
+                    opponent_text = final_state.get("opponent_response") or ""
+                    words = opponent_text.split()
+                    for i, word in enumerate(words):
+                        chunk = word + (" " if i < len(words) - 1 else "")
+                        yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"
+                        await asyncio.sleep(0.055)
+
+                stage_idx += 1
+                if stage_idx < len(STAGE_ORDER):
+                    stage_event = {
+                        "type": "stage",
+                        "stage": STAGE_ORDER[stage_idx],
+                    }
+                    yield f"data: {json.dumps(stage_event)}\n\n"
+        except Exception:
+            logger.exception("debate pipeline failed for session %s turn %s", session_id, turn)
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "error",
+                        "detail": "Something went wrong generating a response.",
+                    }
+                )
+                + "\n\n"
+            )
+            return
+
+        _session_wins[session_id] = final_state.get("consecutive_wins", 0)
+
+        exchange = Exchange(
+            session_id=session_id,
+            turn_number=turn,
+            user_message=body.text,
+            opponent_response=final_state.get("opponent_response", ""),
+            detected_pattern=final_state.get("extracted_pattern"),
+            fallacy=final_state.get("judge_fallacy") or final_state.get("extracted_fallacy"),
+            judge_logic=final_state.get("judge_logic"),
+            judge_evidence=final_state.get("judge_evidence"),
+            judge_rhetoric=final_state.get("judge_rhetoric"),
+            outcome=final_state.get("outcome"),
+        )
+        db.add(exchange)
+        await db.commit()
+
         judge_payload = {
             "type": "judge",
             "logic": final_state.get("judge_logic"),

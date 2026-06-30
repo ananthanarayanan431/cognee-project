@@ -32,7 +32,11 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(user)
     return SuccessResponse(
-        data=TokenOut(access_token=create_access_token(user.id), user_id=user.id)
+        data=TokenOut(
+            access_token=create_access_token(user.id),
+            user_id=user.id,
+            calibration_done=user.calibration_done,
+        )
     )
 
 
@@ -51,5 +55,9 @@ async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return SuccessResponse(
-        data=TokenOut(access_token=create_access_token(user.id), user_id=user.id)
+        data=TokenOut(
+            access_token=create_access_token(user.id),
+            user_id=user.id,
+            calibration_done=user.calibration_done,
+        )
     )
