@@ -31,6 +31,16 @@ class TestExtractorPrompt:
         assert p.count("<example>") >= 3
         assert p.count("</example>") == p.count("<example>")
 
+    def test_includes_description_when_present(self):
+        p = extractor_prompt(
+            "Climate change", "We must cut emissions now", description="Focus on EU policy"
+        )
+        assert "Focus on EU policy" in p
+
+    def test_omits_context_line_when_description_absent(self):
+        p = extractor_prompt("topic", "arg")
+        assert "Context:" not in p
+
 
 class TestExtractorSchema:
     def test_schema_is_strict_with_consistent_required_fields(self):
@@ -118,6 +128,29 @@ class TestOpponentPrompts:
         m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
         assert "Tax policy" in m
         assert "higher taxes reduce inequality" in m
+
+    def test_system_prompt_includes_source_text_when_present(self):
+        p = opponent_system_prompt(
+            "weakness A", "targeted", source_text="The report states X causes Y."
+        )
+        assert "The report states X causes Y." in p
+        assert "Source material" in p
+
+    def test_system_prompt_omits_source_block_when_absent(self):
+        p = opponent_system_prompt("weakness A", "targeted")
+        assert "Source material" not in p
+
+    def test_user_message_includes_description_when_present(self):
+        m = opponent_user_message(
+            "Tax policy",
+            "higher taxes reduce inequality",
+            description="Focus on US federal brackets",
+        )
+        assert "Focus on US federal brackets" in m
+
+    def test_user_message_omits_context_line_when_description_absent(self):
+        m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
+        assert "Context:" not in m
 
 
 class TestPatternTypeDescriptions:

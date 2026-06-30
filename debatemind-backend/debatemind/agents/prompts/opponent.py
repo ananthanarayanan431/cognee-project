@@ -5,9 +5,9 @@ _DIFFICULTY_INSTRUCTIONS = {
 }
 
 
-def opponent_system_prompt(weakness_text: str, difficulty: str) -> str:
+def opponent_system_prompt(weakness_text: str, difficulty: str, source_text: str = "") -> str:
     instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
-    return f"""You are a world-class debate opponent.
+    prompt = f"""You are a world-class debate opponent.
 
 User's cognitive fingerprint (known weaknesses):
 {weakness_text}
@@ -20,7 +20,14 @@ Rules:
 - Never concede unless the user's argument is genuinely irrefutable.
 - Do NOT repeat an argument pattern you already used this session.
 - Keep response under 120 words."""
+    if source_text:
+        prompt += (
+            f"\n\nSource material the user provided "
+            f"(cite specifics from this when relevant):\n{source_text}"
+        )
+    return prompt
 
 
-def opponent_user_message(topic: str, user_argument: str) -> str:
-    return f"Topic: {topic}\n\nUser argues: {user_argument}"
+def opponent_user_message(topic: str, user_argument: str, description: str = "") -> str:
+    context_line = f"\n\nContext: {description}" if description else ""
+    return f"Topic: {topic}{context_line}\n\nUser argues: {user_argument}"

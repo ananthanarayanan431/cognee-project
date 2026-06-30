@@ -25,10 +25,11 @@ EXTRACTOR_RESPONSE_SCHEMA = {
 }
 
 
-def extractor_prompt(topic: str, argument: str) -> str:  # noqa: E501
+def extractor_prompt(topic: str, argument: str, description: str = "") -> str:  # noqa: E501
     pattern_list = "\n".join(
         f"- {name}: {desc}" for name, desc in PATTERN_TYPE_DESCRIPTIONS.items()
     )
+    context_block = f"\n<context>{description}</context>" if description else ""
     return f"""You are a rigorous debate-pattern classifier. You read one
 argument turn and identify its dominant rhetorical pattern, any logical
 fallacy present, and the strength of its evidence — strictly as the
@@ -55,7 +56,7 @@ argument was written, not as you'd ideally want it written.
 <output>{{"reasoning": "Recasts opponents' position as bad faith rather than engaging their actual argument.", "pattern_type": "StrawMan", "fallacy": "Strawman", "evidence_quality": "Absent"}}</output>
 </example>
 </examples>
-
+{context_block}
 <topic>{topic}</topic>
 <argument>{argument}</argument>
 
