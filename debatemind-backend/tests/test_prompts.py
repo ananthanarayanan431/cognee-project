@@ -2,7 +2,7 @@
 
 from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
 from debatemind.agents.prompts.extractor import EXTRACTOR_RESPONSE_SCHEMA, extractor_prompt
-from debatemind.agents.prompts.judge import judge_prompt
+from debatemind.agents.prompts.judge import JUDGE_RESPONSE_SCHEMA, judge_prompt
 from debatemind.agents.prompts.opponent import (
     _DIFFICULTY_INSTRUCTIONS,
     opponent_system_prompt,
@@ -64,7 +64,36 @@ class TestJudgePrompt:
 
     def test_win_condition_explained(self):
         p = judge_prompt("t", "u", "o")
-        assert "Won" in p and "Lost" in p
+        assert "Won" in p and "Lost" in p and "Neutral" in p
+
+    def test_has_rubric_anchors_for_each_dimension(self):
+        p = judge_prompt("t", "u", "o")
+        assert "<rubric>" in p and "</rubric>" in p
+        for dimension in ("logic", "evidence", "rhetoric"):
+            assert dimension in p
+
+    def test_warns_against_verbosity_bias(self):
+        p = judge_prompt("t", "u", "o")
+        assert "longer" in p.lower()
+
+
+class TestJudgeSchema:
+    def test_schema_is_strict_with_consistent_required_fields(self):
+        body = JUDGE_RESPONSE_SCHEMA["schema"]
+        assert JUDGE_RESPONSE_SCHEMA["strict"] is True
+        assert body["additionalProperties"] is False
+        assert set(body["required"]) == set(body["properties"].keys())
+
+    def test_reasoning_field_is_first(self):
+        first_key = next(iter(JUDGE_RESPONSE_SCHEMA["schema"]["properties"]))
+        assert first_key == "reasoning"
+
+    def test_outcome_enum_is_won_lost_neutral(self):
+        assert JUDGE_RESPONSE_SCHEMA["schema"]["properties"]["outcome"]["enum"] == [
+            "Won",
+            "Lost",
+            "Neutral",
+        ]
 
 
 class TestOpponentPrompts:
