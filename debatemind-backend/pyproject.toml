@@ -15,7 +15,7 @@ dependencies = [
     "python-multipart==0.0.20",
     "openai>=1.54.0",
     "langgraph==0.2.60",
-    "cognee==0.1.40",
+    "cognee[postgres,kuzu]==0.1.40",
     "httpx==0.28.1",
     "python-dotenv==1.0.1",
 ]
