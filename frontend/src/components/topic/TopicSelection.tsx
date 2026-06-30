@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 
@@ -28,9 +28,14 @@ export default function TopicSelection() {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [indexing, setIndexing] = useState(false);
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { setSession } = useDebate();
 
   useEffect(() => { api.getTopics().then(setGroups).catch(() => {}); }, []);
+
+  // Clean up poll timer on unmount
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -48,19 +53,58 @@ export default function TopicSelection() {
     setSourceFile(file);
   }
 
+  function navigateToSession(sessionId: string) {
+    if (pollRef.current) clearTimeout(pollRef.current);
+    setIndexing(false);
+    setPendingSessionId(null);
+    setSession(sessionId, { topic, description, difficulty, position: position as never });
+  }
+
+  function startPolling(sessionId: string) {
+    const poll = async () => {
+      try {
+        const { source_status } = await api.getSourceStatus(sessionId);
+        if (source_status === "indexed") {
+          navigateToSession(sessionId);
+          return;
+        }
+        if (source_status === "failed") {
+          setFileError("Indexing failed — opponent will start without source context.");
+          navigateToSession(sessionId);
+          return;
+        }
+        // Still pending — check again in 2 s
+        pollRef.current = setTimeout(poll, 2000);
+      } catch {
+        // Network error — navigate anyway
+        navigateToSession(sessionId);
+      }
+    };
+    pollRef.current = setTimeout(poll, 2000);
+  }
+
   async function start() {
+    setFileError("");
     const res = await api.startSession(topic, description, difficulty, position);
     if (sourceFile) {
       setIndexing(true);
+      setPendingSessionId(res.session_id);
       try {
         await api.uploadSource(res.session_id, sourceFile);
+        startPolling(res.session_id);
       } catch {
-        setFileError("Indexing failed — starting without source grounding.");
-      } finally {
-        setIndexing(false);
+        setFileError("Upload failed — starting without source grounding.");
+        navigateToSession(res.session_id);
       }
+    } else {
+      navigateToSession(res.session_id);
     }
-    setSession(res.session_id, { topic, description, difficulty, position: position as never });
+  }
+
+  function startAnyway() {
+    if (pendingSessionId) {
+      navigateToSession(pendingSessionId);
+    }
   }
 
   return (
@@ -131,7 +175,7 @@ export default function TopicSelection() {
       </div>
 
       <div className="h-px bg-fog/20 my-7" />
-      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">YOUR POSITION</p>
+      <p className="font-sans text-[11px] font-semibond text-fog uppercase tracking-wide mb-3">YOUR POSITION</p>
       <div className="flex mb-8">
         {POSITIONS.map((p, i) => (
           <button key={p} onClick={() => setPosition(p.toLowerCase().replace(" ", "_"))}
@@ -143,10 +187,17 @@ export default function TopicSelection() {
         ))}
       </div>
 
-      <button onClick={start} disabled={indexing}
-        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60">
+      <button onClick={start} disabled={indexing || !topic}
+        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60 mb-3">
         {indexing ? "Indexing your document…" : "Start session →"}
       </button>
+
+      {indexing && (
+        <button onClick={startAnyway}
+          className="w-full border border-fog/40 text-fog font-sans text-sm py-3 rounded-lg">
+          Start debate anyway →
+        </button>
+      )}
     </div>
   );
 }

@@ -28,7 +28,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
-    apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean }>(
+    apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(
       "/api/sessions/start",
       {
         method: "POST",
@@ -52,6 +52,8 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json() as Promise<{ status: string; source_filename: string }>;
   },
+  getSourceStatus: (sessionId: string) =>
+    apiFetch<{ source_status: string }>(`/api/sessions/${sessionId}/source-status`),
   getSourceFile: (sessionId: string) =>
     apiFetch<{ url: string }>(`/api/sessions/${sessionId}/source-file`),
 };
