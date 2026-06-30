@@ -1,5 +1,15 @@
+import asyncio
+import logging
+
 import cognee
 from cognee.api.v1.search.search import SearchType
+
+logger = logging.getLogger(__name__)
+
+# Timeout constants — module-level so tests can monkeypatch them
+ADD_TIMEOUT = 60.0
+COGNIFY_TIMEOUT = 300.0
+SEARCH_TIMEOUT = 10.0
 
 
 def _dataset(user_id: str) -> str:
@@ -27,36 +37,35 @@ async def remember_argument(
         f"Outcome: {outcome}\n"
     )
     dataset = _dataset(user_id)
-    await cognee.add(text, dataset_name=dataset)
-    await cognee.cognify(datasets=dataset)
+    await asyncio.wait_for(cognee.add(text, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
 
 
 async def recall_weaknesses(user_id: str) -> list[dict]:
-    results = await cognee.search(
-        query_text=f"top weakness patterns and fallacies for user {user_id}",
-        query_type=SearchType.GRAPH_COMPLETION,
-        datasets=[_dataset(user_id)],
-        top_k=10,
+    results = await asyncio.wait_for(
+        cognee.search(
+            query_text=f"top weakness patterns and fallacies for user {user_id}",
+            query_type=SearchType.GRAPH_COMPLETION,
+            datasets=[_dataset(user_id)],
+            top_k=10,
+        ),
+        timeout=SEARCH_TIMEOUT,
     )
     return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]
 
 
 async def improve_fingerprint(user_id: str, session_id: str) -> None:
-    # cognee 0.1.40 has no separate "improve" step; re-cognifying the dataset
-    # incorporates anything added since the last cognify call.
-    await cognee.cognify(datasets=_dataset(user_id))
+    await asyncio.wait_for(cognee.cognify(datasets=_dataset(user_id)), timeout=COGNIFY_TIMEOUT)
 
 
 async def forget_pattern(user_id: str, pattern_type: str) -> None:
-    # cognee has no forget primitive; mark the pattern as mastered so the
-    # opponent stops targeting it.
     dataset = _dataset(user_id)
     text = (
         f"User: {user_id}\nPattern: {pattern_type}\n"
         "Status: MASTERED\nAction: prune from opponent strategy"
     )
-    await cognee.add(text, dataset_name=dataset)
-    await cognee.cognify(datasets=dataset)
+    await asyncio.wait_for(cognee.add(text, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
 
 
 def _source_dataset(session_id: str) -> str:
@@ -65,18 +74,31 @@ def _source_dataset(session_id: str) -> str:
 
 async def index_source_document(session_id: str, file_path: str) -> None:
     dataset = _source_dataset(session_id)
-    await cognee.add(file_path, dataset_name=dataset)
-    await cognee.cognify(datasets=dataset)
+    await asyncio.wait_for(cognee.add(file_path, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
 
 
 async def recall_source_context(session_id: str, query_text: str) -> list[dict]:
     try:
-        results = await cognee.search(
-            query_text=query_text,
-            query_type=SearchType.CHUNKS,
-            datasets=[_source_dataset(session_id)],
-            top_k=5,
+        results = await asyncio.wait_for(
+            cognee.search(
+                query_text=query_text,
+                query_type=SearchType.CHUNKS,
+                datasets=[_source_dataset(session_id)],
+                top_k=5,
+            ),
+            timeout=SEARCH_TIMEOUT,
         )
+    except asyncio.TimeoutError:
+        logger.error(
+            "recall_source_context timed out after %.1fs for session %s",
+            SEARCH_TIMEOUT,
+            session_id,
+        )
+        return []
     except Exception:
+        logger.exception(
+            "recall_source_context failed for session %s query=%r", session_id, query_text
+        )
         return []
     return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]

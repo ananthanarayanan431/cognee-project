@@ -4,7 +4,10 @@ Unit tests for cognee_svc — verifies the service calls the real cognee SDK API
 cognee.* calls are mocked; no real cognee storage/LLM calls happen here.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
+
+import pytest
 
 from debatemind.services import cognee_svc
 
@@ -116,3 +119,32 @@ async def test_recall_source_context_returns_empty_list_when_dataset_missing(mon
     results = await cognee_svc.recall_source_context("s1", "anything")
 
     assert results == []
+
+
+async def test_index_source_document_raises_on_timeout(monkeypatch):
+    async def _slow_add(*args, **kwargs):
+        await asyncio.sleep(999)
+
+    monkeypatch.setattr(cognee_svc.cognee, "add", _slow_add)
+    monkeypatch.setattr(cognee_svc, "ADD_TIMEOUT", 0.01)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await cognee_svc.index_source_document("s1", "/tmp/e.pdf")
+
+
+async def test_recall_source_context_logs_error_and_returns_empty_on_failure(monkeypatch, caplog):
+    import logging
+
+    async def _raise(*args, **kwargs):
+        raise RuntimeError("cognee misconfigured")
+
+    monkeypatch.setattr(cognee_svc.cognee, "search", _raise)
+
+    with caplog.at_level(logging.ERROR, logger="debatemind.services.cognee_svc"):
+        results = await cognee_svc.recall_source_context("s1", "anything")
+
+    assert results == []
+    assert any(
+        "recall_source_context" in r.message.lower() or "cognee" in r.message.lower()
+        for r in caplog.records
+    )
