@@ -175,7 +175,7 @@ export default function TopicSelection() {
       </div>
 
       <div className="h-px bg-fog/20 my-7" />
-      <p className="font-sans text-[11px] font-semibond text-fog uppercase tracking-wide mb-3">YOUR POSITION</p>
+      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">YOUR POSITION</p>
       <div className="flex mb-8">
         {POSITIONS.map((p, i) => (
           <button key={p} onClick={() => setPosition(p.toLowerCase().replace(" ", "_"))}

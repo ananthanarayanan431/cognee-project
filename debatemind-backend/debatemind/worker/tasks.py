@@ -4,7 +4,7 @@ import logging
 from celery.signals import worker_init
 from sqlalchemy import update
 
-from debatemind.database import AsyncSessionLocal
+from debatemind.config import settings
 from debatemind.models.session import DebateSession
 from debatemind.services import storage_svc
 from debatemind.services.cognee_svc import index_source_document
@@ -13,9 +13,16 @@ from debatemind.worker.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
+def _make_db_factory():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    return engine, async_sessionmaker(engine, expire_on_commit=False)
+
+
 @worker_init.connect
 def _configure_cognee(**kwargs):
-    from debatemind.config import settings
     from debatemind.services.cognee_config import configure_cognee
 
     configure_cognee(settings)
@@ -41,8 +48,14 @@ async def _do_index(session_id: str, object_key: str) -> None:
 
 
 async def _set_status(session_id: str, status: str) -> None:
-    async with AsyncSessionLocal() as db:
-        await db.execute(
-            update(DebateSession).where(DebateSession.id == session_id).values(source_status=status)
-        )
-        await db.commit()
+    engine, factory = _make_db_factory()
+    try:
+        async with factory() as db:
+            await db.execute(
+                update(DebateSession)
+                .where(DebateSession.id == session_id)
+                .values(source_status=status)
+            )
+            await db.commit()
+    finally:
+        await engine.dispose()

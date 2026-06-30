@@ -55,10 +55,14 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
 
 
 async def improve_fingerprint(user_id: str, session_id: str) -> None:
+    # cognee 0.1.40 has no separate "improve" step; re-cognifying the dataset
+    # incorporates anything added since the last cognify call.
     await asyncio.wait_for(cognee.cognify(datasets=_dataset(user_id)), timeout=COGNIFY_TIMEOUT)
 
 
 async def forget_pattern(user_id: str, pattern_type: str) -> None:
+    # cognee has no forget primitive; mark the pattern as mastered so the
+    # opponent stops targeting it.
     dataset = _dataset(user_id)
     text = (
         f"User: {user_id}\nPattern: {pattern_type}\n"

@@ -49,32 +49,37 @@ async def test_do_index_cleans_up_tempfile_even_when_indexing_fails(monkeypatch,
     assert not fake_tmp.exists()
 
 
-async def test_set_status_updates_db(monkeypatch):
+async def test_set_status_updates_db(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from debatemind.database import Base
     from debatemind.models.session import DebateSession
 
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
+    db_url = f"sqlite+aiosqlite:///{tmp_path}/test.db"
+    test_engine = create_async_engine(db_url)
+    async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    test_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
-    async with factory() as db:
+    async with test_factory() as db:
         session = DebateSession(user_id="u1", topic="AI", source_status="pending")
         db.add(session)
         await db.commit()
         session_id = session.id
 
-    # Patch AsyncSessionLocal to use the in-memory test engine
-    monkeypatch.setattr(worker_tasks, "AsyncSessionLocal", factory)
+    # Return a no-op mock engine (keep test_engine alive) + the real test factory
+    mock_engine = MagicMock()
+    mock_engine.dispose = AsyncMock()
+    monkeypatch.setattr(worker_tasks, "_make_db_factory", lambda: (mock_engine, test_factory))
 
     await worker_tasks._set_status(session_id, "indexed")
 
-    async with factory() as db:
+    async with test_factory() as db:
         result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
         s = result.scalar_one()
         assert s.source_status == "indexed"
 
-    await engine.dispose()
+    await test_engine.dispose()
