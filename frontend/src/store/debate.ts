@@ -10,6 +10,7 @@ interface DebateStore {
   messages: Message[];
   graph: GraphData;
   thinking: boolean;
+  currentStage: string | null;
   sessionScores: { logic: number; evidence: number; rhetoric: number };
 
   setScreen: (s: DebateStore["screen"]) => void;
@@ -19,6 +20,7 @@ interface DebateStore {
   updateLastOpponent: (text: string) => void;
   revealJudge: (judge: Message["judge"]) => void;
   setThinking: (v: boolean) => void;
+  setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
   reset: () => void;
 }
@@ -32,6 +34,7 @@ export const useDebate = create<DebateStore>((set) => ({
   messages: [],
   graph: { nodes: [], edges: [] },
   thinking: false,
+  currentStage: null,
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
 
   setScreen: (screen) => set({ screen }),
@@ -61,6 +64,7 @@ export const useDebate = create<DebateStore>((set) => ({
       return { messages: msgs, sessionScores: scores };
     }),
   setThinking: (thinking) => set({ thinking }),
+  setCurrentStage: (currentStage) => set({ currentStage }),
   setGraph: (graph) => set({ graph }),
   reset: () => set({ sessionId: null, sessionConfig: null, messages: [], screen: "topic" }),
 }));
