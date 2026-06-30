@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -34,9 +36,10 @@ async def test_record_mastery_events_noop_on_empty_list(db_session):
 
 
 async def test_reactivate_pattern_sets_reactivated_at(db_session, monkeypatch):
+    mock_reactivate = AsyncMock(return_value=None)
     monkeypatch.setattr(
         "debatemind.services.mastery_svc.reactivate_pattern_fact",
-        lambda *a, **k: _noop(),
+        mock_reactivate,
     )
     db_session.add(MasteryLog(user_id="u1", pattern_type="StrawMan", rounds_to_mastery=3))
     await db_session.commit()
@@ -46,12 +49,9 @@ async def test_reactivate_pattern_sets_reactivated_at(db_session, monkeypatch):
     assert ok is True
     row = (await db_session.execute(select(MasteryLog))).scalar_one()
     assert row.reactivated_at is not None
+    mock_reactivate.assert_called_once_with("u1", "StrawMan")
 
 
 async def test_reactivate_pattern_returns_false_when_not_mastered(db_session):
     ok = await reactivate_pattern(db_session, "u1", "Nonexistent")
     assert ok is False
-
-
-async def _noop():
-    return None
