@@ -1,11 +1,10 @@
 """
 API-level tests for the sessions router's concept/source-upload endpoints.
-storage_svc (MinIO) and cognee_svc.index_source_document are mocked so no
-real MinIO/Cognee I/O happens; the DB layer is a real in-memory SQLite,
-same pattern as test_progress_svc.py.
+storage_svc (MinIO) and Celery tasks are mocked so no real MinIO/Cognee/Redis
+I/O happens; the DB layer is a real in-memory SQLite.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -67,6 +66,7 @@ async def test_start_session_persists_description_and_returns_has_source_false(a
     body = resp.json()
     assert body["description"] == "Focus on EU AI Act"
     assert body["has_source"] is False
+    assert body["source_status"] == "none"
 
 
 async def test_upload_source_rejects_non_pdf(api_client, session_factory):
@@ -92,65 +92,58 @@ async def test_upload_source_rejects_oversized_file(api_client, session_factory,
     assert resp.status_code == 413
 
 
-async def test_upload_source_indexes_pdf_and_persists_object_key(
-    api_client, session_factory, monkeypatch, tmp_path
+async def test_upload_source_enqueues_task_sets_pending_and_returns_202(
+    api_client, session_factory, monkeypatch
 ):
     session_id = await _make_session(session_factory)
-    fake_local_path = tmp_path / "evidence.pdf"
-    fake_local_path.write_bytes(b"local copy")
     object_key = f"sources/{session_id}/evidence.pdf"
 
     upload_mock = MagicMock(return_value=object_key)
-    download_mock = MagicMock(return_value=fake_local_path)
-    index_mock = AsyncMock()
+    delay_mock = MagicMock()
     monkeypatch.setattr(storage_svc, "upload_source", upload_mock)
-    monkeypatch.setattr(storage_svc, "download_to_tempfile", download_mock)
-    monkeypatch.setattr(sessions_router, "index_source_document", index_mock)
+    monkeypatch.setattr(sessions_router.index_source_task, "delay", delay_mock)
 
     resp = api_client.post(
         f"/api/sessions/{session_id}/source",
         files={"file": ("evidence.pdf", b"%PDF-1.4 fake", "application/pdf")},
     )
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["status"] == "pending"
+    assert body["source_filename"] == "evidence.pdf"
+
+    delay_mock.assert_called_once_with(session_id, object_key)
+
+    async with session_factory() as db:
+        result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+        session = result.scalar_one()
+        assert session.source_status == "pending"
+        assert session.source_filename == "evidence.pdf"
+        assert session.source_object_key == object_key
+
+
+async def test_get_source_status_returns_current_status(api_client, session_factory):
+    session_id = await _make_session(
+        session_factory,
+        source_status="indexed",
+        source_object_key="sources/x/e.pdf",
+        source_filename="e.pdf",
+    )
+
+    resp = api_client.get(f"/api/sessions/{session_id}/source-status")
 
     assert resp.status_code == 200
-    assert resp.json() == {"status": "indexed", "source_filename": "evidence.pdf"}
-    upload_mock.assert_called_once_with(session_id, "evidence.pdf", b"%PDF-1.4 fake")
-    index_mock.assert_awaited_once_with(session_id, str(fake_local_path))
-    assert not fake_local_path.exists()
-
-    async with session_factory() as db:
-        result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-        session = result.scalar_one()
-        assert session.source_object_key == object_key
-        assert session.source_filename == "evidence.pdf"
+    assert resp.json() == {"source_status": "indexed"}
 
 
-async def test_upload_source_500s_and_leaves_session_ungrounded_when_indexing_fails(
-    api_client, session_factory, monkeypatch, tmp_path
-):
+async def test_get_source_status_defaults_to_none_for_new_session(api_client, session_factory):
     session_id = await _make_session(session_factory)
-    fake_local_path = tmp_path / "evidence.pdf"
-    fake_local_path.write_bytes(b"local copy")
 
-    monkeypatch.setattr(storage_svc, "upload_source", MagicMock(return_value="key"))
-    monkeypatch.setattr(
-        storage_svc, "download_to_tempfile", MagicMock(return_value=fake_local_path)
-    )
-    monkeypatch.setattr(
-        sessions_router, "index_source_document", AsyncMock(side_effect=RuntimeError("cognee down"))
-    )
+    resp = api_client.get(f"/api/sessions/{session_id}/source-status")
 
-    resp = api_client.post(
-        f"/api/sessions/{session_id}/source",
-        files={"file": ("evidence.pdf", b"%PDF-1.4 fake", "application/pdf")},
-    )
-
-    assert resp.status_code == 500
-
-    async with session_factory() as db:
-        result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-        session = result.scalar_one()
-        assert session.source_object_key is None
+    assert resp.status_code == 200
+    assert resp.json() == {"source_status": "none"}
 
 
 async def test_get_source_file_returns_presigned_url(api_client, session_factory, monkeypatch):

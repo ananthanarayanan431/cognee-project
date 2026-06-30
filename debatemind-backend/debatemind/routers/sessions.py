@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +17,13 @@ from debatemind.schemas.session import (
     MessageIn,
     SessionOut,
     SessionStartIn,
-    SourceUploadOut,
+    SourceStatusOut,
     SourceUrlOut,
 )
 from debatemind.services import storage_svc
-from debatemind.services.cognee_svc import improve_fingerprint, index_source_document
+from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
+from debatemind.worker.tasks import index_source_task
 
 router = APIRouter()
 
@@ -55,10 +56,11 @@ async def start_session(
         description=session.description or "",
         difficulty=session.difficulty,
         has_source=False,
+        source_status="none",
     )
 
 
-@router.post("/{session_id}/source", response_model=SourceUploadOut)
+@router.post("/{session_id}/source")
 async def upload_source(
     session_id: str,
     file: UploadFile = File(...),
@@ -79,23 +81,36 @@ async def upload_source(
 
     object_key = storage_svc.upload_source(session_id, file.filename, data)
 
-    try:
-        tmp_path = storage_svc.download_to_tempfile(object_key)
-        try:
-            await index_source_document(session_id, str(tmp_path))
-        finally:
-            tmp_path.unlink(missing_ok=True)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Indexing failed: {exc}") from exc
-
     await db.execute(
         update(DebateSession)
         .where(DebateSession.id == session_id)
-        .values(source_filename=file.filename, source_object_key=object_key)
+        .values(
+            source_filename=file.filename,
+            source_object_key=object_key,
+            source_status="pending",
+        )
     )
     await db.commit()
 
-    return SourceUploadOut(status="indexed", source_filename=file.filename)
+    index_source_task.delay(session_id, object_key)
+
+    return JSONResponse(
+        status_code=202,
+        content={"status": "pending", "source_filename": file.filename},
+    )
+
+
+@router.get("/{session_id}/source-status", response_model=SourceStatusOut)
+async def get_source_status(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SourceStatusOut(source_status=session.source_status)
 
 
 @router.get("/{session_id}/source-file", response_model=SourceUrlOut)
@@ -140,7 +155,7 @@ async def send_message(
         user_message=body.text,
         turn_number=turn,
         consecutive_wins=_session_wins.get(session_id, 0),
-        has_source=bool(session.source_object_key),
+        has_source=(session.source_status == "indexed"),
         source_context=[],
         extracted_pattern=None,
         extracted_fallacy=None,
