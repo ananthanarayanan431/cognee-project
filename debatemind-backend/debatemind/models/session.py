@@ -12,10 +12,13 @@ class DebateSession(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     topic: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
     difficulty: Mapped[str] = mapped_column(String, default="targeted")
     user_position: Mapped[str] = mapped_column(String, default="against")
     status: Mapped[str] = mapped_column(String, default="active")
     overall_score: Mapped[float] = mapped_column(Float, default=0.0)
+    source_filename: Mapped[str] = mapped_column(String, nullable=True)
+    source_object_key: Mapped[str] = mapped_column(String, nullable=True)
     started_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class SessionStartIn(BaseModel):
     topic: str
+    description: str = ""
     difficulty: str = "targeted"
     user_position: str = "against"
 
@@ -12,7 +13,18 @@ class SessionStartIn(BaseModel):
 class SessionOut(BaseModel):
     session_id: str
     topic: str
+    description: str
     difficulty: str
+    has_source: bool = False
+
+
+class SourceUploadOut(BaseModel):
+    status: str
+    source_filename: str
+
+
+class SourceUrlOut(BaseModel):
+    url: str
 
 
 class MessageIn(BaseModel):
