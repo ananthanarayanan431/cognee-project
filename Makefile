@@ -1,4 +1,4 @@
-.PHONY: debatemind-backend frontend dev infra-up infra-down infra-build infra-logs start
+.PHONY: debatemind-backend frontend celery dev infra-up infra-down infra-build infra-logs start
 
 debatemind-backend:
 	cd debatemind-backend && uv run uvicorn debatemind.main:app --reload --port 8001
@@ -6,10 +6,13 @@ debatemind-backend:
 frontend:
 	cd frontend && npm run dev
 
-dev:
-	make -j2 debatemind-backend frontend
+celery:
+	cd debatemind-backend && uv run celery -A debatemind.worker.celery_app worker --loglevel=info --concurrency=2
 
-# Infra: postgres, cognee-db (pgvector+kuzu), minio
+dev:
+	make -j3 debatemind-backend frontend celery
+
+# Infra: postgres, cognee-db (pgvector+kuzu), minio, redis
 infra-build:
 	docker compose build
 
@@ -22,6 +25,6 @@ infra-down:
 infra-logs:
 	docker compose logs -f
 
-# Start everything: infra first, then backend + frontend in parallel
+# Start everything: infra first, then backend + frontend + celery in parallel
 start:
 	make infra-up && make dev

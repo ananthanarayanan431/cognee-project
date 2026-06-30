@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     minio_secret_key: str = "debatemind123"
     minio_bucket: str = "debatemind-sources"
     minio_secure: bool = False
+    redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:3000"]
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 15

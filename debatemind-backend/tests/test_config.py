@@ -28,3 +28,9 @@ def test_minio_settings_have_local_defaults():
     assert settings.minio_secret_key == "debatemind123"
     assert settings.minio_bucket == "debatemind-sources"
     assert settings.minio_secure is False
+
+
+def test_redis_url_has_default():
+    from debatemind.config import settings
+
+    assert settings.redis_url.startswith("redis://")
