@@ -5,8 +5,16 @@ import { api } from "@/lib/api";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
+
+const STAGE_LABELS: Record<string, string> = {
+  extract: "Reading your argument…",
+  opponent: "Drafting a response…",
+  judge: "Judging the exchange…",
+  mastery: "Checking mastery…",
+};
+
 export default function DebateView() {
-  const { messages, thinking, graph, sessionId, sessionConfig, setScreen } = useDebate();
+  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, setScreen } = useDebate();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,7 +83,7 @@ export default function DebateView() {
                   </span>
                 </div>
                 <span className="font-serif italic text-sm text-fog">
-                  Studying your argument…
+                  {currentStage ? (STAGE_LABELS[currentStage] ?? "Thinking…") : "Thinking…"}
                 </span>
               </div>
             )}
