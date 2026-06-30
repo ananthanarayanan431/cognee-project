@@ -46,3 +46,22 @@ class JudgeScores(BaseModel):
 
 class EndSessionOut(BaseModel):
     status: str
+
+
+class WeaknessChange(BaseModel):
+    pattern: str
+    before: float
+    after: float
+    mastered: bool
+    rounds_to_mastery: Optional[int] = None
+
+
+class SessionSummaryOut(BaseModel):
+    topic: str
+    difficulty: str
+    score: float
+    exchanges: int
+    weaknesses_exposed: int
+    mastered_count: int
+    rounds_won: int
+    patterns: list[WeaknessChange]
