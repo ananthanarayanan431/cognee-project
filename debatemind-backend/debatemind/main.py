@@ -7,9 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from debatemind.config import settings
-from debatemind.database import Base, engine
 from debatemind.middleware import RequestIDMiddleware
-from debatemind.models import mastery, session, user  # noqa: F401
 from debatemind.routers import auth, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
 from debatemind.services.storage_svc import ensure_bucket
@@ -42,12 +40,6 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("db_not_reachable", error=str(exc))
-
     configure_cognee(settings)
 
     try:

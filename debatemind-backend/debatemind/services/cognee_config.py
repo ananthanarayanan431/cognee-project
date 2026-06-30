@@ -26,9 +26,9 @@ def configure_cognee(settings: Settings) -> None:
     if settings.openrouter_api_key:
         cognee.config.set_llm_config(
             {
-                "provider": "custom",
-                "model": LLM_MODEL,
-                "endpoint": settings.openrouter_base_url,
-                "api_key": settings.openrouter_api_key,
+                "llm_provider": "custom",
+                "llm_model": LLM_MODEL,
+                "llm_endpoint": settings.openrouter_base_url,
+                "llm_api_key": settings.openrouter_api_key,
             }
         )
