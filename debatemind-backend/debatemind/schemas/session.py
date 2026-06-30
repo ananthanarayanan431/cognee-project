@@ -42,3 +42,7 @@ class JudgeScores(BaseModel):
     rhetoric: float
     fallacy: Optional[str]
     outcome: str
+
+
+class EndSessionOut(BaseModel):
+    status: str

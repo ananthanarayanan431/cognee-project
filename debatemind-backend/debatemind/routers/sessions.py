@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,16 +13,25 @@ from debatemind.agents.state import DebateState
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
+from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.session import (
+    EndSessionOut,
     MessageIn,
     SessionOut,
     SessionStartIn,
     SourceStatusOut,
+    SourceUploadOut,
     SourceUrlOut,
 )
 from debatemind.services import storage_svc
 from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
+from debatemind.types import (
+    BadRequestError,
+    NotFoundError,
+    SuccessResponse,
+    UnauthorizedError,
+)
 from debatemind.worker.tasks import index_source_task
 
 router = APIRouter()
@@ -33,7 +42,17 @@ _session_wins: dict[str, int] = {}
 MAX_SOURCE_BYTES = 20 * 1024 * 1024
 
 
-@router.post("/start", response_model=SessionOut)
+@router.post(
+    "/start",
+    response_model=SuccessResponse[SessionOut],
+    summary="Start debate session",
+    description=(
+        "Create a new debate session with the specified topic, difficulty level, and user position."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+    },
+)
 async def start_session(
     body: SessionStartIn,
     user_id: str = Depends(current_user_id),
@@ -50,17 +69,34 @@ async def start_session(
     await db.commit()
     await db.refresh(session)
     _session_wins[session.id] = 0
-    return SessionOut(
-        session_id=session.id,
-        topic=session.topic,
-        description=session.description or "",
-        difficulty=session.difficulty,
-        has_source=False,
-        source_status="none",
+    return SuccessResponse(
+        data=SessionOut(
+            session_id=session.id,
+            topic=session.topic,
+            description=session.description or "",
+            difficulty=session.difficulty,
+            has_source=False,
+            source_status="none",
+        )
     )
 
 
-@router.post("/{session_id}/source")
+@router.post(
+    "/{session_id}/source",
+    status_code=202,
+    response_model=SuccessResponse[SourceUploadOut],
+    summary="Upload source document",
+    description=(
+        "Upload a PDF as reference material for the debate session. Indexing runs "
+        "asynchronously; poll /source-status to check progress."
+    ),
+    responses={
+        400: {"model": BadRequestError, "description": "Invalid file type"},
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+        413: {"model": BadRequestError, "description": "File exceeds 20MB limit"},
+    },
+)
 async def upload_source(
     session_id: str,
     file: UploadFile = File(...),
@@ -94,13 +130,22 @@ async def upload_source(
 
     index_source_task.delay(session_id, object_key)
 
-    return JSONResponse(
-        status_code=202,
-        content={"status": "pending", "source_filename": file.filename},
-    )
+    return SuccessResponse(data=SourceUploadOut(status="pending", source_filename=file.filename))
 
 
-@router.get("/{session_id}/source-status", response_model=SourceStatusOut)
+@router.get(
+    "/{session_id}/source-status",
+    response_model=SuccessResponse[SourceStatusOut],
+    summary="Get source indexing status",
+    description=(
+        "Check the processing status of the uploaded source document. Status "
+        "values: none | pending | indexed | failed."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
 async def get_source_status(
     session_id: str,
     user_id: str = Depends(current_user_id),
@@ -110,10 +155,19 @@ async def get_source_status(
     session = result.scalar_one_or_none()
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
-    return SourceStatusOut(source_status=session.source_status)
+    return SuccessResponse(data=SourceStatusOut(source_status=session.source_status))
 
 
-@router.get("/{session_id}/source-file", response_model=SourceUrlOut)
+@router.get(
+    "/{session_id}/source-file",
+    response_model=SuccessResponse[SourceUrlOut],
+    summary="Get source file URL",
+    description="Retrieve a pre-signed URL for the uploaded source document.",
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session or source file not found"},
+    },
+)
 async def get_source_file(
     session_id: str,
     user_id: str = Depends(current_user_id),
@@ -125,10 +179,23 @@ async def get_source_file(
         raise HTTPException(status_code=404, detail="Session not found")
     if not session.source_object_key:
         raise HTTPException(status_code=404, detail="No source file for this session")
-    return SourceUrlOut(url=storage_svc.get_source_url(session.source_object_key))
+    return SuccessResponse(
+        data=SourceUrlOut(url=storage_svc.get_source_url(session.source_object_key))
+    )
 
 
-@router.post("/{session_id}/message")
+@router.post(
+    "/{session_id}/message",
+    summary="Send debate message",
+    description=(
+        "Submit a user argument and receive a streamed opponent response with "
+        "judge scores (SSE). Events: token | judge | graph | [DONE]."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
 async def send_message(
     session_id: str,
     body: MessageIn,
@@ -213,7 +280,16 @@ async def send_message(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@router.post("/{session_id}/end")
+@router.post(
+    "/{session_id}/end",
+    response_model=SuccessResponse[EndSessionOut],
+    summary="End debate session",
+    description="Mark the debate session as ended and trigger background fingerprint improvement.",
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
 async def end_session(
     session_id: str,
     user_id: str = Depends(current_user_id),
@@ -232,10 +308,21 @@ async def end_session(
     await db.commit()
     asyncio.create_task(improve_fingerprint(user_id, session_id))
     _session_wins.pop(session_id, None)
-    return {"status": "ended"}
+    return SuccessResponse(data=EndSessionOut(status="ended"))
 
 
-@router.get("/{session_id}/graph")
+@router.get(
+    "/{session_id}/graph",
+    response_model=SuccessResponse[GraphOut],
+    summary="Get session knowledge graph",
+    description=(
+        "Retrieve the knowledge graph of argument patterns and weaknesses for the session topic."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
 async def get_graph(
     session_id: str,
     user_id: str = Depends(current_user_id),
@@ -245,4 +332,4 @@ async def get_graph(
     session = result.scalar_one_or_none()
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404)
-    return await build_graph(user_id, session.topic)
+    return SuccessResponse(data=await build_graph(user_id, session.topic))

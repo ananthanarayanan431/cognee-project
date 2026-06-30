@@ -10,7 +10,7 @@ from debatemind.config import settings
 from debatemind.database import Base, engine
 from debatemind.middleware import RequestIDMiddleware
 from debatemind.models import mastery, session, user  # noqa: F401
-from debatemind.routers import auth, sessions, topics, users
+from debatemind.routers import auth, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
 from debatemind.services.storage_svc import ensure_bucket
 
@@ -69,12 +69,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}

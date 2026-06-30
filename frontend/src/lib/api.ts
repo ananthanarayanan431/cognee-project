@@ -13,7 +13,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json() as Promise<T>;
+  const body = (await res.json()) as { success: boolean; data: T };
+  return body.data;
 }
 
 export const api = {
@@ -50,7 +51,11 @@ export const api = {
       body: form,
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<{ status: string; source_filename: string }>;
+    const body = (await res.json()) as {
+      success: boolean;
+      data: { status: string; source_filename: string };
+    };
+    return body.data;
   },
   getSourceStatus: (sessionId: string) =>
     apiFetch<{ source_status: string }>(`/api/sessions/${sessionId}/source-status`),

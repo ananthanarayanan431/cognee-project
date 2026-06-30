@@ -63,7 +63,7 @@ async def test_start_session_persists_description_and_returns_has_source_false(a
     )
 
     assert resp.status_code == 200
-    body = resp.json()
+    body = resp.json()["data"]
     assert body["description"] == "Focus on EU AI Act"
     assert body["has_source"] is False
     assert body["source_status"] == "none"
@@ -109,7 +109,7 @@ async def test_upload_source_enqueues_task_sets_pending_and_returns_202(
     )
 
     assert resp.status_code == 202
-    body = resp.json()
+    body = resp.json()["data"]
     assert body["status"] == "pending"
     assert body["source_filename"] == "evidence.pdf"
 
@@ -134,7 +134,7 @@ async def test_get_source_status_returns_current_status(api_client, session_fact
     resp = api_client.get(f"/api/sessions/{session_id}/source-status")
 
     assert resp.status_code == 200
-    assert resp.json() == {"source_status": "indexed"}
+    assert resp.json()["data"] == {"source_status": "indexed"}
 
 
 async def test_get_source_status_defaults_to_none_for_new_session(api_client, session_factory):
@@ -143,7 +143,7 @@ async def test_get_source_status_defaults_to_none_for_new_session(api_client, se
     resp = api_client.get(f"/api/sessions/{session_id}/source-status")
 
     assert resp.status_code == 200
-    assert resp.json() == {"source_status": "none"}
+    assert resp.json()["data"] == {"source_status": "none"}
 
 
 async def test_get_source_file_returns_presigned_url(api_client, session_factory, monkeypatch):
@@ -157,7 +157,7 @@ async def test_get_source_file_returns_presigned_url(api_client, session_factory
     resp = api_client.get(f"/api/sessions/{session_id}/source-file")
 
     assert resp.status_code == 200
-    assert resp.json() == {"url": "https://minio.local/presigned"}
+    assert resp.json()["data"] == {"url": "https://minio.local/presigned"}
 
 
 async def test_get_source_file_404s_when_no_source(api_client, session_factory):
