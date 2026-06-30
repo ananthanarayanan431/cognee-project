@@ -27,15 +27,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  startSession: (topic: string, difficulty: string, user_position: string) =>
-    apiFetch<{ session_id: string; topic: string }>("/api/sessions/start", {
-      method: "POST",
-      body: JSON.stringify({ topic, difficulty, user_position }),
-    }),
+  startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
+    apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean }>(
+      "/api/sessions/start",
+      {
+        method: "POST",
+        body: JSON.stringify({ topic, description, difficulty, user_position }),
+      }
+    ),
   endSession: (sessionId: string) =>
     apiFetch<{ status: string }>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
   getTopics: () => apiFetch<{ label: string; chips: string[] }[]>("/api/topics/suggest"),
   getGraph: (sessionId: string) =>
     apiFetch<{ nodes: unknown[]; edges: unknown[] }>(`/api/sessions/${sessionId}/graph`),
   getProgress: () => apiFetch<ProgressData>("/api/users/me/progress"),
+  uploadSource: async (sessionId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/api/sessions/${sessionId}/source`, {
+      method: "POST",
+      headers: authHeader(),
+      body: form,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<{ status: string; source_filename: string }>;
+  },
+  getSourceFile: (sessionId: string) =>
+    apiFetch<{ url: string }>(`/api/sessions/${sessionId}/source-file`),
 };

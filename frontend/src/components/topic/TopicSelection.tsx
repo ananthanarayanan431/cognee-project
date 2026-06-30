@@ -16,19 +16,51 @@ const SURPRISES = [
   "Social media should be banned for under-16s",
 ];
 
+const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+
 export default function TopicSelection() {
   const [topic, setTopic] = useState("AI regulation should be government-led");
+  const [description, setDescription] = useState("");
   const [activeChip, setActiveChip] = useState("");
   const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
   const [position, setPosition] = useState("against");
   const [groups, setGroups] = useState<{ label: string; chips: string[] }[]>([]);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
+  const [indexing, setIndexing] = useState(false);
   const { setSession } = useDebate();
 
   useEffect(() => { api.getTopics().then(setGroups).catch(() => {}); }, []);
 
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setFileError("");
+    if (file && file.type !== "application/pdf") {
+      setFileError("Only PDF files are supported.");
+      setSourceFile(null);
+      return;
+    }
+    if (file && file.size > MAX_SOURCE_BYTES) {
+      setFileError("File exceeds 20MB limit.");
+      setSourceFile(null);
+      return;
+    }
+    setSourceFile(file);
+  }
+
   async function start() {
-    const res = await api.startSession(topic, difficulty, position);
-    setSession(res.session_id, { topic, difficulty, position: position as never });
+    const res = await api.startSession(topic, description, difficulty, position);
+    if (sourceFile) {
+      setIndexing(true);
+      try {
+        await api.uploadSource(res.session_id, sourceFile);
+      } catch {
+        setFileError("Indexing failed — starting without source grounding.");
+      } finally {
+        setIndexing(false);
+      }
+    }
+    setSession(res.session_id, { topic, description, difficulty, position: position as never });
   }
 
   return (
@@ -38,6 +70,14 @@ export default function TopicSelection() {
         <span className="font-serif text-base text-ink">{topic}</span>
         <button onClick={() => { setTopic(""); setActiveChip(""); }} className="text-fog text-lg">✕</button>
       </div>
+
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Add context — what's the angle, what should the opponent know?"
+        className="w-full bg-white border border-fog/30 rounded-lg px-4 py-3 mb-6 font-sans text-sm text-ink resize-none"
+        rows={2}
+      />
 
       {groups.map((g) => (
         <div key={g.label} className="flex gap-4 mb-3">
@@ -59,6 +99,22 @@ export default function TopicSelection() {
         className="ml-28 font-sans text-xs text-fog border border-dashed border-fog/40 rounded-full px-3 py-1 mb-7">
         🎲 Surprise me
       </button>
+
+      <div className="h-px bg-fog/20 my-7" />
+      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">SOURCE MATERIAL (OPTIONAL)</p>
+      <div className="flex items-center gap-3 mb-2">
+        <label className="font-sans text-xs px-3 py-1.5 rounded-full border border-fog/40 bg-white text-ink cursor-pointer">
+          Upload PDF
+          <input type="file" accept="application/pdf" onChange={onFileChange} className="hidden" />
+        </label>
+        {sourceFile && (
+          <span className="font-sans text-xs text-ink flex items-center gap-2">
+            {sourceFile.name}
+            <button onClick={() => setSourceFile(null)} className="text-fog">✕</button>
+          </span>
+        )}
+      </div>
+      {fileError && <p className="font-sans text-xs text-scarlet mb-5">{fileError}</p>}
 
       <div className="h-px bg-fog/20 my-7" />
       <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">DIFFICULTY</p>
@@ -87,9 +143,9 @@ export default function TopicSelection() {
         ))}
       </div>
 
-      <button onClick={start}
-        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg">
-        Start session →
+      <button onClick={start} disabled={indexing}
+        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60">
+        {indexing ? "Indexing your document…" : "Start session →"}
       </button>
     </div>
   );

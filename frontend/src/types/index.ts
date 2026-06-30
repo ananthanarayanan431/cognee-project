@@ -34,6 +34,7 @@ export interface GraphData {
 
 export interface SessionConfig {
   topic: string;
+  description: string;
   difficulty: "balanced" | "targeted" | "ruthless";
   position: "for" | "against" | "neutral";
 }
