@@ -1,6 +1,6 @@
 """Unit tests for prompt builders — pure string functions, no I/O."""
 
-from debatemind.agents.constants import PATTERN_TYPES
+from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
 from debatemind.agents.prompts.extractor import extractor_prompt
 from debatemind.agents.prompts.judge import judge_prompt
 from debatemind.agents.prompts.opponent import (
@@ -67,3 +67,13 @@ class TestOpponentPrompts:
         m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
         assert "Tax policy" in m
         assert "higher taxes reduce inequality" in m
+
+
+class TestPatternTypeDescriptions:
+    def test_has_a_description_for_every_pattern_type(self):
+        assert set(PATTERN_TYPE_DESCRIPTIONS.keys()) == set(PATTERN_TYPES)
+
+    def test_descriptions_are_non_empty_strings(self):
+        for desc in PATTERN_TYPE_DESCRIPTIONS.values():
+            assert isinstance(desc, str)
+            assert len(desc) > 0
