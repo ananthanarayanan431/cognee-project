@@ -57,3 +57,26 @@ async def forget_pattern(user_id: str, pattern_type: str) -> None:
     )
     await cognee.add(text, dataset_name=dataset)
     await cognee.cognify(datasets=dataset)
+
+
+def _source_dataset(session_id: str) -> str:
+    return f"session_{session_id}_source"
+
+
+async def index_source_document(session_id: str, file_path: str) -> None:
+    dataset = _source_dataset(session_id)
+    await cognee.add(file_path, dataset_name=dataset)
+    await cognee.cognify(datasets=dataset)
+
+
+async def recall_source_context(session_id: str, query_text: str) -> list[dict]:
+    try:
+        results = await cognee.search(
+            query_text=query_text,
+            query_type=SearchType.CHUNKS,
+            datasets=[_source_dataset(session_id)],
+            top_k=5,
+        )
+    except Exception:
+        return []
+    return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]

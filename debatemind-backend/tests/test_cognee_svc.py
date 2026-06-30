@@ -78,3 +78,41 @@ async def test_forget_pattern_records_a_mastered_marker(monkeypatch):
     assert "StrawMan" in text_arg
 
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+
+
+async def test_index_source_document_adds_then_cognifies_the_session_dataset(monkeypatch):
+    add_mock = AsyncMock()
+    cognify_mock = AsyncMock()
+    monkeypatch.setattr(cognee_svc.cognee, "add", add_mock)
+    monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
+
+    await cognee_svc.index_source_document("s1", "/tmp/evidence.pdf")
+
+    add_mock.assert_awaited_once_with("/tmp/evidence.pdf", dataset_name="session_s1_source")
+    cognify_mock.assert_awaited_once_with(datasets="session_s1_source")
+
+
+async def test_recall_source_context_searches_chunks_for_the_session_dataset(monkeypatch):
+    search_mock = AsyncMock(return_value=["Quote from the PDF", "Another quote"])
+    monkeypatch.setattr(cognee_svc.cognee, "search", search_mock)
+
+    results = await cognee_svc.recall_source_context("s1", "is nuclear power safe?")
+
+    search_mock.assert_awaited_once()
+    kwargs = search_mock.call_args.kwargs
+    assert kwargs["query_type"] == cognee_svc.SearchType.CHUNKS
+    assert kwargs["datasets"] == ["session_s1_source"]
+    assert kwargs["top_k"] == 5
+    assert kwargs["query_text"] == "is nuclear power safe?"
+    assert results == [{"text": "Quote from the PDF"}, {"text": "Another quote"}]
+
+
+async def test_recall_source_context_returns_empty_list_when_dataset_missing(monkeypatch):
+    async def _raise(*args, **kwargs):
+        raise Exception("dataset not found")
+
+    monkeypatch.setattr(cognee_svc.cognee, "search", _raise)
+
+    results = await cognee_svc.recall_source_context("s1", "anything")
+
+    assert results == []
