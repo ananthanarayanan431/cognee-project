@@ -19,6 +19,7 @@ class DebateSession(Base):
     overall_score: Mapped[float] = mapped_column(Float, default=0.0)
     source_filename: Mapped[str] = mapped_column(String, nullable=True)
     source_object_key: Mapped[str] = mapped_column(String, nullable=True)
+    source_status: Mapped[str] = mapped_column(String, default="none", nullable=False)
     started_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=True)
 

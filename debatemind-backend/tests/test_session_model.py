@@ -51,3 +51,24 @@ async def test_description_and_source_fields_persist(db_session):
     assert fetched.description == "Focus on EU AI Act enforcement"
     assert fetched.source_filename == "report.pdf"
     assert fetched.source_object_key == "sources/s1/report.pdf"
+
+
+async def test_source_status_defaults_to_none():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from debatemind.database import Base
+    from debatemind.models.session import DebateSession
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with factory() as db:
+        session = DebateSession(user_id="u1", topic="AI Safety")
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        assert session.source_status == "none"
+
+    await engine.dispose()
