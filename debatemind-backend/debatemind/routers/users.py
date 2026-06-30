@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.database import get_db
@@ -7,8 +7,9 @@ from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.progress import ProgressOut
 from debatemind.services.cognee_svc import recall_weaknesses
 from debatemind.services.graph_svc import build_graph
+from debatemind.services.mastery_svc import reactivate_pattern
 from debatemind.services.progress_svc import get_progress_stats
-from debatemind.types import SuccessResponse, UnauthorizedError
+from debatemind.types import NotFoundError, SuccessResponse, UnauthorizedError
 
 router = APIRouter()
 
@@ -48,3 +49,26 @@ async def get_progress(
     weaknesses = await recall_weaknesses(user_id)
     stats = await get_progress_stats(db, user_id)
     return SuccessResponse(data=ProgressOut(weaknesses=weaknesses[:5], **stats))
+
+
+@router.post(
+    "/me/mastery/{pattern_type}/reactivate",
+    response_model=SuccessResponse[dict],
+    summary="Reactivate a mastered pattern",
+    description=(
+        "Un-masters a previously mastered argument pattern so the opponent resumes targeting it."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Pattern was never mastered for this user"},
+    },
+)
+async def reactivate_mastery(
+    pattern_type: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    ok = await reactivate_pattern(db, user_id, pattern_type)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pattern was never mastered")
+    return SuccessResponse(data={"reactivated": True})

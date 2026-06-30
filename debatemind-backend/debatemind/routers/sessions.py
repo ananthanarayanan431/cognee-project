@@ -27,6 +27,7 @@ from debatemind.schemas.session import (
 from debatemind.services import storage_svc
 from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
+from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.types import (
     BadRequestError,
     NotFoundError,
@@ -299,6 +300,7 @@ async def send_message(
         )
         db.add(exchange)
         await db.commit()
+        await record_mastery_events(db, user_id, final_state.get("mastery_events", []))
 
         judge_payload = {
             "type": "judge",
