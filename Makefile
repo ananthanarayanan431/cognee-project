@@ -1,7 +1,7 @@
-.PHONY: debatemind-backend frontend dev docker-up docker-down docker-build
+.PHONY: debatemind-backend frontend dev infra-up infra-down infra-build
 
 debatemind-backend:
-	cd debatemind-backend && uv run uvicorn debatemind.main:app --reload --port 8000
+	cd debatemind-backend && uv run uvicorn debatemind.main:app --reload --port 8001
 
 frontend:
 	cd frontend && npm run dev
@@ -9,11 +9,11 @@ frontend:
 dev:
 	make -j2 debatemind-backend frontend
 
-docker-build:
+infra-build:
 	docker compose build
 
-docker-up:
-	docker compose up
+infra-up:
+	docker compose up -d --remove-orphans
 
-docker-down:
-	docker compose down
+infra-down:
+	docker compose down --remove-orphans
