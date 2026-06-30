@@ -124,6 +124,11 @@ class TestOpponentPrompts:
         p = opponent_system_prompt("x", "nonexistent")
         assert _DIFFICULTY_INSTRUCTIONS["targeted"] in p
 
+    def test_system_prompt_has_role_and_tactics_block(self):
+        p = opponent_system_prompt("x", "targeted")
+        assert "debate opponent" in p.lower()
+        assert "<tactics" in p and "</tactics>" in p
+
     def test_user_message_contains_topic_and_argument(self):
         m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
         assert "Tax policy" in m

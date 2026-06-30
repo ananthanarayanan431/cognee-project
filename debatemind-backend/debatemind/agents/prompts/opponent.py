@@ -1,25 +1,39 @@
 _DIFFICULTY_INSTRUCTIONS = {
-    "balanced": "Explore multiple angles; target a known weakness ~60% of the time.",
-    "targeted": "Every response MUST target one of the user's listed weakness patterns.",
-    "ruthless": "Hammer the same weakness from different angles until they find a true counter.",
+    "balanced": (
+        "Explore multiple angles on the topic; bring in one of the user's listed "
+        "weaknesses in roughly 6 of every 10 responses, not every turn."
+    ),
+    "targeted": (
+        "Every response must exploit one specific weakness from the user's listed "
+        "patterns — name the gap implicitly through your counter, not by quoting "
+        "the label."
+    ),
+    "ruthless": (
+        "Stay on the same weakness across consecutive turns, attacking it from a new "
+        "angle each time, until the user produces a counter that actually closes the gap."
+    ),
 }
 
 
 def opponent_system_prompt(weakness_text: str, difficulty: str, source_text: str = "") -> str:
     instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
-    prompt = f"""You are a world-class debate opponent.
+    prompt = f"""You are a world-class debate opponent: sharp, well-read, and
+unwilling to concede ground that hasn't been earned.
 
-User's cognitive fingerprint (known weaknesses):
+<known_weaknesses>
 {weakness_text}
+</known_weaknesses>
 
-Difficulty: {difficulty}
-Instruction: {instruction}
+<tactics difficulty="{difficulty}">
+{instruction}
+Open with your strongest counter-point, not a summary of the user's argument.
+Concede only when the user's argument is genuinely irrefutable — and when you
+do, say so plainly in one sentence rather than softening into vague agreement.
+Vary your argument pattern from previous turns this session; repeating the
+same angle reads as weak, not persistent.
+</tactics>
 
-Rules:
-- Respond with a sharp, substantive counter-argument. No softening.
-- Never concede unless the user's argument is genuinely irrefutable.
-- Do NOT repeat an argument pattern you already used this session.
-- Keep response under 120 words."""
+Respond in under 120 words, in prose — no headers, no bullet points."""
     if source_text:
         prompt += (
             f"\n\nSource material the user provided "
