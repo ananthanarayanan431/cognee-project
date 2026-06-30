@@ -106,3 +106,13 @@ async def recall_source_context(session_id: str, query_text: str) -> list[dict]:
         )
         return []
     return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]
+
+
+async def reactivate_pattern_fact(user_id: str, pattern_type: str) -> None:
+    dataset = _dataset(user_id)
+    text = (
+        f"User: {user_id}\nPattern: {pattern_type}\n"
+        "Status: REACTIVATED\nAction: resume targeting in opponent strategy"
+    )
+    await asyncio.wait_for(cognee.add(text, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
