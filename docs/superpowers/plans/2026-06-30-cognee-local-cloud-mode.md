@@ -6,7 +6,7 @@
 
 **Architecture:** `cognee_svc.py` keeps calling the `cognee` Python SDK in-process (no architecture change there), but is fixed to use the SDK's real API (`add`/`cognify`/`search`) instead of the nonexistent `remember`/`recall`/`improve`. A new `cognee_config.py` module holds a single `configure_cognee(settings)` function that branches on `settings.cognee_mode` to either point cognee's relational/vector/graph config at the new `cognee-db` Postgres+pgvector container (local) or leave storage at cognee's defaults and only set the LLM key (cloud, today's exact behavior). `main.py`'s lifespan calls this one function instead of inlining the config logic.
 
-**Tech Stack:** Python 3.11, FastAPI, `cognee==0.1.40` (extras: `postgres`, `kuzu`), pytest + `pytest-asyncio` (auto mode), Docker Compose, `pgvector/pgvector:pg16` image.
+**Tech Stack:** Python 3.11, FastAPI, `cognee==0.1.40` (extra: `kuzu`) + explicit `pgvector` dependency, pytest + `pytest-asyncio` (auto mode), Docker Compose, `pgvector/pgvector:pg16` image.
 
 ## Global Constraints
 
@@ -21,49 +21,49 @@
 
 ---
 
-### Task 1: Add local-mode Cognee dependencies
+### Task 1: Add local-mode Cognee dependencies — COMPLETE (revised during execution)
 
 **Files:**
-- Modify: `debatemind-backend/pyproject.toml:18`
+- Modified: `debatemind-backend/pyproject.toml`
+- Modified: `debatemind-backend/uv.lock`
+- Modified: `debatemind-backend/Dockerfile` (unrelated WIP edit accidentally reverted by the implementer subagent, restored by the controller)
 
 **Interfaces:**
-- Produces: `psycopg2`, `pgvector`, `kuzu` importable in the backend's venv (consumed at runtime by cognee's pgvector/kuzu adapters in Task 5's local-mode config).
+- Produces: `pgvector`, `kuzu` importable in the backend's venv (consumed at runtime by cognee's pgvector/kuzu adapters in Task 5's local-mode config).
 
-- [ ] **Step 1: Change the cognee dependency line to include extras**
+**What actually happened (deviates from the original plan text below — kept for audit trail):**
 
-In `debatemind-backend/pyproject.toml`, change:
+The original plan called for `cognee[postgres,kuzu]==0.1.40`. That extra pulls in plain
+`psycopg2` (source-only distribution), which requires `pg_config`
+(libpq/postgresql dev headers) to compile — not present on this machine, and the
+user explicitly declined to install anything via Homebrew to fix it. Investigation
+showed `psycopg2` is never actually imported by the runtime path this project uses:
+both the relational engine and the pgvector adapter connect via
+`postgresql+asyncpg://` (asyncpg, already a dependency), confirmed by reading
+`cognee/infrastructure/databases/relational/create_relational_engine.py` and
+`cognee/infrastructure/databases/vector/pgvector/PGVectorAdapter.py` in the
+installed package — neither imports `psycopg2`.
+
+**Final fix:** dependency line is `"cognee[kuzu]==0.1.40",` plus an explicit
+`"pgvector==0.3.6",` entry (matching the `pgvector<0.4,>=0.3.5` constraint cognee's
+own `postgres` extra would have used). No `psycopg2`/`psycopg2-binary` dependency at
+all. `uv sync` and `uv run python -c "import pgvector, kuzu; print('ok')"` both
+succeed with zero compiled extensions and zero system/brew dependencies.
+
+**Separately:** the implementer subagent's troubleshooting reverted two unrelated
+pre-existing uncommitted WIP edits (`debatemind-backend/Dockerfile`'s port/copy-path
+fix and the `[tool.hatch.build.targets.wheel]` section of `pyproject.toml`) back to
+their old committed state, and that reverted state got swept into its commit. The
+controller restored both from content read earlier in the session and committed the
+fix separately (commit `7e815f5`). Final state verified: `uv sync` succeeds,
+`uv run pytest` passes 18/18.
+
+**Final committed dependency line:**
 
 ```toml
-    "cognee==0.1.40",
+    "cognee[kuzu]==0.1.40",
+    "pgvector==0.3.6",
 ```
-
-to:
-
-```toml
-    "cognee[postgres,kuzu]==0.1.40",
-```
-
-- [ ] **Step 2: Sync the environment**
-
-Run: `cd debatemind-backend && uv sync`
-
-Expected: completes without error; output mentions installing `psycopg2-binary` (or `psycopg2`), `pgvector`, and `kuzu`.
-
-- [ ] **Step 3: Verify the new packages import**
-
-Run: `cd debatemind-backend && uv run python -c "import psycopg2, pgvector, kuzu; print('ok')"`
-
-Expected: prints `ok` with no `ModuleNotFoundError`.
-
-- [ ] **Step 4: Commit**
-
-```bash
-cd /Volumes/External/hackathon
-git add debatemind-backend/pyproject.toml debatemind-backend/uv.lock
-git commit -m "build: add postgres/kuzu extras to cognee dependency"
-```
-
-(If `uv.lock` wasn't modified/tracked, omit it from the `git add`.)
 
 ---
 
