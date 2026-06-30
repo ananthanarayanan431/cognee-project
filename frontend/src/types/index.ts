@@ -37,3 +37,16 @@ export interface SessionConfig {
   difficulty: "balanced" | "targeted" | "ruthless";
   position: "for" | "against" | "neutral";
 }
+
+export interface ThinkingStyle {
+  logic: number;
+  evidence: number;
+  rhetoric: number;
+}
+
+export interface ProgressData {
+  weaknesses: { text: string }[];
+  sessions: number;
+  win_rate: number;
+  thinking_style: ThinkingStyle;
+}

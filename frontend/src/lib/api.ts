@@ -1,3 +1,5 @@
+import { ProgressData } from "@/types";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function authHeader(): Record<string, string> {
@@ -35,4 +37,5 @@ export const api = {
   getTopics: () => apiFetch<{ label: string; chips: string[] }[]>("/api/topics/suggest"),
   getGraph: (sessionId: string) =>
     apiFetch<{ nodes: unknown[]; edges: unknown[] }>(`/api/sessions/${sessionId}/graph`),
+  getProgress: () => apiFetch<ProgressData>("/api/users/me/progress"),
 };
