@@ -10,8 +10,14 @@ class Settings(BaseSettings):
     fast_model: str = "anthropic/claude-haiku-4-5"
     main_model: str = "anthropic/claude-sonnet-4-6"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    cognee_mode: str = "local"  # "local" (self-hosted via docker-compose) | "cloud"
     cognee_api_key: str = ""
     cognee_llm_api_key: str = ""
+    cognee_db_host: str = "localhost"
+    cognee_db_port: str = "5433"
+    cognee_db_name: str = "cognee"
+    cognee_db_username: str = "cognee"
+    cognee_db_password: str = "cognee"
     cors_origins: list[str] = ["http://localhost:3000"]
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
