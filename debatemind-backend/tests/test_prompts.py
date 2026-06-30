@@ -1,7 +1,7 @@
 """Unit tests for prompt builders — pure string functions, no I/O."""
 
 from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
-from debatemind.agents.prompts.extractor import extractor_prompt
+from debatemind.agents.prompts.extractor import EXTRACTOR_RESPONSE_SCHEMA, extractor_prompt
 from debatemind.agents.prompts.judge import judge_prompt
 from debatemind.agents.prompts.opponent import (
     _DIFFICULTY_INSTRUCTIONS,
@@ -16,16 +16,38 @@ class TestExtractorPrompt:
         assert "Climate change" in p
         assert "We must cut emissions now" in p
 
-    def test_contains_all_pattern_types(self):
+    def test_contains_all_pattern_types_and_descriptions(self):
         p = extractor_prompt("topic", "arg")
-        for pattern in PATTERN_TYPES:
+        for pattern, desc in PATTERN_TYPE_DESCRIPTIONS.items():
             assert pattern in p
+            assert desc in p
 
-    def test_requests_json_output(self):
+    def test_has_role_framing(self):
         p = extractor_prompt("topic", "arg")
-        assert "pattern_type" in p
-        assert "fallacy" in p
-        assert "evidence_quality" in p
+        assert "classifier" in p.lower()
+
+    def test_has_few_shot_examples(self):
+        p = extractor_prompt("topic", "arg")
+        assert p.count("<example>") >= 3
+        assert p.count("</example>") == p.count("<example>")
+
+
+class TestExtractorSchema:
+    def test_schema_is_strict_with_consistent_required_fields(self):
+        body = EXTRACTOR_RESPONSE_SCHEMA["schema"]
+        assert EXTRACTOR_RESPONSE_SCHEMA["strict"] is True
+        assert body["additionalProperties"] is False
+        assert set(body["required"]) == set(body["properties"].keys())
+
+    def test_reasoning_field_is_first(self):
+        first_key = next(iter(EXTRACTOR_RESPONSE_SCHEMA["schema"]["properties"]))
+        assert first_key == "reasoning"
+
+    def test_pattern_type_enum_matches_constants(self):
+        assert (  # noqa: E501
+            EXTRACTOR_RESPONSE_SCHEMA["schema"]["properties"]["pattern_type"]["enum"]
+            == PATTERN_TYPES
+        )
 
 
 class TestJudgePrompt:
