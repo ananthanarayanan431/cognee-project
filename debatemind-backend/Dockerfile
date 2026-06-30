@@ -14,8 +14,8 @@ COPY pyproject.toml .
 RUN uv pip install --no-cache -r pyproject.toml
 
 # Copy application source
-COPY app/ debatemind/
+COPY debatemind/ debatemind/
 
-EXPOSE 8000
+EXPOSE 8001
 
-CMD ["uvicorn", "debatemind.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "debatemind.main:app", "--host", "0.0.0.0", "--port", "8001"]
