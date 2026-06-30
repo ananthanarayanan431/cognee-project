@@ -43,7 +43,6 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
             await db.execute(
                 select(MasteryLog).where(
                     MasteryLog.user_id == user_id,
-                    MasteryLog.mastered_at >= session_row.started_at,
                     MasteryLog.reactivated_at.is_(None),
                 )
             )
@@ -51,7 +50,12 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
         .scalars()
         .all()
     )
-    mastered_in_session = {m.pattern_type: m for m in mastery_rows}
+    # Filter mastery logs to only those created at or after the session started
+    mastered_in_session = {
+        m.pattern_type: m
+        for m in mastery_rows
+        if m.mastered_at and m.mastered_at >= session_row.started_at
+    }
 
     patterns_seen = {e.detected_pattern for e in exchanges if e.detected_pattern}
     pattern_changes: list[WeaknessChange] = []
@@ -71,6 +75,7 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
                     DebateSession.user_id == user_id,
                     Exchange.detected_pattern == pattern,
                     DebateSession.started_at < session_row.started_at,
+                    DebateSession.id != session_id,
                 )
             )
         ).all()

@@ -20,6 +20,7 @@ from debatemind.schemas.session import (
     MessageIn,
     SessionOut,
     SessionStartIn,
+    SessionSummaryOut,
     SourceStatusOut,
     SourceUploadOut,
     SourceUrlOut,
@@ -28,6 +29,7 @@ from debatemind.services import storage_svc
 from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
+from debatemind.services.summary_svc import get_session_summary
 from debatemind.types import (
     BadRequestError,
     NotFoundError,
@@ -372,3 +374,27 @@ async def get_graph(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404)
     return SuccessResponse(data=await build_graph(user_id, session.topic))
+
+
+@router.get(
+    "/{session_id}/summary",
+    response_model=SuccessResponse[SessionSummaryOut],
+    summary="Get session summary",
+    description=(
+        "Retrieve aggregate score, exchange count, and per-pattern "
+        "before/after weakness weight changes for a completed session."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def get_summary(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    summary = await get_session_summary(db, user_id, session_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SuccessResponse(data=summary)
