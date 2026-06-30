@@ -1,7 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
 
-import cognee
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +8,7 @@ from debatemind.config import settings
 from debatemind.database import Base, engine
 from debatemind.models import mastery, session, user  # noqa: F401
 from debatemind.routers import auth, sessions, topics, users
+from debatemind.services.cognee_config import configure_cognee
 
 logger = logging.getLogger("debatemind")
 
@@ -21,14 +21,7 @@ async def lifespan(_: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("DB not reachable at startup: %s", exc)
 
-    if settings.cognee_api_key and settings.cognee_llm_api_key:
-        cognee.config.set_llm_config(
-            {
-                "provider": "anthropic",
-                "model": "claude-haiku-4-5-20251001",
-                "api_key": settings.cognee_llm_api_key,
-            }
-        )
+    configure_cognee(settings)
 
     yield
 
