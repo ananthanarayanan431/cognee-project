@@ -1,17 +1,43 @@
 import logging
+import logging.config
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from debatemind.config import settings
 from debatemind.database import Base, engine
+from debatemind.middleware import RequestIDMiddleware
 from debatemind.models import mastery, session, user  # noqa: F401
 from debatemind.routers import auth, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
 from debatemind.services.storage_svc import ensure_bucket
 
-logger = logging.getLogger("debatemind")
+
+def setup_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+
+setup_logging()
+
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
@@ -20,20 +46,21 @@ async def lifespan(_: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DB not reachable at startup: %s", exc)
+        logger.warning("db_not_reachable", error=str(exc))
 
     configure_cognee(settings)
 
     try:
         ensure_bucket()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("MinIO not reachable at startup: %s", exc)
+        logger.warning("minio_not_reachable", error=str(exc))
 
     yield
 
 
 app = FastAPI(title="DebateMind API", lifespan=lifespan)
 
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

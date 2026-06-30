@@ -73,3 +73,11 @@ async def test_fetches_and_includes_source_context_when_session_has_source(monke
     assert result["source_context"] == [{"text": "The report says X."}]
     system_msg = llm_mock.call_args.kwargs["messages"][0]["content"]
     assert "The report says X." in system_msg
+
+
+def test_weakness_cache_has_bounded_size():
+    from debatemind.agents.opponent import _weakness_cache
+
+    # TTLCache has a maxsize attribute; plain dict does not
+    assert hasattr(_weakness_cache, "maxsize")
+    assert _weakness_cache.maxsize == 1024
