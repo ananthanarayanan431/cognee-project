@@ -91,12 +91,11 @@ OPENROUTER_API_KEY=<your-openrouter-key>
 # FAST_MODEL=google/gemini-flash-1.5
 # MAIN_MODEL=meta-llama/llama-3.1-70b-instruct
 
-# Cognee backend mode: "local" (default, self-hosted via the cognee-db service
-# in docker-compose.yml) or "cloud" (Cognee Cloud's hosted API).
+# Cognee storage backend: "local" (default, self-hosted via the cognee-db
+# service in docker-compose.yml) or "cloud" (leaves Cognee's storage at its
+# own defaults). Cognee's own LLM calls (during cognify()) reuse
+# OPENROUTER_API_KEY above in both modes — there is no separate Cognee key.
 COGNEE_MODE=local
-COGNEE_LLM_API_KEY=<anthropic-key-cognee-uses-for-its-own-llm-calls>
-# Only used when COGNEE_MODE=cloud:
-COGNEE_API_KEY=<your-cognee-cloud-key>
 ```
 
 See `debatemind-backend/.env.example` for the full list of `COGNEE_DB_*` overrides

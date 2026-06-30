@@ -1,6 +1,8 @@
 """
 Unit tests for cognee_config.configure_cognee — verifies the local/cloud mode
-switch calls the right cognee.config.set_* methods with the right dict keys.
+switch calls the right cognee.config.set_* methods with the right dict keys,
+and that Cognee's own LLM calls are routed through OpenRouter (not a direct
+Anthropic call) in both modes.
 All cognee.config.set_* calls are mocked; nothing touches a real database.
 """
 
@@ -14,10 +16,9 @@ def _settings(**overrides) -> Settings:
     base = dict(
         database_url="sqlite+aiosqlite:///./test.db",
         secret_key="test-secret-key-at-least-32-characters!",
-        openrouter_api_key="test-key",
+        openrouter_api_key="or-test-key",
+        openrouter_base_url="https://openrouter.ai/api/v1",
         cognee_mode="local",
-        cognee_api_key="",
-        cognee_llm_api_key="llm-key",
         cognee_db_host="localhost",
         cognee_db_port="5433",
         cognee_db_name="cognee",
@@ -44,7 +45,7 @@ def _patch_cognee_config(monkeypatch):
     return mocks
 
 
-def test_local_mode_configures_postgres_pgvector_kuzu_and_llm(monkeypatch):
+def test_local_mode_configures_postgres_pgvector_kuzu_and_openrouter_llm(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 
     cognee_config.configure_cognee(_settings(cognee_mode="local"))
@@ -61,36 +62,45 @@ def test_local_mode_configures_postgres_pgvector_kuzu_and_llm(monkeypatch):
     )
     mocks["vector"].assert_called_once_with({"vector_db_provider": "pgvector"})
     mocks["graph"].assert_called_once_with({"graph_database_provider": "kuzu"})
-    mocks["llm"].assert_called_once()
-    assert mocks["llm"].call_args.args[0]["api_key"] == "llm-key"
+    mocks["llm"].assert_called_once_with(
+        {
+            "provider": "custom",
+            "model": "openai/gpt-4.1-mini",
+            "endpoint": "https://openrouter.ai/api/v1",
+            "api_key": "or-test-key",
+        }
+    )
 
 
-def test_local_mode_skips_llm_config_without_a_key(monkeypatch):
+def test_local_mode_skips_llm_config_without_an_openrouter_key(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 
-    cognee_config.configure_cognee(_settings(cognee_mode="local", cognee_llm_api_key=""))
+    cognee_config.configure_cognee(_settings(cognee_mode="local", openrouter_api_key=""))
 
     mocks["llm"].assert_not_called()
 
 
-def test_cloud_mode_does_not_touch_local_db_config(monkeypatch):
+def test_cloud_mode_does_not_touch_local_db_config_but_still_configures_llm(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 
-    cognee_config.configure_cognee(
-        _settings(cognee_mode="cloud", cognee_api_key="cloud-key", cognee_llm_api_key="llm-key")
-    )
+    cognee_config.configure_cognee(_settings(cognee_mode="cloud"))
 
     mocks["relational"].assert_not_called()
     mocks["vector"].assert_not_called()
     mocks["graph"].assert_not_called()
-    mocks["llm"].assert_called_once()
+    mocks["llm"].assert_called_once_with(
+        {
+            "provider": "custom",
+            "model": "openai/gpt-4.1-mini",
+            "endpoint": "https://openrouter.ai/api/v1",
+            "api_key": "or-test-key",
+        }
+    )
 
 
-def test_cloud_mode_without_both_keys_skips_llm_config(monkeypatch):
+def test_cloud_mode_skips_llm_config_without_an_openrouter_key(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 
-    cognee_config.configure_cognee(
-        _settings(cognee_mode="cloud", cognee_api_key="", cognee_llm_api_key="llm-key")
-    )
+    cognee_config.configure_cognee(_settings(cognee_mode="cloud", openrouter_api_key=""))
 
     mocks["llm"].assert_not_called()

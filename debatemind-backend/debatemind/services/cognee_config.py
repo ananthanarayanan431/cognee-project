@@ -2,7 +2,10 @@ import cognee
 
 from debatemind.config import Settings
 
-LLM_MODEL = "claude-haiku-4-5-20251001"
+# Routed through OpenRouter via cognee's "custom" provider (a generic
+# OpenAI-compatible adapter) so Cognee's internal LLM calls share the same
+# gateway/key as the debate agents instead of calling Anthropic directly.
+LLM_MODEL = "openai/gpt-4.1-mini"
 
 
 def configure_cognee(settings: Settings) -> None:
@@ -19,20 +22,13 @@ def configure_cognee(settings: Settings) -> None:
         )
         cognee.config.set_vector_db_config({"vector_db_provider": "pgvector"})
         cognee.config.set_graph_db_config({"graph_database_provider": "kuzu"})
-        if settings.cognee_llm_api_key:
-            cognee.config.set_llm_config(
-                {
-                    "provider": "anthropic",
-                    "model": LLM_MODEL,
-                    "api_key": settings.cognee_llm_api_key,
-                }
-            )
-    elif settings.cognee_mode == "cloud":
-        if settings.cognee_api_key and settings.cognee_llm_api_key:
-            cognee.config.set_llm_config(
-                {
-                    "provider": "anthropic",
-                    "model": LLM_MODEL,
-                    "api_key": settings.cognee_llm_api_key,
-                }
-            )
+
+    if settings.openrouter_api_key:
+        cognee.config.set_llm_config(
+            {
+                "provider": "custom",
+                "model": LLM_MODEL,
+                "endpoint": settings.openrouter_base_url,
+                "api_key": settings.openrouter_api_key,
+            }
+        )
