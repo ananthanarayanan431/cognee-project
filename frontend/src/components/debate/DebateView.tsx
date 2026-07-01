@@ -25,68 +25,74 @@ export default function DebateView() {
   // inject AI opening messages for fresh sessions.
   useEffect(() => {
     if (!sessionId || hydratedRef.current === sessionId) return;
-    hydratedRef.current = sessionId;
 
-    Promise.all([
+    Promise.allSettled([
       api.getTranscript(sessionId),
       api.getGraph(sessionId),
-    ]).then(([transcript, graphData]) => {
-      const currentMessages = useDebate.getState().messages;
+    ]).then(([transcriptResult, graphResult]) => {
+      hydratedRef.current = sessionId;
 
-      if (transcript.exchanges.length > 0 && currentMessages.length === 0) {
-        // Resumed session — restore full transcript
-        const msgs: Message[] = [];
-        for (const ex of transcript.exchanges) {
-          msgs.push({ id: `h-${ex.turn_number}-user`, role: "user", text: ex.user_message });
-          if (ex.opponent_response) {
-            const hasScores = ex.judge_logic != null;
-            msgs.push({
-              id: `h-${ex.turn_number}-opp`,
-              role: "opponent",
-              text: ex.opponent_response,
-              judge: hasScores ? {
-                logic:    ex.judge_logic    ?? 0,
-                evidence: ex.judge_evidence ?? 0,
-                rhetoric: ex.judge_rhetoric ?? 0,
-                fallacy:  ex.fallacy,
-                outcome:  ex.outcome ?? "",
-              } : undefined,
-              showJudge: hasScores,
+      if (transcriptResult.status === "fulfilled") {
+        const transcript = transcriptResult.value;
+        const currentMessages = useDebate.getState().messages;
+
+        if (transcript.exchanges.length > 0 && currentMessages.length === 0) {
+          // Resumed session — restore full transcript
+          const msgs: Message[] = [];
+          for (const ex of transcript.exchanges) {
+            msgs.push({ id: `h-${ex.turn_number}-user`, role: "user", text: ex.user_message });
+            if (ex.opponent_response) {
+              const hasScores = ex.judge_logic != null;
+              msgs.push({
+                id: `h-${ex.turn_number}-opp`,
+                role: "opponent",
+                text: ex.opponent_response,
+                judge: hasScores ? {
+                  logic:    ex.judge_logic    ?? 0,
+                  evidence: ex.judge_evidence ?? 0,
+                  rhetoric: ex.judge_rhetoric ?? 0,
+                  fallacy:  ex.fallacy,
+                  outcome:  ex.outcome ?? "",
+                } : undefined,
+                showJudge: hasScores,
+              });
+            }
+          }
+          setMessages(msgs);
+
+          // Restore session scores from last scored exchange
+          const last = [...transcript.exchanges].reverse().find((e) => e.judge_logic != null);
+          if (last) {
+            useDebate.setState({
+              sessionScores: {
+                logic:    last.judge_logic    ?? 0,
+                evidence: last.judge_evidence ?? 0,
+                rhetoric: last.judge_rhetoric ?? 0,
+              },
             });
           }
-        }
-        setMessages(msgs);
-
-        // Restore session scores from last scored exchange
-        const last = [...transcript.exchanges].reverse().find((e) => e.judge_logic != null);
-        if (last) {
-          useDebate.setState({
-            sessionScores: {
-              logic:    last.judge_logic    ?? 0,
-              evidence: last.judge_evidence ?? 0,
-              rhetoric: last.judge_rhetoric ?? 0,
+        } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
+          // Fresh session — AI opens the conversation
+          const topic = useDebate.getState().sessionConfig?.topic ?? "";
+          setMessages([
+            {
+              id: "opening-1",
+              role: "opponent",
+              text: "Hi! I'm your AI debate opponent. I'll challenge every argument you make — that's how you get sharper.",
             },
-          });
+            {
+              id: "opening-2",
+              role: "opponent",
+              text: `The motion: **${topic}**\n\nMake your opening argument — what's your position?`,
+            },
+          ]);
         }
-      } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
-        // Fresh session — AI opens the conversation
-        const topic = useDebate.getState().sessionConfig?.topic ?? "";
-        setMessages([
-          {
-            id: "opening-1",
-            role: "opponent",
-            text: "Hi! I'm your AI debate opponent. I'll challenge every argument you make — that's how you get sharper.",
-          },
-          {
-            id: "opening-2",
-            role: "opponent",
-            text: `The motion: **${topic}**\n\nMake your opening argument — what's your position?`,
-          },
-        ]);
       }
 
-      setGraph(graphData as unknown as GraphData);
-    }).catch(() => {});
+      if (graphResult.status === "fulfilled") {
+        setGraph(graphResult.value as unknown as GraphData);
+      }
+    });
   }, [sessionId, setMessages, setGraph]);
 
   useEffect(() => {

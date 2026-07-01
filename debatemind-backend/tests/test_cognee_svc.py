@@ -17,8 +17,16 @@ from debatemind.cognee.fingerprint import (
 
 
 async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
-    add_mock = AsyncMock()
-    cognify_mock = AsyncMock()
+    call_order: list[str] = []
+
+    async def track_add(*args, **kwargs):
+        call_order.append("add")
+
+    async def track_cognify(*args, **kwargs):
+        call_order.append("cognify")
+
+    add_mock = AsyncMock(side_effect=track_add)
+    cognify_mock = AsyncMock(side_effect=track_cognify)
     monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
     monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
 
@@ -40,6 +48,7 @@ async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
     assert "SlipperySlope" in text_arg
 
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+    assert call_order == ["add", "cognify"]
 
 
 async def test_recall_weaknesses_searches_and_wraps_results_as_text_dicts(monkeypatch):

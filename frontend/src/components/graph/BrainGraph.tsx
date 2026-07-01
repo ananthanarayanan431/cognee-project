@@ -242,7 +242,11 @@ export default function BrainGraph({ data }: { data: GraphData }) {
     node.filter((d) => d.type === "topic").on("click", (_ev, d) => {
       setExpanded((prev) => {
         const next = new Set(prev);
-        next.has(d.id) ? next.delete(d.id) : next.add(d.id);
+        if (next.has(d.id)) {
+          next.delete(d.id);
+        } else {
+          next.add(d.id);
+        }
         return next;
       });
     });

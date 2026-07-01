@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     cognee_db_port: str = "5433"
     cognee_db_name: str = "cognee"
     cognee_db_username: str = "cognee"
-    cognee_db_password: str = "cognee"
+    cognee_db_password: str
     neo4j_url: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
-    neo4j_password: str = "debatemind"
+    neo4j_password: str
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:3000"]
     algorithm: str = "HS256"

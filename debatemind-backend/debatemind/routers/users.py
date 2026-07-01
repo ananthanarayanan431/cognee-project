@@ -92,7 +92,9 @@ async def get_brain_graph(
     # Mastered patterns for this user (current status only)
     mastered_result = await db.execute(
         select(MasteryLog.pattern_type).where(
-            MasteryLog.user_id == user_id, MasteryLog.status == "MASTERED"
+            MasteryLog.user_id == user_id,
+            MasteryLog.status == "MASTERED",
+            MasteryLog.reactivated_at.is_(None),
         )
     )
     mastered_patterns: set[str] = {r for r in mastered_result.scalars().all()}

@@ -70,7 +70,16 @@ export const useDebate = create<DebateStore>((set) => ({
     });
   },
   setSession: (sessionId, sessionConfig) =>
-    set({ sessionId, sessionConfig, messages: [], screen: "debate" }),
+    set({
+      sessionId,
+      sessionConfig,
+      messages: [],
+      screen: "debate",
+      graph: { nodes: [], edges: [] },
+      sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
+      thinking: false,
+      currentStage: null,
+    }),
   addMessage: (m) => set((s) => ({ messages: [...s.messages, m] })),
   setMessages: (msgs) => set({ messages: msgs }),
   updateLastOpponent: (text) =>

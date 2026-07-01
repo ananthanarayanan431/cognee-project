@@ -62,7 +62,6 @@ async def remember_argument(
             "user_id": user_id,
             "session_id": session_id,
             "content_length": len(text),
-            "content_preview": preview(text),
             "pattern_type": pattern_type,
             "fallacy": fallacy,
             "evidence_quality": evidence_quality,

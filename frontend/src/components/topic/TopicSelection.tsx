@@ -266,6 +266,13 @@ export default function TopicSelection() {
           {allOpen ? "▲" : "▼"}
         </button>
         <div className="flex-1" />
+        <button
+          onClick={generateMore}
+          disabled={generating}
+          className="font-sans text-xs text-fog border border-dashed border-fog/30 rounded-full px-3 py-1 disabled:opacity-50 hover:border-fog/50 hover:text-ink transition-all flex-none"
+        >
+          {generating ? "Generating…" : `+ Generate ${generateDomain.toLowerCase()}`}
+        </button>
         <div className="relative">
           <input
             type="text"
@@ -368,13 +375,6 @@ export default function TopicSelection() {
               </div>
             )}
 
-            <button
-              onClick={generateMore}
-              disabled={generating}
-              className="mt-4 font-sans text-xs text-fog border border-dashed border-fog/30 rounded-full px-4 py-1.5 disabled:opacity-50 hover:border-fog/50 hover:text-ink transition-all"
-            >
-              {generating ? "Generating…" : `+ Generate more ${generateDomain.toLowerCase()} questions`}
-            </button>
           </div>
         )}
       </div>
@@ -436,12 +436,10 @@ function TopicRow({
         <p className="font-sans text-[11px] text-fog truncate mt-0.5">{card.description}</p>
       </div>
       <div className="flex items-center gap-2 flex-none">
-        {sessionCount > 0 && (
-          <span className="flex items-center gap-1 font-sans text-[11px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-0.5 whitespace-nowrap">
-            <span className="text-[9px]">💬</span>
-            {sessionCount} {sessionCount === 1 ? "session" : "sessions"}
-          </span>
-        )}
+        <span className="flex items-center gap-1 font-sans text-[11px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-0.5 whitespace-nowrap">
+          <span className="text-[9px]">💬</span>
+          {sessionCount} {sessionCount === 1 ? "session" : "sessions"}
+        </span>
         <span className="font-sans text-[10px] text-fog border border-border rounded-full px-2 py-0.5 uppercase tracking-wide">
           {card.domain}
         </span>
@@ -492,12 +490,10 @@ function NewTopicRow({
         <p className="font-sans text-[11px] text-fog truncate mt-0.5">{card.description}</p>
       </div>
       <div className="flex items-center gap-2 flex-none">
-        {sessionCount > 0 && (
-          <span className="flex items-center gap-1 font-sans text-[11px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-0.5">
-            <span className="text-[9px]">💬</span>
-            {sessionCount}
-          </span>
-        )}
+        <span className="flex items-center gap-1 font-sans text-[11px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-0.5">
+          <span className="text-[9px]">💬</span>
+          {sessionCount}
+        </span>
         <span className="font-sans text-[10px] text-fog border border-border rounded-full px-2 py-0.5 uppercase tracking-wide">
           {card.domain}
         </span>

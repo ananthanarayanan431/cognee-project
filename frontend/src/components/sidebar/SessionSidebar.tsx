@@ -216,7 +216,7 @@ function BrainMapModal({
               <div className="flex flex-col items-center justify-center gap-3 h-full text-center">
                 <IconSparkles size={24} className="text-black/15" />
                 <p className="font-sans text-[14px] text-black/35 leading-relaxed max-w-[260px]">
-                  Use "Describe me" in the sidebar to generate your debate profile.
+                  Use &ldquo;Describe me&rdquo; in the sidebar to generate your debate profile.
                 </p>
               </div>
             )}
@@ -255,16 +255,17 @@ function BrainSection({ winRate }: { winRate: number | null }) {
 
   function handleExport() {
     const url = api.exportProfileUrl();
-    const a = document.createElement("a");
-    a.href = url;
     const token = localStorage.getItem("dm_token");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => {
-        a.href = URL.createObjectURL(blob);
-        a.download = "debatemind_profile.json";
-        a.click();
-        URL.revokeObjectURL(a.href);
+      .then((r) => {
+        if (!r.ok) return;
+        r.blob().then((blob) => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "debatemind_profile.json";
+          a.click();
+          URL.revokeObjectURL(a.href);
+        });
       });
   }
 

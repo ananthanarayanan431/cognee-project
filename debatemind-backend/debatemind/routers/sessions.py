@@ -64,6 +64,8 @@ async def list_sessions(
 ):
     count_subq = (
         select(Exchange.session_id, sqlfunc.count(Exchange.id).label("cnt"))
+        .join(DebateSession, Exchange.session_id == DebateSession.id)
+        .where(DebateSession.user_id == user_id)
         .group_by(Exchange.session_id)
         .subquery()
     )
@@ -248,9 +250,6 @@ async def send_message(
                 "mastery": final_state.get("mastery_events", []),
             }
             yield f"data: {json.dumps(judge_payload)}\n\n"
-            graph = await build_graph(user_id, session.topic)
-            yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
-            yield "data: [DONE]\n\n"
         except Exception:
             logger.exception("session persistence failed for session %s turn %s", session_id, turn)
             yield (
@@ -260,6 +259,15 @@ async def send_message(
                 )
                 + "\n\n"
             )
+            return
+
+        try:
+            graph = await build_graph(user_id, session.topic)
+            yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
+        except Exception:
+            logger.exception("build_graph failed for session %s turn %s", session_id, turn)
+
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
