@@ -73,4 +73,8 @@ export const api = {
     apiFetch<Transcript>(`/api/sessions/${sessionId}/transcript`),
   transcriptExportUrl: (sessionId: string) =>
     `${BASE}/api/sessions/${sessionId}/transcript/export`,
+  reactivateMastery: (pattern: string) =>
+    apiFetch<{ reactivated: boolean }>(`/api/users/me/mastery/${encodeURIComponent(pattern)}/reactivate`, {
+      method: "POST",
+    }),
 };

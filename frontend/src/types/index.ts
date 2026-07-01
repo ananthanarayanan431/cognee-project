@@ -46,11 +46,32 @@ export interface ThinkingStyle {
   rhetoric: number;
 }
 
+export interface MasteredPattern {
+  pattern: string;
+  mastered_at: string;
+  rounds_to_mastery: number;
+  reactivated: boolean;
+}
+
+export interface TopicWinRate {
+  topic: string;
+  win_rate: number;
+}
+
+export interface WeaknessTrendItem {
+  pattern: string;
+  weight: number;
+}
+
 export interface ProgressData {
   weaknesses: { text: string }[];
   sessions: number;
   win_rate: number;
+  streak: number;
   thinking_style: ThinkingStyle;
+  mastered: MasteredPattern[];
+  win_rate_by_topic: TopicWinRate[];
+  weakness_trend: WeaknessTrendItem[];
 }
 
 export interface CalibrationStatus {
