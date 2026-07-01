@@ -1,5 +1,5 @@
 """
-Unit tests for cognee_svc — verifies the service calls the real cognee SDK API
+Unit tests for debatemind.cognee — verifies the service calls the real cognee SDK API
 (add/cognify/search), not the nonexistent remember/recall/improve methods.
 cognee.* calls are mocked; no real cognee storage/LLM calls happen here.
 """
@@ -9,16 +9,25 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from debatemind.services import cognee_svc
+from debatemind.cognee import fingerprint as fingerprint_mod
+from debatemind.cognee import source as source_mod
+from debatemind.cognee.fingerprint import (
+    forget_pattern,
+    improve_fingerprint,
+    reactivate_pattern_fact,
+    recall_weaknesses,
+    remember_argument,
+)
+from debatemind.cognee.source import index_source_document, recall_source_context
 
 
 async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
     add_mock = AsyncMock()
     cognify_mock = AsyncMock()
-    monkeypatch.setattr(cognee_svc.cognee, "add", add_mock)
-    monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
 
-    await cognee_svc.remember_argument(
+    await remember_argument(
         user_id="u1",
         session_id="s1",
         topic="AI Safety",
@@ -40,13 +49,13 @@ async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
 
 async def test_recall_weaknesses_searches_and_wraps_results_as_text_dicts(monkeypatch):
     search_mock = AsyncMock(return_value=["StrawMan pattern found", "AdHominem pattern found"])
-    monkeypatch.setattr(cognee_svc.cognee, "search", search_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "search", search_mock)
 
-    results = await cognee_svc.recall_weaknesses("u1")
+    results = await recall_weaknesses("u1")
 
     search_mock.assert_awaited_once()
     kwargs = search_mock.call_args.kwargs
-    assert kwargs["query_type"] == cognee_svc.SearchType.GRAPH_COMPLETION
+    assert kwargs["query_type"] == fingerprint_mod.SearchType.GRAPH_COMPLETION
     assert kwargs["datasets"] == ["user_u1_fingerprint"]
     assert kwargs["top_k"] == 10
     assert "u1" in kwargs["query_text"]
@@ -59,9 +68,9 @@ async def test_recall_weaknesses_searches_and_wraps_results_as_text_dicts(monkey
 
 async def test_improve_fingerprint_recognifies_the_dataset(monkeypatch):
     cognify_mock = AsyncMock()
-    monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
 
-    await cognee_svc.improve_fingerprint("u1")
+    await improve_fingerprint("u1")
 
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
 
@@ -69,10 +78,10 @@ async def test_improve_fingerprint_recognifies_the_dataset(monkeypatch):
 async def test_forget_pattern_records_a_mastered_marker(monkeypatch):
     add_mock = AsyncMock()
     cognify_mock = AsyncMock()
-    monkeypatch.setattr(cognee_svc.cognee, "add", add_mock)
-    monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
 
-    await cognee_svc.forget_pattern("u1", "StrawMan")
+    await forget_pattern("u1", "StrawMan")
 
     add_mock.assert_awaited_once()
     text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
@@ -83,13 +92,30 @@ async def test_forget_pattern_records_a_mastered_marker(monkeypatch):
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
 
 
+async def test_reactivate_pattern_fact_records_a_reactivated_marker(monkeypatch):
+    add_mock = AsyncMock()
+    cognify_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
+
+    await reactivate_pattern_fact("u1", "AdHominem")
+
+    add_mock.assert_awaited_once()
+    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
+    assert kwargs["dataset_name"] == "user_u1_fingerprint"
+    assert "REACTIVATED" in text_arg
+    assert "AdHominem" in text_arg
+
+    cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+
+
 async def test_index_source_document_adds_then_cognifies_the_session_dataset(monkeypatch):
     add_mock = AsyncMock()
     cognify_mock = AsyncMock()
-    monkeypatch.setattr(cognee_svc.cognee, "add", add_mock)
-    monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
+    monkeypatch.setattr(source_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(source_mod.cognee, "cognify", cognify_mock)
 
-    await cognee_svc.index_source_document("s1", "/tmp/evidence.pdf")
+    await index_source_document("s1", "/tmp/evidence.pdf")
 
     add_mock.assert_awaited_once_with("/tmp/evidence.pdf", dataset_name="session_s1_source")
     cognify_mock.assert_awaited_once_with(datasets="session_s1_source")
@@ -97,13 +123,13 @@ async def test_index_source_document_adds_then_cognifies_the_session_dataset(mon
 
 async def test_recall_source_context_searches_chunks_for_the_session_dataset(monkeypatch):
     search_mock = AsyncMock(return_value=["Quote from the PDF", "Another quote"])
-    monkeypatch.setattr(cognee_svc.cognee, "search", search_mock)
+    monkeypatch.setattr(source_mod.cognee, "search", search_mock)
 
-    results = await cognee_svc.recall_source_context("s1", "is nuclear power safe?")
+    results = await recall_source_context("s1", "is nuclear power safe?")
 
     search_mock.assert_awaited_once()
     kwargs = search_mock.call_args.kwargs
-    assert kwargs["query_type"] == cognee_svc.SearchType.CHUNKS
+    assert kwargs["query_type"] == source_mod.SearchType.CHUNKS
     assert kwargs["datasets"] == ["session_s1_source"]
     assert kwargs["top_k"] == 5
     assert kwargs["query_text"] == "is nuclear power safe?"
@@ -114,9 +140,9 @@ async def test_recall_source_context_returns_empty_list_when_dataset_missing(mon
     async def _raise(*args, **kwargs):
         raise Exception("dataset not found")
 
-    monkeypatch.setattr(cognee_svc.cognee, "search", _raise)
+    monkeypatch.setattr(source_mod.cognee, "search", _raise)
 
-    results = await cognee_svc.recall_source_context("s1", "anything")
+    results = await recall_source_context("s1", "anything")
 
     assert results == []
 
@@ -125,11 +151,11 @@ async def test_index_source_document_raises_on_timeout(monkeypatch):
     async def _slow_add(*args, **kwargs):
         await asyncio.sleep(999)
 
-    monkeypatch.setattr(cognee_svc.cognee, "add", _slow_add)
-    monkeypatch.setattr(cognee_svc, "ADD_TIMEOUT", 0.01)
+    monkeypatch.setattr(source_mod.cognee, "add", _slow_add)
+    monkeypatch.setattr(source_mod, "ADD_TIMEOUT", 0.01)
 
     with pytest.raises(asyncio.TimeoutError):
-        await cognee_svc.index_source_document("s1", "/tmp/e.pdf")
+        await index_source_document("s1", "/tmp/e.pdf")
 
 
 async def test_recall_source_context_logs_error_and_returns_empty_on_failure(monkeypatch, caplog):
@@ -138,10 +164,10 @@ async def test_recall_source_context_logs_error_and_returns_empty_on_failure(mon
     async def _raise(*args, **kwargs):
         raise RuntimeError("cognee misconfigured")
 
-    monkeypatch.setattr(cognee_svc.cognee, "search", _raise)
+    monkeypatch.setattr(source_mod.cognee, "search", _raise)
 
-    with caplog.at_level(logging.ERROR, logger="debatemind.services.cognee_svc"):
-        results = await cognee_svc.recall_source_context("s1", "anything")
+    with caplog.at_level(logging.ERROR, logger="debatemind.cognee.source"):
+        results = await recall_source_context("s1", "anything")
 
     assert results == []
     assert any(

@@ -7,7 +7,7 @@ from debatemind.agents.judge import judge_exchange
 from debatemind.agents.mastery import check_mastery
 from debatemind.agents.opponent import generate_opponent
 from debatemind.agents.state import DebateState
-from debatemind.services.cognee_svc import forget_pattern, remember_argument
+from debatemind.cognee import forget_pattern, remember_argument
 
 logger = logging.getLogger(__name__)
 

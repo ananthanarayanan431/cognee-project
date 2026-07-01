@@ -126,3 +126,14 @@ export interface Transcript {
   started_at: string;
   exchanges: TranscriptExchange[];
 }
+
+export interface SessionListItem {
+  session_id: string;
+  topic: string;
+  difficulty: string;
+  status: "active" | "ended";
+  overall_score: number;
+  exchanges: number;
+  started_at: string;
+  ended_at: string | null;
+}

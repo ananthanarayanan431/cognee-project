@@ -31,7 +31,7 @@ export default function TopicSelection() {
   const [indexing, setIndexing] = useState(false);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { setSession } = useDebate();
+  const { setSession, setSessions } = useDebate();
 
   useEffect(() => { api.getTopics().then(setGroups).catch(() => {}); }, []);
 
@@ -96,6 +96,7 @@ export default function TopicSelection() {
       return;
     }
     setSubmitting(false);
+    api.getSessions().then(setSessions).catch(() => {});
     if (sourceFile) {
       setIndexing(true);
       setPendingSessionId(res.session_id);

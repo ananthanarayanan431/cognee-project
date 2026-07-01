@@ -4,10 +4,10 @@ import logging
 from celery.signals import worker_init
 from sqlalchemy import update
 
+from debatemind.cognee import index_source_document
 from debatemind.config import settings
 from debatemind.models.session import DebateSession
 from debatemind.services import storage_svc
-from debatemind.services.cognee_svc import index_source_document
 from debatemind.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

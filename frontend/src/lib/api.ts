@@ -1,4 +1,4 @@
-import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript } from "@/types";
+import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem } from "@/types";
 import { useDebate } from "@/store/debate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
@@ -89,4 +89,7 @@ export const api = {
     apiFetch<{ reactivated: boolean }>(`/api/users/me/mastery/${encodeURIComponent(pattern)}/reactivate`, {
       method: "POST",
     }),
+  getSessions: () => apiFetch<SessionListItem[]>("/api/sessions"),
+  describeUser: () => apiFetch<{ description: string }>("/api/users/me/describe"),
+  exportProfileUrl: () => `${BASE}/api/users/me/export`,
 };

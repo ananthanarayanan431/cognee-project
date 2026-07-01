@@ -1,6 +1,6 @@
 from debatemind.agents.constants import PATTERN_TYPES
+from debatemind.cognee import recall_weaknesses
 from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
-from debatemind.services.cognee_svc import recall_weaknesses
 
 
 async def build_graph(user_id: str, topic: str) -> GraphOut:

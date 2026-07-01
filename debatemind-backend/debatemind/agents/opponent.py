@@ -3,8 +3,8 @@ from cachetools import TTLCache
 from debatemind.agents.client import openrouter
 from debatemind.agents.prompts.opponent import opponent_system_prompt, opponent_user_message
 from debatemind.agents.state import DebateState
+from debatemind.cognee import recall_source_context, recall_weaknesses
 from debatemind.config import settings
-from debatemind.services.cognee_svc import recall_source_context, recall_weaknesses
 
 # Bounded TTL cache: max 1024 users, entries expire after 1 hour.
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)

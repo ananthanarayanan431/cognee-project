@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Message, GraphData, SessionConfig } from "@/types";
+import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
 
 interface DebateStore {
   screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress";
@@ -13,6 +13,7 @@ interface DebateStore {
   thinking: boolean;
   currentStage: string | null;
   sessionScores: { logic: number; evidence: number; rhetoric: number };
+  sessions: SessionListItem[];
 
   hydrate: () => void;
   setScreen: (s: DebateStore["screen"]) => void;
@@ -24,6 +25,7 @@ interface DebateStore {
   setThinking: (v: boolean) => void;
   setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
+  setSessions: (sessions: SessionListItem[]) => void;
   reset: () => void;
 }
 
@@ -39,6 +41,7 @@ export const useDebate = create<DebateStore>((set) => ({
   thinking: false,
   currentStage: null,
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
+  sessions: [],
 
   hydrate: () => set({
     token: localStorage.getItem("dm_token"),
@@ -82,5 +85,6 @@ export const useDebate = create<DebateStore>((set) => ({
   setThinking: (thinking) => set({ thinking }),
   setCurrentStage: (currentStage) => set({ currentStage }),
   setGraph: (graph) => set({ graph }),
+  setSessions: (sessions) => set({ sessions }),
   reset: () => set({ sessionId: null, sessionConfig: null, messages: [], screen: "topic" }),
 }));

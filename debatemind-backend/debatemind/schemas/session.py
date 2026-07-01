@@ -86,3 +86,14 @@ class TranscriptOut(BaseModel):
     difficulty: str
     started_at: datetime
     exchanges: list[TranscriptExchange]
+
+
+class SessionListItemOut(BaseModel):
+    session_id: str
+    topic: str
+    difficulty: str
+    status: str
+    overall_score: float
+    exchanges: int
+    started_at: datetime
+    ended_at: Optional[datetime] = None

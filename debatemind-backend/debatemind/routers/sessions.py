@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
+from debatemind.cognee import improve_fingerprint
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
@@ -18,6 +19,7 @@ from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.session import (
     EndSessionOut,
     MessageIn,
+    SessionListItemOut,
     SessionOut,
     SessionStartIn,
     SessionSummaryOut,
@@ -28,7 +30,6 @@ from debatemind.schemas.session import (
     TranscriptOut,
 )
 from debatemind.services import storage_svc
-from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
@@ -54,6 +55,48 @@ logger = logging.getLogger(__name__)
 # internal bookkeeping (memory-graph writes, mastery pruning) with no
 # user-facing meaning and are intentionally not surfaced as stage events.
 STAGE_ORDER = ["extract", "opponent", "judge", "mastery"]
+
+
+@router.get(
+    "",
+    response_model=SuccessResponse[list[SessionListItemOut]],
+    summary="List user sessions",
+    description="Retrieve all debate sessions for the current user, newest first.",
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+    },
+)
+async def list_sessions(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    count_subq = (
+        select(Exchange.session_id, sqlfunc.count(Exchange.id).label("cnt"))
+        .group_by(Exchange.session_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(DebateSession, count_subq.c.cnt)
+        .outerjoin(count_subq, DebateSession.id == count_subq.c.session_id)
+        .where(DebateSession.user_id == user_id)
+        .order_by(DebateSession.started_at.desc())
+    )
+    rows = result.all()
+    return SuccessResponse(
+        data=[
+            SessionListItemOut(
+                session_id=session.id,
+                topic=session.topic,
+                difficulty=session.difficulty,
+                status=session.status,
+                overall_score=session.overall_score,
+                exchanges=cnt or 0,
+                started_at=session.started_at,
+                ended_at=session.ended_at,
+            )
+            for session, cnt in rows
+        ]
+    )
 
 
 @router.post(

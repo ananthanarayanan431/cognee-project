@@ -25,20 +25,23 @@ export default function DebateView() {
     }
   }, [messages]);
 
+  const setSessions = useDebate((s) => s.setSessions);
+
   async function endSession() {
     if (sessionId) await api.endSession(sessionId);
+    api.getSessions().then(setSessions).catch(() => {});
     setScreen("end");
   }
 
   const lastMsg = messages[messages.length - 1];
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       {/* Nav */}
       <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
           onClick={() => setScreen("topic")}
-          className="font-display text-[22px] text-ink cursor-pointer leading-none"
+          className="font-display text-[22px] text-ink cursor-pointer leading-none lg:hidden"
         >
           DebateMind
         </button>

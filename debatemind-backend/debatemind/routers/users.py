@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from debatemind.agents.client import openrouter
+from debatemind.cognee import recall_weaknesses
+from debatemind.config import settings
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.progress import ProgressOut
-from debatemind.services.cognee_svc import recall_weaknesses
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import reactivate_pattern
 from debatemind.services.progress_svc import (
@@ -16,6 +20,11 @@ from debatemind.services.progress_svc import (
     get_win_rate_by_topic,
 )
 from debatemind.types import NotFoundError, SuccessResponse, UnauthorizedError
+
+
+class DescribeOut(BaseModel):
+    description: str
+
 
 router = APIRouter()
 
@@ -66,6 +75,116 @@ async def get_progress(
             weakness_trend=weakness_trend,
             **stats,
         )
+    )
+
+
+@router.get(
+    "/me/describe",
+    response_model=SuccessResponse[DescribeOut],
+    summary="Get AI-generated cognitive profile",
+    description=(
+        "Generate a natural-language description of the user's debate style, "
+        "strengths, weaknesses, and thinking patterns across all sessions."
+    ),
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
+)
+async def describe_user(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    weaknesses = await recall_weaknesses(user_id)
+    stats = await get_progress_stats(db, user_id)
+    mastered = await get_mastered_patterns(db, user_id)
+    win_rate_by_topic = await get_win_rate_by_topic(db, user_id)
+
+    ts = stats["thinking_style"]
+    mastered_list = ", ".join(m["pattern"] for m in mastered) if mastered else "none yet"
+    weakness_list = (
+        ", ".join(w["text"] for w in weaknesses[:5]) if weaknesses else "none identified yet"
+    )
+    topic_lines = (
+        "\n".join(
+            f"  - {t['topic']}: {round(t['win_rate'] * 100)}% win rate"
+            for t in win_rate_by_topic[:5]
+        )
+        if win_rate_by_topic
+        else "  no topic data yet"
+    )
+
+    thinking_line = (
+        f"- Thinking style scores (0–10):"
+        f" Logic {ts['logic']}, Evidence {ts['evidence']},"
+        f" Rhetoric {ts['rhetoric']}"
+    )
+    prompt = (
+        "You are analyzing a DebateMind user's cognitive debate profile."
+        ' Write a concise 3-paragraph profile in second person ("You...")'
+        " that describes their debate style, strengths, and what they"
+        " should work on.\n\nUser stats:\n"
+        f"- Sessions completed: {stats['sessions']}\n"
+        f"- Overall win rate: {round(stats['win_rate'] * 100)}%\n"
+        f"{thinking_line}\n"
+        f"- Mastered argument patterns: {mastered_list}\n"
+        f"- Current weaknesses: {weakness_list}\n"
+        f"- Win rate by topic:\n{topic_lines}\n\n"
+        "Write the profile in a direct, insightful, and encouraging tone."
+        " Be specific — reference actual numbers and patterns."
+        " Keep it under 200 words total."
+    )
+
+    response = await openrouter.chat.completions.create(
+        model=settings.fast_model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=300,
+    )
+    description = response.choices[0].message.content or ""
+    return SuccessResponse(data=DescribeOut(description=description))
+
+
+@router.get(
+    "/me/export",
+    summary="Export user profile",
+    description="Download the user's full cognitive profile and session history as JSON.",
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
+)
+async def export_profile(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    weaknesses = await recall_weaknesses(user_id)
+    stats = await get_progress_stats(db, user_id)
+    streak = await get_streak(db, user_id)
+    mastered = await get_mastered_patterns(db, user_id)
+    win_rate_by_topic = await get_win_rate_by_topic(db, user_id)
+    weakness_trend = await get_weakness_trend(db, user_id)
+
+    payload = {
+        "sessions": stats["sessions"],
+        "win_rate": stats["win_rate"],
+        "streak": streak,
+        "thinking_style": stats["thinking_style"],
+        "weaknesses": [w["text"] for w in weaknesses],
+        "mastered_patterns": [
+            {
+                "pattern": m["pattern"],
+                "mastered_at": m["mastered_at"].isoformat() if m["mastered_at"] else None,
+                "rounds_to_mastery": m["rounds_to_mastery"],
+            }
+            for m in mastered
+        ],
+        "win_rate_by_topic": [
+            {"topic": t["topic"], "win_rate": t["win_rate"]} for t in win_rate_by_topic
+        ],
+        "weakness_trend": [
+            {"pattern": w["pattern"], "weight": w["weight"]} for w in weakness_trend
+        ],
+    }
+
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="debatemind_profile_{user_id[:8]}.json"'
+        },
     )
 
 

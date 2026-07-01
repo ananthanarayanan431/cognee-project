@@ -4,8 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.mastery import MASTERY_THRESHOLD
+from debatemind.cognee import reactivate_pattern_fact
 from debatemind.models.mastery import MasteryLog
-from debatemind.services.cognee_svc import reactivate_pattern_fact
 
 
 async def record_mastery_events(db: AsyncSession, user_id: str, patterns: list[str]) -> None:

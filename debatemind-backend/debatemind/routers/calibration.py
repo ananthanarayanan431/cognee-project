@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.constants import CALIBRATION_TOPICS
 from debatemind.agents.extractor import extract_argument
+from debatemind.cognee import remember_argument
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.models.user import User
@@ -15,7 +16,6 @@ from debatemind.schemas.calibration import (
     CalibrationStatusOut,
 )
 from debatemind.services import calibration_svc
-from debatemind.services.cognee_svc import remember_argument
 from debatemind.types import SuccessResponse, UnauthorizedError
 
 router = APIRouter()
