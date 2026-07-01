@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import { useDebate } from "@/store/debate";
 import LandingPage from "@/components/auth/LandingPage";
 import AuthModal from "@/components/auth/AuthModal";
@@ -14,6 +15,9 @@ const SessionTranscript = dynamic(() => import("@/components/session/SessionTran
 export default function Home() {
   const screen = useDebate((s) => s.screen);
   const token = useDebate((s) => s.token);
+  const hydrate = useDebate((s) => s.hydrate);
+
+  useEffect(() => { hydrate(); }, []);
 
   if (!token) {
     return screen === "auth" ? <AuthModal /> : <LandingPage />;

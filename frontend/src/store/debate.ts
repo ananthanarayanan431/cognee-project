@@ -14,6 +14,7 @@ interface DebateStore {
   currentStage: string | null;
   sessionScores: { logic: number; evidence: number; rhetoric: number };
 
+  hydrate: () => void;
   setScreen: (s: DebateStore["screen"]) => void;
   setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
   setSession: (id: string, config: SessionConfig) => void;
@@ -28,9 +29,9 @@ interface DebateStore {
 
 export const useDebate = create<DebateStore>((set) => ({
   screen: "landing",
-  token: typeof window !== "undefined" ? localStorage.getItem("dm_token") : null,
-  userId: typeof window !== "undefined" ? localStorage.getItem("dm_uid") : null,
-  calibrationDone: typeof window !== "undefined" ? localStorage.getItem("dm_calibration") === "1" : false,
+  token: null,
+  userId: null,
+  calibrationDone: false,
   sessionId: null,
   sessionConfig: null,
   messages: [],
@@ -39,6 +40,11 @@ export const useDebate = create<DebateStore>((set) => ({
   currentStage: null,
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
 
+  hydrate: () => set({
+    token: localStorage.getItem("dm_token"),
+    userId: localStorage.getItem("dm_uid"),
+    calibrationDone: localStorage.getItem("dm_calibration") === "1",
+  }),
   setScreen: (screen) => set({ screen }),
   setAuth: (token, userId, calibrationDone) => {
     localStorage.setItem("dm_token", token);
