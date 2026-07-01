@@ -4,16 +4,16 @@ import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 import type { DebatableQuestion } from "@/types";
 
-const DOMAINS = ["POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"] as const;
+const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"] as const;
 type Domain = (typeof DOMAINS)[number];
 
 const DIFFICULTIES = [
-  { key: "balanced", name: "Balanced", desc: "Varied angles, 60% weakness" },
-  { key: "targeted", name: "Targeted", desc: "Every move hits a known weak node" },
-  { key: "ruthless", name: "Ruthless", desc: "Same weakness, every angle" },
+  { key: "balanced", name: "Balanced" },
+  { key: "targeted", name: "Targeted" },
+  { key: "ruthless", name: "Ruthless" },
 ] as const;
 
-const POSITIONS = ["For", "Against", "Neutral", "Assign randomly"] as const;
+const POSITIONS = ["For", "Against", "Neutral"] as const;
 
 export default function TopicSelection() {
   const [topic, setTopic] = useState("");
@@ -21,18 +21,27 @@ export default function TopicSelection() {
   const [selectedCardId, setSelectedCardId] = useState("");
   const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
   const [position, setPosition] = useState("against");
-  const [mode, setMode] = useState<"chat" | "voice">("chat");
-  const [selectedDomain, setSelectedDomain] = useState<Domain>("POLICY");
+  const [selectedDomain, setSelectedDomain] = useState<Domain>("ALL");
   const [cardsByDomain, setCardsByDomain] = useState<Record<string, DebatableQuestion[]>>({});
   const [generating, setGenerating] = useState(false);
   const [startError, setStartError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [favoritesOpen, setFavoritesOpen] = useState(true);
+  const [allOpen, setAllOpen] = useState(true);
   const { setSession, setSessions } = useDebate();
 
   useEffect(() => {
-    api.getTopics().then((questions) => {
+    Promise.all([
+      api.getTopics(),
+      api.getSavedTopics().catch(() => [] as DebatableQuestion[]),
+    ]).then(([staticQs, savedQs]) => {
+      const seen = new Set<string>();
       const grouped: Record<string, DebatableQuestion[]> = {};
-      for (const q of questions) {
+      for (const q of [...staticQs, ...savedQs]) {
+        if (seen.has(q.id)) continue;
+        seen.add(q.id);
         if (!grouped[q.domain]) grouped[q.domain] = [];
         grouped[q.domain].push(q);
       }
@@ -40,33 +49,36 @@ export default function TopicSelection() {
     }).catch(() => {});
   }, []);
 
-  function selectCard(card: DebatableQuestion) {
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("dm_fav_topics");
+      if (saved) setFavorites(new Set(JSON.parse(saved)));
+    } catch { /* ignore */ }
+  }, []);
+
+  function toggleFavorite(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try { localStorage.setItem("dm_fav_topics", JSON.stringify(Array.from(next))); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  function selectTopic(card: DebatableQuestion) {
     setTopic(card.title);
     setDescription(card.description);
     setSelectedCardId(card.id);
   }
 
-  async function generateMore() {
-    setGenerating(true);
-    try {
-      const newCards = await api.generateTopics(selectedDomain, 5);
-      setCardsByDomain((prev) => ({
-        ...prev,
-        [selectedDomain]: [...(prev[selectedDomain] ?? []), ...newCards],
-      }));
-    } catch {
-      // silently fail — user can retry
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function start() {
+  async function doStart(t: string, desc: string) {
     setStartError("");
     setSubmitting(true);
     let res;
     try {
-      res = await api.startSession(topic, description, difficulty, position);
+      res = await api.startSession(t, desc, difficulty, position);
     } catch {
       setStartError("Failed to start session — please try again.");
       setSubmitting(false);
@@ -74,155 +86,291 @@ export default function TopicSelection() {
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    setSession(res.session_id, { topic, description, difficulty, position: position as never });
+    setSession(res.session_id, { topic: t, description: desc, difficulty, position: position as never });
   }
 
-  const visibleCards = cardsByDomain[selectedDomain] ?? [];
+  function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
+    e.stopPropagation();
+    selectTopic(card);
+    doStart(card.title, card.description);
+  }
+
+  async function generateMore() {
+    const domain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
+    setGenerating(true);
+    try {
+      const newCards = await api.generateTopics(domain, 5);
+      setCardsByDomain((prev) => ({
+        ...prev,
+        [domain]: [...(prev[domain] ?? []), ...newCards],
+      }));
+    } catch { /* silently fail */ } finally {
+      setGenerating(false);
+    }
+  }
+
+  const allTopics = Object.values(cardsByDomain).flat();
+  const totalCount = allTopics.length;
+
+  const filtered = allTopics.filter((q) => {
+    const domainMatch = selectedDomain === "ALL" || q.domain === selectedDomain;
+    const searchMatch = !searchQuery || q.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return domainMatch && searchMatch;
+  });
+
+  const favoriteTopics = filtered.filter(q => favorites.has(q.id));
+  const regularTopics = filtered.filter(q => !favorites.has(q.id));
+  const generateDomain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
 
   return (
-    <div className="max-w-3xl mx-auto px-7 py-12">
-      <h1 className="font-sans font-medium text-2xl text-ink mb-5">What do you want to argue about?</h1>
+    <div className="flex flex-col h-full min-h-0">
 
-      {/* Topic input */}
-      <div className="flex items-center justify-between bg-white border border-border rounded-lg px-4 py-3 mb-4">
-        <span className="font-serif text-base text-ink flex-1 mr-2 truncate">
-          {topic || <span className="text-fog">Select a question below or type your own</span>}
-        </span>
-        {topic && (
-          <button onClick={() => { setTopic(""); setDescription(""); setSelectedCardId(""); }} className="text-fog text-lg flex-none">✕</button>
+      {/* ── Top input panel ─────────────────────────────────── */}
+      <div className="flex-none px-7 pt-8 pb-5 border-b border-border bg-white">
+        <textarea
+          value={topic}
+          onChange={(e) => {
+            setTopic(e.target.value);
+            if (!e.target.value) { setDescription(""); setSelectedCardId(""); }
+          }}
+          placeholder="What do you want to argue about?"
+          className="w-full bg-transparent font-sans text-base text-ink resize-none outline-none mb-1 placeholder:text-fog"
+          rows={2}
+        />
+        {topic && description && (
+          <p className="font-sans text-xs text-fog line-clamp-1 mb-3">{description}</p>
         )}
-      </div>
 
-      <textarea
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Add context — what's the angle, what should the opponent know?"
-        className="w-full bg-white border border-border rounded-lg px-4 py-3 mb-6 font-sans text-sm text-ink resize-none"
-        rows={2}
-      />
-
-      {/* Domain selector */}
-      <div className="flex gap-2 mb-4">
-        {DOMAINS.map((d) => (
-          <button
-            key={d}
-            onClick={() => setSelectedDomain(d)}
-            className={`font-sans text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
-              selectedDomain === d
-                ? "bg-scarlet text-white border-scarlet"
-                : "bg-white text-fog border-fog/40 hover:border-fog"
-            }`}
+        <div className="flex items-center gap-2 flex-wrap mt-3">
+          {/* Domain dropdown */}
+          <select
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value as Domain)}
+            className="font-sans text-xs text-ink border border-border rounded-lg px-3 py-2 bg-white outline-none cursor-pointer"
           >
-            {d}
-          </button>
-        ))}
-      </div>
+            {DOMAINS.map(d => (
+              <option key={d} value={d}>{d === "ALL" ? "All domains" : d}</option>
+            ))}
+          </select>
 
-      {/* Question cards grid */}
-      {visibleCards.length === 0 ? (
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-28 rounded-lg border border-border bg-fog/5 animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {visibleCards.map((card) => (
-            <button
-              key={card.id}
-              onClick={() => selectCard(card)}
-              className={`text-left rounded-lg border p-3 transition-all hover:border-scarlet/40 ${
-                selectedCardId === card.id
-                  ? "border-scarlet bg-scarlet/5"
-                  : "border-border bg-white"
-              }`}
-            >
-              <p className={`font-sans text-sm font-medium mb-1 line-clamp-2 ${
-                selectedCardId === card.id ? "text-scarlet" : "text-ink"
-              }`}>
-                {card.title}
-              </p>
-              <p className="font-sans text-[11px] text-fog leading-relaxed line-clamp-3">
-                {card.description}
-              </p>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Generate more */}
-      <button
-        onClick={generateMore}
-        disabled={generating}
-        className="font-sans text-xs text-fog border border-dashed border-fog/40 rounded-full px-4 py-1.5 mb-7 disabled:opacity-50 transition-opacity"
-      >
-        {generating ? "Generating…" : `+ Generate more ${selectedDomain.toLowerCase()} questions`}
-      </button>
-
-      <div className="h-px bg-fog/20 my-7" />
-
-      {/* Difficulty */}
-      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">DIFFICULTY</p>
-      <div className="flex gap-3 mb-7">
-        {DIFFICULTIES.map((d) => (
-          <div key={d.key} onClick={() => setDifficulty(d.key)}
-            className={`flex-1 rounded-lg p-3 cursor-pointer border transition-all ${
-              difficulty === d.key ? "border-scarlet bg-scarlet/5" : "border-border bg-white"
-            }`}>
-            <p className={`font-sans text-sm font-medium ${difficulty === d.key ? "text-scarlet" : "text-ink"}`}>{d.name}</p>
-            <p className="font-sans text-[11px] text-fog mt-1">{d.desc}</p>
+          {/* Difficulty */}
+          <div className="flex border border-border rounded-lg overflow-hidden">
+            {DIFFICULTIES.map((d) => (
+              <button
+                key={d.key}
+                onClick={() => setDifficulty(d.key)}
+                className={`font-sans text-xs px-3 py-2 border-r border-border last:border-r-0 transition-colors ${
+                  difficulty === d.key ? "bg-scarlet text-white" : "bg-white text-fog hover:text-ink"
+                }`}
+              >
+                {d.name}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <div className="h-px bg-fog/20 my-7" />
+          {/* Position */}
+          <div className="flex border border-border rounded-lg overflow-hidden">
+            {POSITIONS.map((p) => (
+              <button
+                key={p}
+                onClick={() => setPosition(p.toLowerCase())}
+                className={`font-sans text-xs px-3 py-2 border-r border-border last:border-r-0 transition-colors ${
+                  position === p.toLowerCase() ? "bg-scarlet text-white" : "bg-white text-fog hover:text-ink"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
 
-      {/* Position */}
-      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">YOUR POSITION</p>
-      <div className="flex mb-8">
-        {POSITIONS.map((p, i) => (
-          <button key={p} onClick={() => setPosition(p.toLowerCase().replace(" ", "_"))}
-            className={`font-sans text-sm font-medium px-4 py-2 border border-border -ml-px transition-all
-              ${i === 0 ? "rounded-l-lg" : ""} ${i === POSITIONS.length - 1 ? "rounded-r-lg" : ""}
-              ${position === p.toLowerCase().replace(" ", "_") ? "bg-scarlet border-scarlet text-white z-10 relative" : "bg-white text-ink"}`}>
-            {p}
+          <div className="flex-1" />
+
+          {/* Voice (coming soon) */}
+          <button
+            disabled
+            title="Coming soon"
+            className="font-sans text-xs px-3 py-2 border border-border rounded-lg text-fog opacity-40 cursor-not-allowed flex items-center gap-1.5"
+          >
+            <span>🎙</span>
+            <span>Voice</span>
+            <span className="text-[9px] bg-fog/20 px-1 py-0.5 rounded-full uppercase tracking-wide">Soon</span>
           </button>
-        ))}
+
+          {/* Start chat */}
+          <button
+            onClick={() => doStart(topic, description)}
+            disabled={submitting || !topic}
+            className="font-sans text-sm font-semibold px-5 py-2 bg-scarlet text-white rounded-lg disabled:opacity-50 transition-opacity flex items-center gap-2"
+          >
+            <span>▶</span>
+            <span>{submitting ? "Starting…" : "Start AI Chat"}</span>
+          </button>
+        </div>
+
+        {startError && <p className="font-sans text-xs text-scarlet mt-2">{startError}</p>}
       </div>
 
-      <div className="h-px bg-fog/20 my-7" />
+      {/* ── List header ──────────────────────────────────────── */}
+      <div className="flex-none flex items-center gap-3 px-7 py-3 border-b border-border bg-white">
+        <span className="font-sans text-[11px] font-semibold text-fog uppercase tracking-widest">All Topics</span>
+        <span className="font-sans text-xs font-semibold bg-fog/10 text-fog px-2 py-0.5 rounded-full">{totalCount}</span>
+        <div className="flex-1" />
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search"
+            className="font-sans text-xs border border-border rounded-lg pl-7 pr-3 py-1.5 bg-white outline-none w-44 placeholder:text-fog"
+          />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fog text-xs pointer-events-none">🔍</span>
+        </div>
+      </div>
 
-      {/* Mode */}
-      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">MODE</p>
-      <div className="flex gap-3 mb-8">
+      {/* ── Scrollable list ──────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-7 py-4">
+
+        {/* Favorites group */}
+        {favoriteTopics.length > 0 && (
+          <div className="mb-5">
+            <button
+              onClick={() => setFavoritesOpen(v => !v)}
+              className="flex items-center gap-2 mb-1 w-full text-left group"
+            >
+              <span className="font-sans text-xs font-semibold text-scarlet">Favorites</span>
+              <span className="text-scarlet text-[10px] group-hover:opacity-70 transition-opacity">
+                {favoritesOpen ? "▲" : "▼"}
+              </span>
+            </button>
+            {favoritesOpen && (
+              <div>
+                {favoriteTopics.map(card => (
+                  <TopicRow
+                    key={card.id}
+                    card={card}
+                    selected={selectedCardId === card.id}
+                    favorited
+                    onSelect={() => selectTopic(card)}
+                    onToggleFav={(e) => toggleFavorite(card.id, e)}
+                    onStart={(e) => startWithCard(card, e)}
+                    submitting={submitting}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* All topics group */}
+        <div>
+          <button
+            onClick={() => setAllOpen(v => !v)}
+            className="flex items-center gap-2 mb-1 w-full text-left group"
+          >
+            <span className="font-sans text-xs font-semibold text-fog">
+              {selectedDomain === "ALL" ? "All Topics" : selectedDomain} ({regularTopics.length})
+            </span>
+            <span className="text-fog text-[10px] group-hover:opacity-70 transition-opacity">
+              {allOpen ? "▲" : "▼"}
+            </span>
+          </button>
+
+          {allOpen && (
+            <>
+              {allTopics.length === 0 ? (
+                /* skeleton while loading */
+                <div>
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-14 rounded-lg border border-border bg-fog/5 animate-pulse mb-px" />
+                  ))}
+                </div>
+              ) : regularTopics.length === 0 ? (
+                <p className="font-sans text-xs text-fog py-6 text-center">No topics match your search.</p>
+              ) : (
+                <div>
+                  {regularTopics.map(card => (
+                    <TopicRow
+                      key={card.id}
+                      card={card}
+                      selected={selectedCardId === card.id}
+                      favorited={false}
+                      onSelect={() => selectTopic(card)}
+                      onToggleFav={(e) => toggleFavorite(card.id, e)}
+                      onStart={(e) => startWithCard(card, e)}
+                      submitting={submitting}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={generateMore}
+                disabled={generating}
+                className="mt-4 font-sans text-xs text-fog border border-dashed border-fog/40 rounded-full px-4 py-1.5 disabled:opacity-50 transition-opacity"
+              >
+                {generating ? "Generating…" : `+ Generate more ${generateDomain.toLowerCase()} questions`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopicRow({
+  card,
+  selected,
+  favorited,
+  onSelect,
+  onToggleFav,
+  onStart,
+  submitting,
+}: {
+  card: DebatableQuestion;
+  selected: boolean;
+  favorited: boolean;
+  onSelect: () => void;
+  onToggleFav: (e: React.MouseEvent) => void;
+  onStart: (e: React.MouseEvent) => void;
+  submitting: boolean;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`flex items-center gap-4 px-4 py-3 rounded-lg cursor-pointer border transition-all mb-px ${
+        selected
+          ? "border-scarlet bg-scarlet/5"
+          : "border-transparent hover:border-border hover:bg-fog/5"
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <p className={`font-sans text-sm font-medium truncate ${selected ? "text-scarlet" : "text-ink"}`}>
+          {card.title}
+        </p>
+        <p className="font-sans text-[11px] text-fog truncate mt-0.5">{card.description}</p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-none">
+        <span className="font-sans text-[10px] text-fog border border-fog/20 rounded-full px-2 py-0.5 uppercase tracking-wide">
+          {card.domain}
+        </span>
         <button
-          onClick={() => setMode("chat")}
-          className={`flex-1 rounded-lg p-3 border text-left transition-all ${
-            mode === "chat" ? "border-scarlet bg-scarlet/5" : "border-border bg-white"
+          onClick={onToggleFav}
+          className={`text-base leading-none transition-colors ${
+            favorited ? "text-yellow-400" : "text-fog hover:text-yellow-400"
           }`}
         >
-          <p className={`font-sans text-sm font-medium ${mode === "chat" ? "text-scarlet" : "text-ink"}`}>💬 Chat</p>
-          <p className="font-sans text-[11px] text-fog mt-1">Text-based debate with AI opponent</p>
+          ★
         </button>
         <button
-          disabled
-          className="flex-1 rounded-lg p-3 border border-border bg-white text-left opacity-50 cursor-not-allowed relative"
+          onClick={onStart}
+          disabled={submitting}
+          className="w-7 h-7 rounded-full bg-scarlet text-white flex items-center justify-center text-xs disabled:opacity-50 hover:bg-scarlet/80 transition-colors"
         >
-          <p className="font-sans text-sm font-medium text-ink">🎙 Voice</p>
-          <p className="font-sans text-[11px] text-fog mt-1">Speak your arguments aloud</p>
-          <span className="absolute top-2 right-2 font-sans text-[9px] font-semibold bg-fog/20 text-fog px-1.5 py-0.5 rounded-full uppercase tracking-wide">Soon</span>
+          ▶
         </button>
       </div>
-
-      {startError && <p className="font-sans text-xs text-scarlet mb-3">{startError}</p>}
-
-      <button
-        onClick={start}
-        disabled={submitting || !topic}
-        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60"
-      >
-        {submitting ? "Starting…" : mode === "chat" ? "Start Chat Debate →" : "Start Voice Debate →"}
-      </button>
     </div>
   );
 }
