@@ -1,3 +1,7 @@
+import os
+
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+
 PATTERN_TYPES = [
     "EvidenceBased",
     "AppealToAuthority",

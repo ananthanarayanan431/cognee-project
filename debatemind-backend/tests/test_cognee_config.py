@@ -8,6 +8,7 @@ All cognee.config.set_* calls are mocked; nothing touches a real database.
 
 from unittest.mock import MagicMock
 
+from debatemind.agents.constants import OPENROUTER_API_KEY
 from debatemind.config import Settings
 from debatemind.services import cognee_config
 
@@ -16,7 +17,7 @@ def _settings(**overrides) -> Settings:
     base = dict(
         database_url="sqlite+aiosqlite:///./test.db",
         secret_key="test-secret-key-at-least-32-characters!",
-        openrouter_api_key="or-test-key",
+        openrouter_api_key=OPENROUTER_API_KEY,
         openrouter_base_url="https://openrouter.ai/api/v1",
         cognee_mode="local",
         cognee_db_host="localhost",
@@ -67,7 +68,7 @@ def test_local_mode_configures_postgres_pgvector_kuzu_and_openrouter_llm(monkeyp
             "llm_provider": "custom",
             "llm_model": "openai/gpt-4.1-mini",
             "llm_endpoint": "https://openrouter.ai/api/v1",
-            "llm_api_key": "or-test-key",
+            "llm_api_key": OPENROUTER_API_KEY,
         }
     )
 
@@ -93,7 +94,7 @@ def test_cloud_mode_does_not_touch_local_db_config_but_still_configures_llm(monk
             "llm_provider": "custom",
             "llm_model": "openai/gpt-4.1-mini",
             "llm_endpoint": "https://openrouter.ai/api/v1",
-            "llm_api_key": "or-test-key",
+            "llm_api_key": OPENROUTER_API_KEY,
         }
     )
 
