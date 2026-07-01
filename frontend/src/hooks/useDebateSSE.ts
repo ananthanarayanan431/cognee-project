@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useDebate } from "@/store/debate";
 import { JudgeScore, GraphData } from "@/types";
 import { v4 as uuid } from "uuid";
+import { handleExpiredSession } from "@/lib/api";
 
 export function useSendMessage() {
   const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage } =
@@ -19,6 +20,13 @@ export function useSendMessage() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ text }),
     });
+
+    if (res.status === 401) {
+      setThinking(false);
+      setCurrentStage(null);
+      handleExpiredSession();
+      return;
+    }
 
     if (!res.body) {
       setThinking(false);

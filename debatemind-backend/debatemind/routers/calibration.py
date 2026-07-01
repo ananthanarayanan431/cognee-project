@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,16 +79,21 @@ async def answer(
 
     state = await extract_argument({"topic": topic, "user_message": body.text, "description": ""})
 
-    await remember_argument(
-        user_id=user_id,
-        session_id=f"calibration_{user_id}",
-        topic=topic,
-        claim_text=body.text,
-        pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-        fallacy=state.get("extracted_fallacy"),
-        evidence_quality=state.get("evidence_quality", "Moderate"),
-        outcome="Neutral",
-    )
+    try:
+        await remember_argument(
+            user_id=user_id,
+            session_id=f"calibration_{user_id}",
+            topic=topic,
+            claim_text=body.text,
+            pattern_type=state.get("extracted_pattern", "EvidenceBased"),
+            fallacy=state.get("extracted_fallacy"),
+            evidence_quality=state.get("evidence_quality", "Moderate"),
+            outcome="Neutral",
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "remember_argument failed for user %s — continuing", user_id
+        )
 
     new_idx = calibration_svc.advance(user_id)
     if new_idx >= TOTAL:

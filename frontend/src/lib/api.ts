@@ -1,6 +1,14 @@
 import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript } from "@/types";
+import { useDebate } from "@/store/debate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export function handleExpiredSession() {
+  localStorage.removeItem("dm_token");
+  localStorage.removeItem("dm_uid");
+  localStorage.removeItem("dm_calibration");
+  useDebate.setState({ token: null, userId: null, screen: "auth" });
+}
 
 function authHeader(): Record<string, string> {
   const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
@@ -12,6 +20,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     ...init,
     headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
   });
+  if (res.status === 401) {
+    handleExpiredSession();
+    throw new Error("Session expired. Please log in again.");
+  }
   if (!res.ok) throw new Error(await res.text());
   const body = (await res.json()) as { success: boolean; data: T };
   return body.data;
