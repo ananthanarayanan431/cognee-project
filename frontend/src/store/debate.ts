@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
 
 interface DebateStore {
-  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress";
+  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail";
+  topicDetailTopic: { title: string; description: string } | null;
   token: string | null;
   userId: string | null;
   calibrationDone: boolean;
@@ -27,11 +28,13 @@ interface DebateStore {
   setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
   setSessions: (sessions: SessionListItem[]) => void;
+  setTopicDetail: (topic: { title: string; description: string } | null) => void;
   reset: () => void;
 }
 
 export const useDebate = create<DebateStore>((set) => ({
   screen: "landing",
+  topicDetailTopic: null,
   token: null,
   userId: null,
   calibrationDone: false,
@@ -93,5 +96,6 @@ export const useDebate = create<DebateStore>((set) => ({
   setCurrentStage: (currentStage) => set({ currentStage }),
   setGraph: (graph) => set({ graph }),
   setSessions: (sessions) => set({ sessions }),
+  setTopicDetail: (topicDetailTopic) => set({ topicDetailTopic, screen: "topic-detail" }),
   reset: () => set({ sessionId: null, sessionConfig: null, messages: [], screen: "topic" }),
 }));
