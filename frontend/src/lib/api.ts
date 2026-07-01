@@ -1,6 +1,6 @@
-import { ProgressData, CalibrationStatus, CalibrationAnswerResult } from "@/types";
+import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript } from "@/types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 function authHeader(): Record<string, string> {
   const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
@@ -67,4 +67,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
+  getSessionSummary: (sessionId: string) =>
+    apiFetch<SessionSummary>(`/api/sessions/${sessionId}/summary`),
+  getTranscript: (sessionId: string) =>
+    apiFetch<Transcript>(`/api/sessions/${sessionId}/transcript`),
+  transcriptExportUrl: (sessionId: string) =>
+    `${BASE}/api/sessions/${sessionId}/transcript/export`,
 };

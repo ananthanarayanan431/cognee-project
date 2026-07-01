@@ -66,3 +66,42 @@ export interface CalibrationAnswerResult {
   index: number;
   total: number;
 }
+
+export interface WeaknessChange {
+  pattern: string;
+  before: number;
+  after: number;
+  mastered: boolean;
+  rounds_to_mastery: number | null;
+}
+
+export interface SessionSummary {
+  topic: string;
+  difficulty: string;
+  score: number;
+  exchanges: number;
+  weaknesses_exposed: number;
+  mastered_count: number;
+  rounds_won: number;
+  patterns: WeaknessChange[];
+}
+
+export interface TranscriptExchange {
+  turn_number: number;
+  user_message: string;
+  opponent_response: string;
+  judge_logic: number | null;
+  judge_evidence: number | null;
+  judge_rhetoric: number | null;
+  fallacy: string | null;
+  outcome: string | null;
+  created_at: string;
+}
+
+export interface Transcript {
+  session_id: string;
+  topic: string;
+  difficulty: string;
+  started_at: string;
+  exchanges: TranscriptExchange[];
+}
