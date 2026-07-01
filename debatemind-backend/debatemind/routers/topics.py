@@ -203,7 +203,7 @@ async def generate(body: GenerateTopicsIn):
     try:
         completion = await openrouter.chat.completions.create(
             model=settings.main_model,
-            max_tokens=1500,
+            max_tokens=2500,
             messages=[
                 {"role": "system", "content": _GENERATE_SYSTEM},
                 {"role": "user", "content": user_prompt},

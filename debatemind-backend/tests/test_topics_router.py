@@ -86,8 +86,22 @@ def test_generate_clamps_count_to_10(client):
     with patch("debatemind.routers.topics.openrouter", mock_client):
         res = client.post("/api/topics/generate", json={"domain": "LIFE", "count": 999})
     assert res.status_code == 200
+    # Verify the LLM was called with count clamped to 10, not 999
+    call_args = mock_client.chat.completions.create.call_args
+    user_message = call_args.kwargs["messages"][1]["content"]
+    assert "10" in user_message
+    assert "999" not in user_message
 
 
 def test_generate_rejects_invalid_count(client):
     res = client.post("/api/topics/generate", json={"domain": "POLICY", "count": 0})
     assert res.status_code == 422
+
+
+def test_generate_returns_502_on_llm_error(client):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("LLM down"))
+    with patch("debatemind.routers.topics.openrouter", mock_client):
+        res = client.post("/api/topics/generate", json={"domain": "POLICY", "count": 1})
+    assert res.status_code == 502
+    assert "generation failed" in res.json()["detail"].lower()

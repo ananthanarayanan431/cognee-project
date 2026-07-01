@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -9,5 +11,5 @@ class DebatableQuestion(BaseModel):
 
 
 class GenerateTopicsIn(BaseModel):
-    domain: str
+    domain: Literal["POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"]
     count: int = Field(default=5, ge=1)
