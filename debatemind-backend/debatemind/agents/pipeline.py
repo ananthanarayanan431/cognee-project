@@ -1,3 +1,5 @@
+import logging
+
 from langgraph.graph import END, StateGraph
 
 from debatemind.agents.extractor import extract_argument
@@ -7,18 +9,25 @@ from debatemind.agents.opponent import generate_opponent
 from debatemind.agents.state import DebateState
 from debatemind.services.cognee_svc import forget_pattern, remember_argument
 
+logger = logging.getLogger(__name__)
+
 
 async def _remember_node(state: DebateState) -> DebateState:
-    await remember_argument(
-        user_id=state["user_id"],
-        session_id=state["session_id"],
-        topic=state["topic"],
-        claim_text=state["user_message"],
-        pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-        fallacy=state.get("extracted_fallacy"),
-        evidence_quality=state.get("evidence_quality", "Moderate"),
-        outcome=state.get("outcome", "Neutral"),
-    )
+    try:
+        await remember_argument(
+            user_id=state["user_id"],
+            session_id=state["session_id"],
+            topic=state["topic"],
+            claim_text=state["user_message"],
+            pattern_type=state.get("extracted_pattern", "EvidenceBased"),
+            fallacy=state.get("extracted_fallacy"),
+            evidence_quality=state.get("evidence_quality", "Moderate"),
+            outcome=state.get("outcome", "Neutral"),
+        )
+    except Exception:
+        logger.exception(
+            "remember_argument failed for session %s — continuing", state["session_id"]
+        )
     return state
 
 
