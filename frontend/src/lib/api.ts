@@ -1,7 +1,7 @@
 import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript } from "@/types";
 import { useDebate } from "@/store/debate";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export function handleExpiredSession() {
   localStorage.removeItem("dm_token");

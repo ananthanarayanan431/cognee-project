@@ -139,11 +139,11 @@ class TestOpponentPrompts:
             "weakness A", "targeted", source_text="The report states X causes Y."
         )
         assert "The report states X causes Y." in p
-        assert "Source material" in p
+        assert "source_material" in p
 
     def test_system_prompt_omits_source_block_when_absent(self):
         p = opponent_system_prompt("weakness A", "targeted")
-        assert "Source material" not in p
+        assert "source_material" not in p
 
     def test_user_message_includes_description_when_present(self):
         m = opponent_user_message(

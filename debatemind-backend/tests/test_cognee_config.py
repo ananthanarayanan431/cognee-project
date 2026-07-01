@@ -64,10 +64,10 @@ def test_local_mode_configures_postgres_pgvector_kuzu_and_openrouter_llm(monkeyp
     mocks["graph"].assert_called_once_with({"graph_database_provider": "kuzu"})
     mocks["llm"].assert_called_once_with(
         {
-            "provider": "custom",
-            "model": "openai/gpt-4.1-mini",
-            "endpoint": "https://openrouter.ai/api/v1",
-            "api_key": "or-test-key",
+            "llm_provider": "custom",
+            "llm_model": "openai/gpt-4.1-mini",
+            "llm_endpoint": "https://openrouter.ai/api/v1",
+            "llm_api_key": "or-test-key",
         }
     )
 
@@ -90,10 +90,10 @@ def test_cloud_mode_does_not_touch_local_db_config_but_still_configures_llm(monk
     mocks["graph"].assert_not_called()
     mocks["llm"].assert_called_once_with(
         {
-            "provider": "custom",
-            "model": "openai/gpt-4.1-mini",
-            "endpoint": "https://openrouter.ai/api/v1",
-            "api_key": "or-test-key",
+            "llm_provider": "custom",
+            "llm_model": "openai/gpt-4.1-mini",
+            "llm_endpoint": "https://openrouter.ai/api/v1",
+            "llm_api_key": "or-test-key",
         }
     )
 

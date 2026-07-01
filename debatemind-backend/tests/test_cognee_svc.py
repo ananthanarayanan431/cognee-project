@@ -61,7 +61,7 @@ async def test_improve_fingerprint_recognifies_the_dataset(monkeypatch):
     cognify_mock = AsyncMock()
     monkeypatch.setattr(cognee_svc.cognee, "cognify", cognify_mock)
 
-    await cognee_svc.improve_fingerprint("u1", "s1")
+    await cognee_svc.improve_fingerprint("u1")
 
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
 
