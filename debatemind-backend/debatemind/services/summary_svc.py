@@ -104,7 +104,7 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
         score=overall_score,
         exchanges=len(exchanges),
         weaknesses_exposed=len(weakness_patterns),
-        mastered_count=len(mastered_in_session),
+        mastered_count=sum(1 for p in mastered_in_session if p in patterns_seen),
         rounds_won=won,
         patterns=pattern_changes,
     )

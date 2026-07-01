@@ -6,7 +6,7 @@ from debatemind.database import get_db
 from debatemind.models.user import User
 from debatemind.schemas.auth import LoginIn, RegisterIn, TokenOut
 from debatemind.services.auth import create_access_token, hash_password, verify_password
-from debatemind.types import BadRequestError, EnityConflictError, SuccessResponse, UnauthorizedError
+from debatemind.types import BadRequestError, SuccessResponse, UnauthorizedError
 
 router = APIRouter()
 
@@ -20,7 +20,6 @@ router = APIRouter()
     ),
     responses={
         400: {"model": BadRequestError, "description": "Email already registered"},
-        409: {"model": EnityConflictError, "description": "User already exists"},
     },
 )
 async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)):

@@ -27,6 +27,7 @@ export default function TopicSelection() {
   const [groups, setGroups] = useState<{ label: string; chips: string[] }[]>([]);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,7 +86,16 @@ export default function TopicSelection() {
 
   async function start() {
     setFileError("");
-    const res = await api.startSession(topic, description, difficulty, position);
+    setSubmitting(true);
+    let res;
+    try {
+      res = await api.startSession(topic, description, difficulty, position);
+    } catch {
+      setFileError("Failed to start session — please try again.");
+      setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
     if (sourceFile) {
       setIndexing(true);
       setPendingSessionId(res.session_id);
@@ -187,7 +197,7 @@ export default function TopicSelection() {
         ))}
       </div>
 
-      <button onClick={start} disabled={indexing || !topic}
+      <button onClick={start} disabled={indexing || submitting || !topic}
         className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60 mb-3">
         {indexing ? "Indexing your document…" : "Start session →"}
       </button>

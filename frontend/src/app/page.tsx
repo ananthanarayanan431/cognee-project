@@ -9,6 +9,7 @@ const DebateView = dynamic(() => import("@/components/debate/DebateView"), { ssr
 const SessionEnd = dynamic(() => import("@/components/session/SessionEnd"), { ssr: false });
 const ProgressDashboard = dynamic(() => import("@/components/progress/ProgressDashboard"), { ssr: false });
 const CalibrationSession = dynamic(() => import("@/components/calibration/CalibrationSession"), { ssr: false });
+const SessionTranscript = dynamic(() => import("@/components/session/SessionTranscript"), { ssr: false });
 
 export default function Home() {
   const screen = useDebate((s) => s.screen);
@@ -22,5 +23,6 @@ export default function Home() {
   if (screen === "debate") return <DebateView />;
   if (screen === "end") return <SessionEnd />;
   if (screen === "progress") return <ProgressDashboard />;
+  if (screen === "transcript") return <SessionTranscript />;
   return <TopicSelection />;
 }

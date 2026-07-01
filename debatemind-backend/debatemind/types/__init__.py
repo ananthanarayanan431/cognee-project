@@ -1,6 +1,7 @@
 from .error_codes import (
     BadRequestError,
     EnityConflictError,
+    EntityConflictError,
     Error,
     NotFoundError,
     ServiceUnavailableError,
@@ -12,6 +13,7 @@ from .responses import ErrorResponse, Response, SuccessResponse
 __all__ = [
     "BadRequestError",
     "EnityConflictError",
+    "EntityConflictError",
     "Error",
     "ErrorResponse",
     "NotFoundError",

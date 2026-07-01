@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from debatemind.schemas.health import HealthOut, ReadinessOut
 from debatemind.types import ServiceUnavailableError, SuccessResponse
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -37,5 +40,6 @@ async def ready(db: AsyncSession = Depends(get_db)):
     try:
         await db.execute(text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail=f"Database not ready: {exc}") from exc
+        logger.warning("database_not_ready", exc_info=exc)
+        raise HTTPException(status_code=503, detail="Database not ready") from exc
     return SuccessResponse(data=ReadinessOut(status="ready", database="ok"))

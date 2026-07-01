@@ -11,9 +11,16 @@ C_OK="\033[32m"
 log() { printf "${C_BACKEND}${BOLD}[backend]${RESET} %s\n" "$1"; }
 ok()  { printf "${C_OK}${BOLD}[backend]${RESET} %s\n" "$1"; }
 
-# Create venv only if it doesn't exist yet
+# Sync venv on first run or when dependency inputs have changed
+_needs_sync=0
 if [ ! -f ".venv/bin/uvicorn" ]; then
-  log "Setting up virtual environment (first run only)..."
+  _needs_sync=1
+elif [ "pyproject.toml" -nt ".venv/bin/uvicorn" ] || [ "uv.lock" -nt ".venv/bin/uvicorn" ]; then
+  _needs_sync=1
+fi
+
+if [ "$_needs_sync" = "1" ]; then
+  log "Setting up virtual environment..."
   uv sync
   ok "Environment ready ✓"
 fi

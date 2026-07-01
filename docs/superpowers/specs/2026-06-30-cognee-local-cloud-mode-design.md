@@ -152,8 +152,9 @@ per the in-progress `docker-compose.yml` diff already on this branch).
 
 ### 5. `pyproject.toml`
 
-Change `"cognee==0.1.40"` to `"cognee[postgres,kuzu]==0.1.40"` to install the
-`psycopg2`, `pgvector`, and `kuzu` packages the local-mode adapters import at runtime.
+Change `"cognee==0.1.40"` to `"cognee[kuzu]==0.1.40"` and add an explicit `"pgvector"` dependency
+to install the `pgvector` and `kuzu` packages the local-mode adapters import at runtime
+(the `postgres` extra is not required; pgvector is pulled in separately).
 
 ## Out of scope
 

@@ -23,7 +23,10 @@ TOTAL = len(CALIBRATION_TOPICS)
 
 async def _get_user(db: AsyncSession, user_id: str) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one()
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @router.get(

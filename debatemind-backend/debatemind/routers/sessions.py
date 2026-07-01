@@ -122,12 +122,11 @@ async def upload_source(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
     data = await file.read()
     if len(data) > MAX_SOURCE_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 20MB limit")
+    if data[:4] != b"%PDF":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     object_key = storage_svc.upload_source(session_id, file.filename, data)
 
@@ -142,7 +141,17 @@ async def upload_source(
     )
     await db.commit()
 
-    index_source_task.delay(session_id, object_key)
+    try:
+        index_source_task.delay(session_id, object_key)
+    except Exception:
+        logger.exception("Failed to enqueue indexing task for session %s", session_id)
+        await db.execute(
+            update(DebateSession)
+            .where(DebateSession.id == session_id)
+            .values(source_status="failed")
+        )
+        await db.commit()
+        raise HTTPException(status_code=503, detail="Could not queue indexing job")
 
     return SuccessResponse(data=SourceUploadOut(status="pending", source_filename=file.filename))
 
@@ -289,37 +298,47 @@ async def send_message(
             )
             return
 
-        _session_wins[session_id] = final_state.get("consecutive_wins", 0)
+        try:
+            _session_wins[session_id] = final_state.get("consecutive_wins", 0)
 
-        exchange = Exchange(
-            session_id=session_id,
-            turn_number=turn,
-            user_message=body.text,
-            opponent_response=final_state.get("opponent_response", ""),
-            detected_pattern=final_state.get("extracted_pattern"),
-            fallacy=final_state.get("judge_fallacy") or final_state.get("extracted_fallacy"),
-            judge_logic=final_state.get("judge_logic"),
-            judge_evidence=final_state.get("judge_evidence"),
-            judge_rhetoric=final_state.get("judge_rhetoric"),
-            outcome=final_state.get("outcome"),
-        )
-        db.add(exchange)
-        await db.commit()
-        await record_mastery_events(db, user_id, final_state.get("mastery_events", []))
+            exchange = Exchange(
+                session_id=session_id,
+                turn_number=turn,
+                user_message=body.text,
+                opponent_response=final_state.get("opponent_response", ""),
+                detected_pattern=final_state.get("extracted_pattern"),
+                fallacy=final_state.get("judge_fallacy") or final_state.get("extracted_fallacy"),
+                judge_logic=final_state.get("judge_logic"),
+                judge_evidence=final_state.get("judge_evidence"),
+                judge_rhetoric=final_state.get("judge_rhetoric"),
+                outcome=final_state.get("outcome"),
+            )
+            db.add(exchange)
+            await db.commit()
+            await record_mastery_events(db, user_id, final_state.get("mastery_events", []))
 
-        judge_payload = {
-            "type": "judge",
-            "logic": final_state.get("judge_logic"),
-            "evidence": final_state.get("judge_evidence"),
-            "rhetoric": final_state.get("judge_rhetoric"),
-            "fallacy": final_state.get("judge_fallacy"),
-            "outcome": final_state.get("outcome"),
-            "mastery": final_state.get("mastery_events", []),
-        }
-        yield f"data: {json.dumps(judge_payload)}\n\n"
-        graph = await build_graph(user_id, session.topic)
-        yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
-        yield "data: [DONE]\n\n"
+            judge_payload = {
+                "type": "judge",
+                "logic": final_state.get("judge_logic"),
+                "evidence": final_state.get("judge_evidence"),
+                "rhetoric": final_state.get("judge_rhetoric"),
+                "fallacy": final_state.get("judge_fallacy"),
+                "outcome": final_state.get("outcome"),
+                "mastery": final_state.get("mastery_events", []),
+            }
+            yield f"data: {json.dumps(judge_payload)}\n\n"
+            graph = await build_graph(user_id, session.topic)
+            yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception:
+            logger.exception("session persistence failed for session %s turn %s", session_id, turn)
+            yield (
+                "data: "
+                + json.dumps(
+                    {"type": "error", "detail": "Something went wrong saving the response."}
+                )
+                + "\n\n"
+            )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -350,7 +369,7 @@ async def end_session(
         .values(status="ended", ended_at=datetime.now(timezone.utc))
     )
     await db.commit()
-    asyncio.create_task(improve_fingerprint(user_id, session_id))
+    asyncio.create_task(improve_fingerprint(user_id))
     _session_wins.pop(session_id, None)
     return SuccessResponse(data=EndSessionOut(status="ended"))
 

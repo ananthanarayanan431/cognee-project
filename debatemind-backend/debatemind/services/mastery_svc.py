@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.mastery import MASTERY_THRESHOLD
@@ -33,11 +33,7 @@ async def reactivate_pattern(db: AsyncSession, user_id: str, pattern_type: str) 
     if row is None:
         return False
 
-    await db.execute(
-        update(MasteryLog)
-        .where(MasteryLog.id == row.id)
-        .values(reactivated_at=datetime.now(timezone.utc))
-    )
-    await db.commit()
     await reactivate_pattern_fact(user_id, pattern_type)
+    row.reactivated_at = datetime.now(timezone.utc)
+    await db.commit()
     return True

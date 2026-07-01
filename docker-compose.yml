@@ -37,8 +37,8 @@ services:
     image: minio/minio:latest
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: debatemind
-      MINIO_ROOT_PASSWORD: debatemind123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-debatemind}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-debatemind123}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data

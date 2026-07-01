@@ -35,9 +35,11 @@ same angle reads as weak, not persistent.
 
 Respond in under 120 words, in prose — no headers, no bullet points."""
     if source_text:
+        capped = source_text[:4000] + ("…" if len(source_text) > 4000 else "")
         prompt += (
-            f"\n\nSource material the user provided "
-            f"(cite specifics from this when relevant):\n{source_text}"
+            f"\n\n<source_material>\n"
+            f"Source the user provided (cite specifics when relevant):\n{capped}"
+            f"\n</source_material>"
         )
     return prompt
 

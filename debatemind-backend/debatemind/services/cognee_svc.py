@@ -42,19 +42,28 @@ async def remember_argument(
 
 
 async def recall_weaknesses(user_id: str) -> list[dict]:
-    results = await asyncio.wait_for(
-        cognee.search(
-            query_text=f"top weakness patterns and fallacies for user {user_id}",
-            query_type=SearchType.GRAPH_COMPLETION,
-            datasets=[_dataset(user_id)],
-            top_k=10,
-        ),
-        timeout=SEARCH_TIMEOUT,
-    )
+    try:
+        results = await asyncio.wait_for(
+            cognee.search(
+                query_text=f"top weakness patterns and fallacies for user {user_id}",
+                query_type=SearchType.GRAPH_COMPLETION,
+                datasets=[_dataset(user_id)],
+                top_k=10,
+            ),
+            timeout=SEARCH_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "recall_weaknesses timed out after %.1fs for user %s", SEARCH_TIMEOUT, user_id
+        )
+        return []
+    except Exception:
+        logger.exception("recall_weaknesses failed for user %s", user_id)
+        return []
     return [{"text": r if isinstance(r, str) else getattr(r, "text", str(r))} for r in results]
 
 
-async def improve_fingerprint(user_id: str, session_id: str) -> None:
+async def improve_fingerprint(user_id: str) -> None:
     # cognee 0.1.40 has no separate "improve" step; re-cognifying the dataset
     # incorporates anything added since the last cognify call.
     await asyncio.wait_for(cognee.cognify(datasets=_dataset(user_id)), timeout=COGNIFY_TIMEOUT)
