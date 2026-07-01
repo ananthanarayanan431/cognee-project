@@ -1,4 +1,4 @@
-import { ProgressData } from "@/types";
+import { ProgressData, CalibrationStatus, CalibrationAnswerResult } from "@/types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -61,4 +61,10 @@ export const api = {
     apiFetch<{ source_status: string }>(`/api/sessions/${sessionId}/source-status`),
   getSourceFile: (sessionId: string) =>
     apiFetch<{ url: string }>(`/api/sessions/${sessionId}/source-file`),
+  getCalibrationStatus: () => apiFetch<CalibrationStatus>("/api/calibration/status"),
+  submitCalibrationAnswer: (text: string) =>
+    apiFetch<CalibrationAnswerResult>("/api/calibration/answer", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
 };

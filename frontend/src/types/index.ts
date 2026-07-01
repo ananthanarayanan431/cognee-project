@@ -52,3 +52,17 @@ export interface ProgressData {
   win_rate: number;
   thinking_style: ThinkingStyle;
 }
+
+export interface CalibrationStatus {
+  needed: boolean;
+  topic?: string;
+  index: number;
+  total: number;
+}
+
+export interface CalibrationAnswerResult {
+  done: boolean;
+  next_topic?: string;
+  index: number;
+  total: number;
+}
