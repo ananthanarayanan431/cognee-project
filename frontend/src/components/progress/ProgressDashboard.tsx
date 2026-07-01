@@ -42,7 +42,7 @@ export default function ProgressDashboard() {
     <div className="max-w-3xl mx-auto px-7 py-12">
       <div className="flex items-baseline justify-between mb-6">
         <h1 className="font-display text-3xl text-ink">Your progress</h1>
-        <button onClick={() => setScreen("topic")} className="font-sans text-sm text-fog">← Back</button>
+        <button onClick={() => setScreen("topic")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors flex items-center gap-1.5">← Back</button>
       </div>
       <div className="grid grid-cols-3 gap-4 mb-9">
         {stats.map(({ label, value, sub }) => (

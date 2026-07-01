@@ -98,7 +98,12 @@ export default function TopicSelection() {
   }
 
   function selectTopic(card: DebatableQuestion) {
-    setTopicDetail({ title: card.title, description: card.description });
+    const count = sessionCountByTopic[card.title.toLowerCase()] ?? 0;
+    if (count === 0) {
+      doStart(card.title, card.description);
+    } else {
+      setTopicDetail({ title: card.title, description: card.description });
+    }
   }
 
   async function doStart(t: string, desc: string) {

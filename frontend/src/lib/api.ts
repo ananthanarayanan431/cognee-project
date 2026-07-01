@@ -61,13 +61,22 @@ export const api = {
   endSession: (sessionId: string) =>
     apiFetch<{ status: string }>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
   getTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/suggest"),
+  getSavedTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/saved"),
+  saveQuestion: (q: import("@/types").DebatableQuestion) =>
+    apiFetch<import("@/types").DebatableQuestion>("/api/topics/save", {
+      method: "POST",
+      body: JSON.stringify(q),
+    }),
   generateTopics: (domain: string, count: number) =>
     apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/generate", {
       method: "POST",
       body: JSON.stringify({ domain, count }),
     }),
+  deleteSavedTopic: (questionId: string) =>
+    apiFetch<null>(`/api/topics/saved/${encodeURIComponent(questionId)}`, { method: "DELETE" }),
   getGraph: (sessionId: string) =>
     apiFetch<{ nodes: unknown[]; edges: unknown[] }>(`/api/sessions/${sessionId}/graph`),
+  getTopicSessionCounts: () => apiFetch<Record<string, number>>("/api/users/me/topic-session-counts"),
   getProgress: () => apiFetch<ProgressData>("/api/users/me/progress"),
   uploadSource: async (sessionId: string, file: File) => {
     const form = new FormData();

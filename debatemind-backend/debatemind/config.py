@@ -16,11 +16,9 @@ class Settings(BaseSettings):
     cognee_db_name: str = "cognee"
     cognee_db_username: str = "cognee"
     cognee_db_password: str = "cognee"
-    minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "debatemind"
-    minio_secret_key: str = "debatemind123"
-    minio_bucket: str = "debatemind-sources"
-    minio_secure: bool = False
+    neo4j_url: str = "bolt://localhost:7687"
+    neo4j_username: str = "neo4j"
+    neo4j_password: str = "debatemind"
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:3000"]
     algorithm: str = "HS256"

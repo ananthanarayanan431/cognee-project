@@ -21,7 +21,8 @@ export default function DebateView() {
   const scrollRef    = useRef<HTMLDivElement>(null);
   const hydratedRef  = useRef<string | null>(null);
 
-  // Hydrate chat history and graph when resuming an existing session
+  // Hydrate chat history and graph when resuming an existing session;
+  // inject AI opening messages for fresh sessions.
   useEffect(() => {
     if (!sessionId || hydratedRef.current === sessionId) return;
     hydratedRef.current = sessionId;
@@ -30,8 +31,10 @@ export default function DebateView() {
       api.getTranscript(sessionId),
       api.getGraph(sessionId),
     ]).then(([transcript, graphData]) => {
-      // Only populate if we have nothing yet (guard against a fresh session that already streamed)
-      if (useDebate.getState().messages.length === 0 && transcript.exchanges.length > 0) {
+      const currentMessages = useDebate.getState().messages;
+
+      if (transcript.exchanges.length > 0 && currentMessages.length === 0) {
+        // Resumed session — restore full transcript
         const msgs: Message[] = [];
         for (const ex of transcript.exchanges) {
           msgs.push({ id: `h-${ex.turn_number}-user`, role: "user", text: ex.user_message });
@@ -65,6 +68,21 @@ export default function DebateView() {
             },
           });
         }
+      } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
+        // Fresh session — AI opens the conversation
+        const topic = useDebate.getState().sessionConfig?.topic ?? "";
+        setMessages([
+          {
+            id: "opening-1",
+            role: "opponent",
+            text: "Hi! I'm your AI debate opponent. I'll challenge every argument you make — that's how you get sharper.",
+          },
+          {
+            id: "opening-2",
+            role: "opponent",
+            text: `The motion: **${topic}**\n\nMake your opening argument — what's your position?`,
+          },
+        ]);
       }
 
       setGraph(graphData as unknown as GraphData);
@@ -93,9 +111,9 @@ export default function DebateView() {
       <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
           onClick={() => setScreen("topic")}
-          className="font-display text-[22px] text-ink cursor-pointer leading-none lg:hidden"
+          className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors flex items-center gap-1.5"
         >
-          DebateMind
+          ← Back
         </button>
         <span className="font-sans text-[11px] font-medium text-fog tracking-wide hidden sm:block">
           {sessionConfig?.topic?.slice(0, 30)}{" "}

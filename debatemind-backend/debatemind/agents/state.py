@@ -11,8 +11,6 @@ class DebateState(TypedDict):
     user_message: str
     turn_number: int
     consecutive_wins: int
-    has_source: bool
-    source_context: list[dict]
     extracted_pattern: Optional[str]
     extracted_fallacy: Optional[str]
     evidence_quality: Optional[str]

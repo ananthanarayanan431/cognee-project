@@ -4,9 +4,17 @@ import { IconSend } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { useSendMessage } from "@/hooks/useDebateSSE";
 
+const POSITION_LABEL: Record<string, string> = {
+  for: "Arguing FOR",
+  against: "Arguing AGAINST",
+  neutral: "Neutral",
+  assign_randomly: "Random",
+};
+
 export default function InputArea() {
   const [text, setText] = useState("");
   const thinking = useDebate((s) => s.thinking);
+  const position = useDebate((s) => s.sessionConfig?.position ?? "");
   const send = useSendMessage();
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,6 +40,15 @@ export default function InputArea() {
 
   return (
     <div className="border-t border-border bg-white p-3">
+      {position && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-widest text-fog">Your position</span>
+          <span className="font-sans text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-scarlet/10 text-scarlet border border-scarlet/20">
+            {POSITION_LABEL[position] ?? position}
+          </span>
+          <span className="font-sans text-[10px] text-fog/60">· locked for this session</span>
+        </div>
+      )}
       <div className="flex gap-2 mb-2.5 flex-wrap">
         {hints.map(({ label, prefix }) => (
           <button

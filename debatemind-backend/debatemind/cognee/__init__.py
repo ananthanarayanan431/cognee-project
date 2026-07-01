@@ -13,10 +13,6 @@ from debatemind.cognee.fingerprint import (
     recall_weaknesses,
     remember_argument,
 )
-from debatemind.cognee.source import (
-    index_source_document,
-    recall_source_context,
-)
 
 __all__ = [
     "remember_argument",
@@ -24,6 +20,4 @@ __all__ = [
     "improve_fingerprint",
     "forget_pattern",
     "reactivate_pattern_fact",
-    "index_source_document",
-    "recall_source_context",
 ]

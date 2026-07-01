@@ -1,11 +1,10 @@
 """
-API-level tests for the sessions router's concept/source-upload endpoints.
-storage_svc (MinIO) and Celery tasks are mocked so no real MinIO/Cognee/Redis
-I/O happens; the DB layer is a real in-memory SQLite.
+API-level tests for the sessions router.
+Cognee and the debate pipeline are mocked; the DB layer is a real in-memory SQLite.
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -18,7 +17,6 @@ from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.routers import sessions as sessions_router
 from debatemind.schemas.graph import GraphOut
-from debatemind.services import storage_svc
 
 
 @pytest.fixture
@@ -105,6 +103,10 @@ async def test_send_message_streams_stage_events_then_response(
     monkeypatch.setattr(
         sessions_router, "build_graph", AsyncMock(return_value=GraphOut(nodes=[], edges=[]))
     )
+    # AsyncSessionLocal in the streaming generator bypasses the get_db override,
+    # so point it at the test factory and stub out the mastery DB write.
+    monkeypatch.setattr(sessions_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(sessions_router, "record_mastery_events", AsyncMock())
 
     with api_client.stream(
         "POST", f"/api/sessions/{session_id}/message", json={"text": "AI is risky"}
@@ -162,7 +164,7 @@ async def test_send_message_emits_error_event_and_skips_persistence_on_pipeline_
         assert result.scalar_one_or_none() is None
 
 
-async def test_start_session_persists_description_and_returns_has_source_false(api_client):
+async def test_start_session_persists_description(api_client):
     resp = api_client.post(
         "/api/sessions/start",
         json={
@@ -176,104 +178,3 @@ async def test_start_session_persists_description_and_returns_has_source_false(a
     assert resp.status_code == 200
     body = resp.json()["data"]
     assert body["description"] == "Focus on EU AI Act"
-    assert body["has_source"] is False
-    assert body["source_status"] == "none"
-
-
-async def test_upload_source_rejects_non_pdf(api_client, session_factory):
-    session_id = await _make_session(session_factory)
-
-    resp = api_client.post(
-        f"/api/sessions/{session_id}/source",
-        files={"file": ("notes.txt", b"plain text", "text/plain")},
-    )
-
-    assert resp.status_code == 400
-
-
-async def test_upload_source_rejects_oversized_file(api_client, session_factory, monkeypatch):
-    session_id = await _make_session(session_factory)
-    monkeypatch.setattr(sessions_router, "MAX_SOURCE_BYTES", 10)
-
-    resp = api_client.post(
-        f"/api/sessions/{session_id}/source",
-        files={"file": ("evidence.pdf", b"x" * 100, "application/pdf")},
-    )
-
-    assert resp.status_code == 413
-
-
-async def test_upload_source_enqueues_task_sets_pending_and_returns_202(
-    api_client, session_factory, monkeypatch
-):
-    session_id = await _make_session(session_factory)
-    object_key = f"sources/{session_id}/evidence.pdf"
-
-    upload_mock = MagicMock(return_value=object_key)
-    delay_mock = MagicMock()
-    monkeypatch.setattr(storage_svc, "upload_source", upload_mock)
-    monkeypatch.setattr(sessions_router.index_source_task, "delay", delay_mock)
-
-    resp = api_client.post(
-        f"/api/sessions/{session_id}/source",
-        files={"file": ("evidence.pdf", b"%PDF-1.4 fake", "application/pdf")},
-    )
-
-    assert resp.status_code == 202
-    body = resp.json()["data"]
-    assert body["status"] == "pending"
-    assert body["source_filename"] == "evidence.pdf"
-
-    delay_mock.assert_called_once_with(session_id, object_key)
-
-    async with session_factory() as db:
-        result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-        session = result.scalar_one()
-        assert session.source_status == "pending"
-        assert session.source_filename == "evidence.pdf"
-        assert session.source_object_key == object_key
-
-
-async def test_get_source_status_returns_current_status(api_client, session_factory):
-    session_id = await _make_session(
-        session_factory,
-        source_status="indexed",
-        source_object_key="sources/x/e.pdf",
-        source_filename="e.pdf",
-    )
-
-    resp = api_client.get(f"/api/sessions/{session_id}/source-status")
-
-    assert resp.status_code == 200
-    assert resp.json()["data"] == {"source_status": "indexed"}
-
-
-async def test_get_source_status_defaults_to_none_for_new_session(api_client, session_factory):
-    session_id = await _make_session(session_factory)
-
-    resp = api_client.get(f"/api/sessions/{session_id}/source-status")
-
-    assert resp.status_code == 200
-    assert resp.json()["data"] == {"source_status": "none"}
-
-
-async def test_get_source_file_returns_presigned_url(api_client, session_factory, monkeypatch):
-    session_id = await _make_session(
-        session_factory, source_object_key="sources/x/e.pdf", source_filename="e.pdf"
-    )
-    monkeypatch.setattr(
-        storage_svc, "get_source_url", MagicMock(return_value="https://minio.local/presigned")
-    )
-
-    resp = api_client.get(f"/api/sessions/{session_id}/source-file")
-
-    assert resp.status_code == 200
-    assert resp.json()["data"] == {"url": "https://minio.local/presigned"}
-
-
-async def test_get_source_file_404s_when_no_source(api_client, session_factory):
-    session_id = await _make_session(session_factory)
-
-    resp = api_client.get(f"/api/sessions/{session_id}/source-file")
-
-    assert resp.status_code == 404

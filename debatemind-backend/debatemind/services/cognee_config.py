@@ -21,7 +21,14 @@ def configure_cognee(settings: Settings) -> None:
             }
         )
         cognee.config.set_vector_db_config({"vector_db_provider": "pgvector"})
-        cognee.config.set_graph_db_config({"graph_database_provider": "kuzu"})
+        cognee.config.set_graph_db_config(
+            {
+                "graph_database_provider": "neo4j",
+                "graph_database_url": settings.neo4j_url,
+                "graph_database_username": settings.neo4j_username,
+                "graph_database_password": settings.neo4j_password,
+            }
+        )
     elif settings.cognee_mode != "cloud":
         raise ValueError(
             f"Unknown COGNEE_MODE={settings.cognee_mode!r}. Expected 'local' or 'cloud'."

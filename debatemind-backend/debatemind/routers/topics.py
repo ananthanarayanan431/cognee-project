@@ -1,14 +1,21 @@
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.client import openrouter
 from debatemind.config import settings
+from debatemind.database import get_db
+from debatemind.deps import current_user_id
+from debatemind.models.question import UserQuestion
 from debatemind.schemas.topics import DebatableQuestion, GenerateTopicsIn
 from debatemind.types import SuccessResponse
 
 router = APIRouter()
+
+_MAX_USER_QUESTIONS = 50
 
 QUESTIONS: list[DebatableQuestion] = [
     # POLICY
@@ -175,6 +182,56 @@ async def suggest():
     return SuccessResponse(data=QUESTIONS)
 
 
+@router.get(
+    "/saved",
+    response_model=SuccessResponse[list[DebatableQuestion]],
+    summary="Get user's saved questions",
+)
+async def get_saved(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.execute(
+        select(UserQuestion)
+        .where(UserQuestion.user_id == user_id)
+        .order_by(UserQuestion.created_at.asc())
+    )
+    questions = [
+        DebatableQuestion(
+            id=row.question_id,
+            domain=row.domain,
+            title=row.title,
+            description=row.description,
+        )
+        for row in rows.scalars()
+    ]
+    return SuccessResponse(data=questions)
+
+
+@router.delete(
+    "/saved/{question_id}",
+    response_model=SuccessResponse[None],
+    summary="Delete a saved question",
+)
+async def delete_saved(
+    question_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.execute(
+        select(UserQuestion).where(
+            UserQuestion.user_id == user_id,
+            UserQuestion.question_id == question_id,
+        )
+    )
+    row = rows.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    await db.delete(row)
+    await db.commit()
+    return SuccessResponse(data=None)
+
+
 _logger = logging.getLogger(__name__)
 
 _GENERATE_SYSTEM = (
@@ -190,11 +247,53 @@ _GENERATE_SYSTEM = (
 
 
 @router.post(
+    "/save",
+    response_model=SuccessResponse[DebatableQuestion],
+    summary="Save a question to the user's collection",
+)
+async def save_question(
+    body: DebatableQuestion,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    existing_count_row = await db.execute(
+        select(func.count()).where(UserQuestion.user_id == user_id)
+    )
+    if existing_count_row.scalar_one() >= _MAX_USER_QUESTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have reached the limit of {_MAX_USER_QUESTIONS} saved questions.",
+        )
+    duplicate = await db.execute(
+        select(UserQuestion).where(
+            UserQuestion.user_id == user_id,
+            UserQuestion.question_id == body.id,
+        )
+    )
+    if duplicate.scalar_one_or_none() is not None:
+        return SuccessResponse(data=body)
+    db.add(
+        UserQuestion(
+            user_id=user_id,
+            question_id=body.id,
+            domain=body.domain,
+            title=body.title,
+            description=body.description,
+        )
+    )
+    await db.commit()
+    return SuccessResponse(data=body)
+
+
+@router.post(
     "/generate",
     response_model=SuccessResponse[list[DebatableQuestion]],
     summary="Generate debate questions for a domain",
 )
-async def generate(body: GenerateTopicsIn):
+async def generate(
+    body: GenerateTopicsIn,
+    user_id: str = Depends(current_user_id),
+):
     count = min(body.count, 10)
     user_prompt = (
         f"Generate {count} original, debatable questions for the domain: {body.domain}. "

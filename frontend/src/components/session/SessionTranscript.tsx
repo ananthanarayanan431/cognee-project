@@ -55,7 +55,7 @@ export default function SessionTranscript() {
 
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
-      <button onClick={() => setScreen("end")} className="font-sans text-sm text-fog mb-5">← Back</button>
+      <button onClick={() => setScreen("end")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-5 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
       <h1 className="font-display text-2xl text-ink mb-1">{transcript.topic}</h1>
       <p className="font-sans text-sm text-fog mb-7">
         {transcript.difficulty} · {new Date(transcript.started_at).toLocaleDateString()} · {transcript.exchanges.length} exchanges

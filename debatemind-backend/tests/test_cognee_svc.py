@@ -4,13 +4,9 @@ Unit tests for debatemind.cognee — verifies the service calls the real cognee 
 cognee.* calls are mocked; no real cognee storage/LLM calls happen here.
 """
 
-import asyncio
 from unittest.mock import AsyncMock
 
-import pytest
-
 from debatemind.cognee import fingerprint as fingerprint_mod
-from debatemind.cognee import source as source_mod
 from debatemind.cognee.fingerprint import (
     forget_pattern,
     improve_fingerprint,
@@ -18,7 +14,6 @@ from debatemind.cognee.fingerprint import (
     recall_weaknesses,
     remember_argument,
 )
-from debatemind.cognee.source import index_source_document, recall_source_context
 
 
 async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
@@ -107,70 +102,3 @@ async def test_reactivate_pattern_fact_records_a_reactivated_marker(monkeypatch)
     assert "AdHominem" in text_arg
 
     cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
-
-
-async def test_index_source_document_adds_then_cognifies_the_session_dataset(monkeypatch):
-    add_mock = AsyncMock()
-    cognify_mock = AsyncMock()
-    monkeypatch.setattr(source_mod.cognee, "add", add_mock)
-    monkeypatch.setattr(source_mod.cognee, "cognify", cognify_mock)
-
-    await index_source_document("s1", "/tmp/evidence.pdf")
-
-    add_mock.assert_awaited_once_with("/tmp/evidence.pdf", dataset_name="session_s1_source")
-    cognify_mock.assert_awaited_once_with(datasets="session_s1_source")
-
-
-async def test_recall_source_context_searches_chunks_for_the_session_dataset(monkeypatch):
-    search_mock = AsyncMock(return_value=["Quote from the PDF", "Another quote"])
-    monkeypatch.setattr(source_mod.cognee, "search", search_mock)
-
-    results = await recall_source_context("s1", "is nuclear power safe?")
-
-    search_mock.assert_awaited_once()
-    kwargs = search_mock.call_args.kwargs
-    assert kwargs["query_type"] == source_mod.SearchType.CHUNKS
-    assert kwargs["datasets"] == ["session_s1_source"]
-    assert kwargs["top_k"] == 5
-    assert kwargs["query_text"] == "is nuclear power safe?"
-    assert results == [{"text": "Quote from the PDF"}, {"text": "Another quote"}]
-
-
-async def test_recall_source_context_returns_empty_list_when_dataset_missing(monkeypatch):
-    async def _raise(*args, **kwargs):
-        raise Exception("dataset not found")
-
-    monkeypatch.setattr(source_mod.cognee, "search", _raise)
-
-    results = await recall_source_context("s1", "anything")
-
-    assert results == []
-
-
-async def test_index_source_document_raises_on_timeout(monkeypatch):
-    async def _slow_add(*args, **kwargs):
-        await asyncio.sleep(999)
-
-    monkeypatch.setattr(source_mod.cognee, "add", _slow_add)
-    monkeypatch.setattr(source_mod, "ADD_TIMEOUT", 0.01)
-
-    with pytest.raises(asyncio.TimeoutError):
-        await index_source_document("s1", "/tmp/e.pdf")
-
-
-async def test_recall_source_context_logs_error_and_returns_empty_on_failure(monkeypatch, caplog):
-    import logging
-
-    async def _raise(*args, **kwargs):
-        raise RuntimeError("cognee misconfigured")
-
-    monkeypatch.setattr(source_mod.cognee, "search", _raise)
-
-    with caplog.at_level(logging.ERROR, logger="debatemind.cognee.source"):
-        results = await recall_source_context("s1", "anything")
-
-    assert results == []
-    assert any(
-        "recall_source_context" in r.message.lower() or "cognee" in r.message.lower()
-        for r in caplog.records
-    )

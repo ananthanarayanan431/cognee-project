@@ -33,24 +33,6 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-debatemind}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-debatemind123}
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -62,7 +44,23 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/debatemind
+    volumes:
+      - neo4j_data:/data
+    ports:
+      - "7474:7474"   # browser UI
+      - "7687:7687"   # bolt protocol (what Cognee connects to)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pgdata:
   cognee_pgdata:
-  minio_data:
+  neo4j_data:

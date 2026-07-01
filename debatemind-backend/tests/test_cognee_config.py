@@ -46,7 +46,7 @@ def _patch_cognee_config(monkeypatch):
     return mocks
 
 
-def test_local_mode_configures_postgres_pgvector_kuzu_and_openrouter_llm(monkeypatch):
+def test_local_mode_configures_postgres_pgvector_neo4j_and_openrouter_llm(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 
     cognee_config.configure_cognee(_settings(cognee_mode="local"))
@@ -62,7 +62,14 @@ def test_local_mode_configures_postgres_pgvector_kuzu_and_openrouter_llm(monkeyp
         }
     )
     mocks["vector"].assert_called_once_with({"vector_db_provider": "pgvector"})
-    mocks["graph"].assert_called_once_with({"graph_database_provider": "kuzu"})
+    mocks["graph"].assert_called_once_with(
+        {
+            "graph_database_provider": "neo4j",
+            "graph_database_url": "bolt://localhost:7687",
+            "graph_database_username": "neo4j",
+            "graph_database_password": "debatemind",
+        }
+    )
     mocks["llm"].assert_called_once_with(
         {
             "llm_provider": "custom",

@@ -10,7 +10,6 @@ from debatemind.config import settings
 from debatemind.middleware import RequestIDMiddleware
 from debatemind.routers import auth, calibration, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
-from debatemind.services.storage_svc import ensure_bucket
 
 
 def setup_logging() -> None:
@@ -44,11 +43,6 @@ async def lifespan(_: FastAPI):
 
     configure_cognee(settings)
     await cognee_setup()
-
-    try:
-        ensure_bucket()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("minio_not_reachable", error=str(exc))
 
     yield
 

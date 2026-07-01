@@ -12,7 +12,7 @@ celery worker:
 dev:
 	make -j3 debatemind-backend frontend celery
 
-# Infra: postgres, cognee-db (pgvector+kuzu), minio, redis
+# Infra: postgres, cognee-db (pgvector), redis, neo4j
 infra-build:
 	docker compose -f ../docker-compose.yml build
 

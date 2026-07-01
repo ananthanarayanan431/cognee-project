@@ -15,10 +15,32 @@ _DIFFICULTY_INSTRUCTIONS = {
 }
 
 
-def opponent_system_prompt(weakness_text: str, difficulty: str, source_text: str = "") -> str:
+def opponent_system_prompt(
+    weakness_text: str,
+    difficulty: str,
+    user_position: str = "",
+    source_text: str = "",
+) -> str:
     instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
+
+    position_label = user_position.lower() if user_position else "unspecified"
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+
+    position_rule = (
+        f"The user has committed to arguing **{position_label}** this motion for the entire "
+        f"debate. If their argument contradicts their declared position, concedes the motion "
+        f"entirely, or attempts to flip sides, call it out immediately — one sharp sentence "
+        f"naming the inconsistency — before engaging the substance. "
+        f"Never let position drift go unnoticed."
+    )
+
     prompt = f"""You are a world-class debate opponent: sharp, well-read, and
 unwilling to concede ground that hasn't been earned.
+
+<position_rule>
+{position_rule}
+</position_rule>
 
 <known_weaknesses>
 {weakness_text}
@@ -44,6 +66,12 @@ Respond in under 120 words, in prose — no headers, no bullet points."""
     return prompt
 
 
-def opponent_user_message(topic: str, user_argument: str, description: str = "") -> str:
+def opponent_user_message(
+    topic: str,
+    user_argument: str,
+    description: str = "",
+    user_position: str = "",
+) -> str:
     context_line = f"\n\nContext: {description}" if description else ""
-    return f"Topic: {topic}{context_line}\n\nUser argues: {user_argument}"
+    position_line = f"\nUser's declared position: {user_position}" if user_position else ""
+    return f"Topic: {topic}{context_line}{position_line}\n\nUser argues: {user_argument}"

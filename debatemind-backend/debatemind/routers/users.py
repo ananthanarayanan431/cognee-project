@@ -36,6 +36,25 @@ router = APIRouter()
 
 
 @router.get(
+    "/me/topic-session-counts",
+    response_model=SuccessResponse[dict[str, int]],
+    summary="Get session count per debate topic",
+    description="Returns a mapping of topic title → number of sessions the user has debated it.",
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
+)
+async def topic_session_counts(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.execute(
+        select(DebateSession.topic, sqlfunc.count(DebateSession.id).label("cnt"))
+        .where(DebateSession.user_id == user_id)
+        .group_by(DebateSession.topic)
+    )
+    return SuccessResponse(data={topic: cnt for topic, cnt in rows.all()})
+
+
+@router.get(
     "/me/fingerprint",
     response_model=SuccessResponse[GraphOut],
     summary="Get user learning fingerprint",

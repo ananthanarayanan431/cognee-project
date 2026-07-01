@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
@@ -23,31 +23,23 @@ from debatemind.schemas.session import (
     SessionOut,
     SessionStartIn,
     SessionSummaryOut,
-    SourceStatusOut,
-    SourceUploadOut,
-    SourceUrlOut,
     TranscriptExchange,
     TranscriptOut,
 )
-from debatemind.services import storage_svc
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
 from debatemind.services.transcript_svc import format_transcript_text
 from debatemind.types import (
-    BadRequestError,
     NotFoundError,
     SuccessResponse,
     UnauthorizedError,
 )
-from debatemind.worker.tasks import index_source_task
 
 router = APIRouter()
 
 # In-memory consecutive-wins counter per session (resets on server restart).
 _session_wins: dict[str, int] = {}
-
-MAX_SOURCE_BYTES = 20 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -132,121 +124,7 @@ async def start_session(
             topic=session.topic,
             description=session.description or "",
             difficulty=session.difficulty,
-            has_source=False,
-            source_status="none",
         )
-    )
-
-
-@router.post(
-    "/{session_id}/source",
-    status_code=202,
-    response_model=SuccessResponse[SourceUploadOut],
-    summary="Upload source document",
-    description=(
-        "Upload a PDF as reference material for the debate session. Indexing runs "
-        "asynchronously; poll /source-status to check progress."
-    ),
-    responses={
-        400: {"model": BadRequestError, "description": "Invalid file type"},
-        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
-        404: {"model": NotFoundError, "description": "Session not found"},
-        413: {"model": BadRequestError, "description": "File exceeds 20MB limit"},
-    },
-)
-async def upload_source(
-    session_id: str,
-    file: UploadFile = File(...),
-    user_id: str = Depends(current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-    session = result.scalar_one_or_none()
-    if not session or session.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    data = await file.read()
-    if len(data) > MAX_SOURCE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds 20MB limit")
-    if data[:4] != b"%PDF":
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
-    object_key = storage_svc.upload_source(session_id, file.filename, data)
-
-    await db.execute(
-        update(DebateSession)
-        .where(DebateSession.id == session_id)
-        .values(
-            source_filename=file.filename,
-            source_object_key=object_key,
-            source_status="pending",
-        )
-    )
-    await db.commit()
-
-    try:
-        index_source_task.delay(session_id, object_key)
-    except Exception:
-        logger.exception("Failed to enqueue indexing task for session %s", session_id)
-        await db.execute(
-            update(DebateSession)
-            .where(DebateSession.id == session_id)
-            .values(source_status="failed")
-        )
-        await db.commit()
-        raise HTTPException(status_code=503, detail="Could not queue indexing job")
-
-    return SuccessResponse(data=SourceUploadOut(status="pending", source_filename=file.filename))
-
-
-@router.get(
-    "/{session_id}/source-status",
-    response_model=SuccessResponse[SourceStatusOut],
-    summary="Get source indexing status",
-    description=(
-        "Check the processing status of the uploaded source document. Status "
-        "values: none | pending | indexed | failed."
-    ),
-    responses={
-        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
-        404: {"model": NotFoundError, "description": "Session not found"},
-    },
-)
-async def get_source_status(
-    session_id: str,
-    user_id: str = Depends(current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-    session = result.scalar_one_or_none()
-    if not session or session.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return SuccessResponse(data=SourceStatusOut(source_status=session.source_status))
-
-
-@router.get(
-    "/{session_id}/source-file",
-    response_model=SuccessResponse[SourceUrlOut],
-    summary="Get source file URL",
-    description="Retrieve a pre-signed URL for the uploaded source document.",
-    responses={
-        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
-        404: {"model": NotFoundError, "description": "Session or source file not found"},
-    },
-)
-async def get_source_file(
-    session_id: str,
-    user_id: str = Depends(current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-    session = result.scalar_one_or_none()
-    if not session or session.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if not session.source_object_key:
-        raise HTTPException(status_code=404, detail="No source file for this session")
-    return SuccessResponse(
-        data=SourceUrlOut(url=storage_svc.get_source_url(session.source_object_key))
     )
 
 
@@ -288,8 +166,6 @@ async def send_message(
         user_message=body.text,
         turn_number=turn,
         consecutive_wins=_session_wins.get(session_id, 0),
-        has_source=(session.source_status == "indexed"),
-        source_context=[],
         extracted_pattern=None,
         extracted_fallacy=None,
         evidence_quality=None,

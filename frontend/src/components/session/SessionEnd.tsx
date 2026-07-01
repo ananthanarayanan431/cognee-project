@@ -28,6 +28,7 @@ export default function SessionEnd() {
 
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
+      <button onClick={() => setScreen("topic")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-6 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
       <h1 className="font-display text-3xl text-ink mb-1">Session complete</h1>
       <p className="font-sans text-base text-fog mb-7">{summary.topic} · {summary.difficulty}</p>
 
@@ -67,7 +68,7 @@ export default function SessionEnd() {
           Choose new topic
         </button>
         <button onClick={() => setScreen("transcript")}
-          className="font-sans text-sm text-fog border-none bg-none">
+          className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">
           View full transcript
         </button>
       </div>
