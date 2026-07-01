@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
 from debatemind.cognee import improve_fingerprint
-from debatemind.database import get_db
+from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.schemas.graph import GraphOut
@@ -354,9 +354,12 @@ async def send_message(
                 judge_rhetoric=final_state.get("judge_rhetoric"),
                 outcome=final_state.get("outcome"),
             )
-            db.add(exchange)
-            await record_mastery_events(db, user_id, final_state.get("mastery_events", []))
-            await db.commit()
+            # The FastAPI-injected `db` is already closed by the time the
+            # StreamingResponse generator runs, so we open a fresh session here.
+            async with AsyncSessionLocal() as save_db:
+                save_db.add(exchange)
+                await record_mastery_events(save_db, user_id, final_state.get("mastery_events", []))
+                await save_db.commit()
             _session_wins[session_id] = final_state.get("consecutive_wins", 0)
 
             judge_payload = {

@@ -1,12 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   IconBrain,
+  IconChartBar,
   IconChevronDown,
   IconChevronRight,
   IconDownload,
-  IconFileText,
   IconHistory,
   IconNetwork,
   IconPlayerPlay,
@@ -31,13 +31,11 @@ function formatDate(iso: string) {
 function SessionCard({
   session,
   onResume,
-  onTranscript,
-  onSummary,
+  onMetrics,
 }: {
   session: SessionListItem;
   onResume: () => void;
-  onTranscript: () => void;
-  onSummary: () => void;
+  onMetrics: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const difficultyClass = DIFFICULTY_COLOR[session.difficulty] ?? "bg-white/10 text-white/50";
@@ -66,18 +64,11 @@ function SessionCard({
       {expanded && (
         <div className="border-t border-white/10 px-3 py-2 flex gap-2">
           <button
-            onClick={onSummary}
+            onClick={onMetrics}
             className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-white/5 hover:bg-white/10 transition-colors font-sans text-[10px] text-white/60 hover:text-white/90"
           >
-            <IconChevronDown size={11} />
-            Summary
-          </button>
-          <button
-            onClick={onTranscript}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-white/5 hover:bg-white/10 transition-colors font-sans text-[10px] text-white/60 hover:text-white/90"
-          >
-            <IconFileText size={11} />
-            Transcript
+            <IconChartBar size={11} />
+            Metrics
           </button>
           {session.status === "active" && (
             <button
@@ -368,12 +359,7 @@ export default function SessionSidebar() {
     });
   }
 
-  function handleTranscript(session: SessionListItem) {
-    useDebate.setState({ sessionId: session.session_id });
-    setScreen("transcript");
-  }
-
-  function handleSummary(session: SessionListItem) {
+  function handleMetrics(session: SessionListItem) {
     useDebate.setState({ sessionId: session.session_id });
     setScreen("end");
   }
@@ -407,8 +393,7 @@ export default function SessionSidebar() {
             key={s.session_id}
             session={s}
             onResume={() => handleResume(s)}
-            onTranscript={() => handleTranscript(s)}
-            onSummary={() => handleSummary(s)}
+            onMetrics={() => handleMetrics(s)}
           />
         ))}
       </div>
