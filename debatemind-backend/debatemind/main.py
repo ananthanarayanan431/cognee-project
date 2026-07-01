@@ -40,7 +40,10 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    import cognee
+
     configure_cognee(settings)
+    await cognee.setup()
 
     try:
         ensure_bucket()

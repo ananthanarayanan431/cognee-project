@@ -23,9 +23,12 @@ def _make_db_factory():
 
 @worker_init.connect
 def _configure_cognee(**kwargs):
+    import cognee
+
     from debatemind.services.cognee_config import configure_cognee
 
     configure_cognee(settings)
+    asyncio.run(cognee.setup())
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
