@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
+import SessionScoreBar from "./SessionScoreBar";
 
 const STAGE_LABELS: Record<string, string> = {
   extract: "Reading your argument…",
@@ -14,7 +15,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export default function DebateView() {
-  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, setScreen } = useDebate();
+  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen } = useDebate();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,6 +100,7 @@ export default function DebateView() {
             </span>
           </div>
           <FingerprintGraph data={graph} />
+          <SessionScoreBar scores={sessionScores} />
           <div className="flex gap-3.5 px-5 pb-4 font-sans text-[10px] text-[#888]">
             {[
               { color: "#C0392B", label: "Weakness" },
