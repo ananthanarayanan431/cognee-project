@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 import type { DebatableQuestion } from "@/types";
@@ -15,23 +15,18 @@ const DIFFICULTIES = [
 
 const POSITIONS = ["For", "Against", "Neutral", "Assign randomly"] as const;
 
-const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
-
 export default function TopicSelection() {
   const [topic, setTopic] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCardId, setSelectedCardId] = useState("");
   const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
   const [position, setPosition] = useState("against");
+  const [mode, setMode] = useState<"chat" | "voice">("chat");
   const [selectedDomain, setSelectedDomain] = useState<Domain>("POLICY");
   const [cardsByDomain, setCardsByDomain] = useState<Record<string, DebatableQuestion[]>>({});
   const [generating, setGenerating] = useState(false);
-  const [sourceFile, setSourceFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState("");
+  const [startError, setStartError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [indexing, setIndexing] = useState(false);
-  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { setSession, setSessions } = useDebate();
 
   useEffect(() => {
@@ -44,8 +39,6 @@ export default function TopicSelection() {
       setCardsByDomain(grouped);
     }).catch(() => {});
   }, []);
-
-  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
   function selectCard(card: DebatableQuestion) {
     setTopic(card.title);
@@ -68,77 +61,20 @@ export default function TopicSelection() {
     }
   }
 
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    setFileError("");
-    if (file && file.type !== "application/pdf") {
-      setFileError("Only PDF files are supported.");
-      setSourceFile(null);
-      return;
-    }
-    if (file && file.size > MAX_SOURCE_BYTES) {
-      setFileError("File exceeds 20MB limit.");
-      setSourceFile(null);
-      return;
-    }
-    setSourceFile(file);
-  }
-
-  function navigateToSession(sessionId: string) {
-    if (pollRef.current) clearTimeout(pollRef.current);
-    setIndexing(false);
-    setPendingSessionId(null);
-    setSession(sessionId, { topic, description, difficulty, position: position as never });
-  }
-
-  function startPolling(sessionId: string) {
-    const poll = async () => {
-      try {
-        const { source_status } = await api.getSourceStatus(sessionId);
-        if (source_status === "indexed") { navigateToSession(sessionId); return; }
-        if (source_status === "failed") {
-          setFileError("Indexing failed — opponent will start without source context.");
-          navigateToSession(sessionId);
-          return;
-        }
-        pollRef.current = setTimeout(poll, 2000);
-      } catch {
-        navigateToSession(sessionId);
-      }
-    };
-    pollRef.current = setTimeout(poll, 2000);
-  }
-
   async function start() {
-    setFileError("");
+    setStartError("");
     setSubmitting(true);
     let res;
     try {
       res = await api.startSession(topic, description, difficulty, position);
     } catch {
-      setFileError("Failed to start session — please try again.");
+      setStartError("Failed to start session — please try again.");
       setSubmitting(false);
       return;
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    if (sourceFile) {
-      setIndexing(true);
-      setPendingSessionId(res.session_id);
-      try {
-        await api.uploadSource(res.session_id, sourceFile);
-        startPolling(res.session_id);
-      } catch {
-        setFileError("Upload failed — starting without source grounding.");
-        navigateToSession(res.session_id);
-      }
-    } else {
-      navigateToSession(res.session_id);
-    }
-  }
-
-  function startAnyway() {
-    if (pendingSessionId) navigateToSession(pendingSessionId);
+    setSession(res.session_id, { topic, description, difficulty, position: position as never });
   }
 
   const visibleCards = cardsByDomain[selectedDomain] ?? [];
@@ -225,24 +161,6 @@ export default function TopicSelection() {
 
       <div className="h-px bg-fog/20 my-7" />
 
-      {/* Source material */}
-      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">SOURCE MATERIAL (OPTIONAL)</p>
-      <div className="flex items-center gap-3 mb-2">
-        <label className="font-sans text-xs px-3 py-1.5 rounded-full border border-fog/40 bg-white text-ink cursor-pointer">
-          Upload PDF
-          <input type="file" accept="application/pdf" onChange={onFileChange} className="hidden" />
-        </label>
-        {sourceFile && (
-          <span className="font-sans text-xs text-ink flex items-center gap-2">
-            {sourceFile.name}
-            <button onClick={() => setSourceFile(null)} className="text-fog">✕</button>
-          </span>
-        )}
-      </div>
-      {fileError && <p className="font-sans text-xs text-scarlet mb-5">{fileError}</p>}
-
-      <div className="h-px bg-fog/20 my-7" />
-
       {/* Difficulty */}
       <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">DIFFICULTY</p>
       <div className="flex gap-3 mb-7">
@@ -272,17 +190,39 @@ export default function TopicSelection() {
         ))}
       </div>
 
-      <button onClick={start} disabled={indexing || submitting || !topic}
-        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60 mb-3">
-        {indexing ? "Indexing your document…" : "Start session →"}
-      </button>
+      <div className="h-px bg-fog/20 my-7" />
 
-      {indexing && (
-        <button onClick={startAnyway}
-          className="w-full border border-fog/40 text-fog font-sans text-sm py-3 rounded-lg">
-          Start debate anyway →
+      {/* Mode */}
+      <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-3">MODE</p>
+      <div className="flex gap-3 mb-8">
+        <button
+          onClick={() => setMode("chat")}
+          className={`flex-1 rounded-lg p-3 border text-left transition-all ${
+            mode === "chat" ? "border-scarlet bg-scarlet/5" : "border-border bg-white"
+          }`}
+        >
+          <p className={`font-sans text-sm font-medium ${mode === "chat" ? "text-scarlet" : "text-ink"}`}>💬 Chat</p>
+          <p className="font-sans text-[11px] text-fog mt-1">Text-based debate with AI opponent</p>
         </button>
-      )}
+        <button
+          disabled
+          className="flex-1 rounded-lg p-3 border border-border bg-white text-left opacity-50 cursor-not-allowed relative"
+        >
+          <p className="font-sans text-sm font-medium text-ink">🎙 Voice</p>
+          <p className="font-sans text-[11px] text-fog mt-1">Speak your arguments aloud</p>
+          <span className="absolute top-2 right-2 font-sans text-[9px] font-semibold bg-fog/20 text-fog px-1.5 py-0.5 rounded-full uppercase tracking-wide">Soon</span>
+        </button>
+      </div>
+
+      {startError && <p className="font-sans text-xs text-scarlet mb-3">{startError}</p>}
+
+      <button
+        onClick={start}
+        disabled={submitting || !topic}
+        className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60"
+      >
+        {submitting ? "Starting…" : mode === "chat" ? "Start Chat Debate →" : "Start Voice Debate →"}
+      </button>
     </div>
   );
 }
