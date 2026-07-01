@@ -31,3 +31,9 @@ PATTERN_TYPE_DESCRIPTIONS: dict[str, str] = {
     "AnecdotalEvidence": ("Generalizes from a single personal story or isolated case."),
     "Concession": ("Partially or fully accepts the opposing point rather than " "contesting it."),
 }
+
+CALIBRATION_TOPICS = [
+    "Social media algorithms should be regulated by law.",
+    "Standardized testing should be abolished in schools.",
+    "Remote work should be the default for knowledge jobs.",
+]

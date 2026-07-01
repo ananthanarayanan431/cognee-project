@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from debatemind.config import settings
 from debatemind.middleware import RequestIDMiddleware
-from debatemind.routers import auth, health, sessions, topics, users
+from debatemind.routers import auth, calibration, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
 from debatemind.services.storage_svc import ensure_bucket
 
@@ -66,3 +66,4 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
+app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])
