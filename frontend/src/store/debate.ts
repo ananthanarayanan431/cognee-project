@@ -2,9 +2,10 @@ import { create } from "zustand";
 import { Message, GraphData, SessionConfig } from "@/types";
 
 interface DebateStore {
-  screen: "auth" | "topic" | "debate" | "end" | "progress";
+  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress";
   token: string | null;
   userId: string | null;
+  calibrationDone: boolean;
   sessionId: string | null;
   sessionConfig: SessionConfig | null;
   messages: Message[];
@@ -14,7 +15,7 @@ interface DebateStore {
   sessionScores: { logic: number; evidence: number; rhetoric: number };
 
   setScreen: (s: DebateStore["screen"]) => void;
-  setAuth: (token: string, userId: string) => void;
+  setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
   setSession: (id: string, config: SessionConfig) => void;
   addMessage: (m: Message) => void;
   updateLastOpponent: (text: string) => void;
@@ -26,9 +27,10 @@ interface DebateStore {
 }
 
 export const useDebate = create<DebateStore>((set) => ({
-  screen: "auth",
+  screen: "landing",
   token: typeof window !== "undefined" ? localStorage.getItem("dm_token") : null,
   userId: typeof window !== "undefined" ? localStorage.getItem("dm_uid") : null,
+  calibrationDone: typeof window !== "undefined" ? localStorage.getItem("dm_calibration") === "1" : false,
   sessionId: null,
   sessionConfig: null,
   messages: [],
@@ -38,10 +40,16 @@ export const useDebate = create<DebateStore>((set) => ({
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
 
   setScreen: (screen) => set({ screen }),
-  setAuth: (token, userId) => {
+  setAuth: (token, userId, calibrationDone) => {
     localStorage.setItem("dm_token", token);
     localStorage.setItem("dm_uid", userId);
-    set({ token, userId, screen: "topic" });
+    localStorage.setItem("dm_calibration", calibrationDone ? "1" : "0");
+    set({
+      token,
+      userId,
+      calibrationDone,
+      screen: calibrationDone ? "topic" : "calibration",
+    });
   },
   setSession: (sessionId, sessionConfig) =>
     set({ sessionId, sessionConfig, messages: [], screen: "debate" }),

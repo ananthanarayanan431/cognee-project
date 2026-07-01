@@ -19,12 +19,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 export const api = {
   register: (email: string, password: string) =>
-    apiFetch<{ access_token: string; user_id: string }>("/api/auth/register", {
+    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   login: (email: string, password: string) =>
-    apiFetch<{ access_token: string; user_id: string }>("/api/auth/login", {
+    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
