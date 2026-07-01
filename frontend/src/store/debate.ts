@@ -20,6 +20,7 @@ interface DebateStore {
   setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
   setSession: (id: string, config: SessionConfig) => void;
   addMessage: (m: Message) => void;
+  setMessages: (msgs: Message[]) => void;
   updateLastOpponent: (text: string) => void;
   revealJudge: (judge: Message["judge"], mastery?: string[]) => void;
   setThinking: (v: boolean) => void;
@@ -68,6 +69,7 @@ export const useDebate = create<DebateStore>((set) => ({
   setSession: (sessionId, sessionConfig) =>
     set({ sessionId, sessionConfig, messages: [], screen: "debate" }),
   addMessage: (m) => set((s) => ({ messages: [...s.messages, m] })),
+  setMessages: (msgs) => set({ messages: msgs }),
   updateLastOpponent: (text) =>
     set((s) => {
       const msgs = [...s.messages];

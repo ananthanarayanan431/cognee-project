@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@tabler/icons-react": "^3.44.0",
+    "@tailwindcss/typography": "^0.5.20",
     "d3": "^7.9.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
+    "react-markdown": "^10.1.0",
     "uuid": "^14.0.1",
     "zustand": "^5.0.14"
   },

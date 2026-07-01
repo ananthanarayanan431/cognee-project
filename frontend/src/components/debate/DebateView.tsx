@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { IconChartLine, IconHistory } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
+import { GraphData, Message } from "@/types";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
@@ -16,8 +17,59 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export default function DebateView() {
-  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen } = useDebate();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph } = useDebate();
+  const scrollRef    = useRef<HTMLDivElement>(null);
+  const hydratedRef  = useRef<string | null>(null);
+
+  // Hydrate chat history and graph when resuming an existing session
+  useEffect(() => {
+    if (!sessionId || hydratedRef.current === sessionId) return;
+    hydratedRef.current = sessionId;
+
+    Promise.all([
+      api.getTranscript(sessionId),
+      api.getGraph(sessionId),
+    ]).then(([transcript, graphData]) => {
+      // Only populate if we have nothing yet (guard against a fresh session that already streamed)
+      if (useDebate.getState().messages.length === 0 && transcript.exchanges.length > 0) {
+        const msgs: Message[] = [];
+        for (const ex of transcript.exchanges) {
+          msgs.push({ id: `h-${ex.turn_number}-user`, role: "user", text: ex.user_message });
+          if (ex.opponent_response) {
+            const hasScores = ex.judge_logic != null;
+            msgs.push({
+              id: `h-${ex.turn_number}-opp`,
+              role: "opponent",
+              text: ex.opponent_response,
+              judge: hasScores ? {
+                logic:    ex.judge_logic    ?? 0,
+                evidence: ex.judge_evidence ?? 0,
+                rhetoric: ex.judge_rhetoric ?? 0,
+                fallacy:  ex.fallacy,
+                outcome:  ex.outcome ?? "",
+              } : undefined,
+              showJudge: hasScores,
+            });
+          }
+        }
+        setMessages(msgs);
+
+        // Restore session scores from last scored exchange
+        const last = [...transcript.exchanges].reverse().find((e) => e.judge_logic != null);
+        if (last) {
+          useDebate.setState({
+            sessionScores: {
+              logic:    last.judge_logic    ?? 0,
+              evidence: last.judge_evidence ?? 0,
+              rhetoric: last.judge_rhetoric ?? 0,
+            },
+          });
+        }
+      }
+
+      setGraph(graphData as unknown as GraphData);
+    }).catch(() => {});
+  }, [sessionId, setMessages, setGraph]);
 
   useEffect(() => {
     if (scrollRef.current) {

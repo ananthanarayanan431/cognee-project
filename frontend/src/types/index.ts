@@ -18,7 +18,7 @@ export interface JudgeScore {
 export interface GraphNode {
   id: string;
   label: string;
-  type: "weakness" | "strength" | "mastered" | "topic";
+  type: "weakness" | "strength" | "mastered" | "topic" | "root";
   weight: number;
 }
 

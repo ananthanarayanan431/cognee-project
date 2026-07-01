@@ -1,6 +1,10 @@
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import func as sqlfunc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.client import openrouter
@@ -8,7 +12,9 @@ from debatemind.cognee import recall_weaknesses
 from debatemind.config import settings
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
-from debatemind.schemas.graph import GraphOut
+from debatemind.models.mastery import MasteryLog
+from debatemind.models.session import DebateSession, Exchange
+from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
 from debatemind.schemas.progress import ProgressOut
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import reactivate_pattern
@@ -43,6 +49,84 @@ router = APIRouter()
 )
 async def get_fingerprint(user_id: str = Depends(current_user_id)):
     return SuccessResponse(data=await build_graph(user_id, "All topics"))
+
+
+@router.get(
+    "/me/brain",
+    response_model=SuccessResponse[GraphOut],
+    summary="Get hierarchical brain graph",
+    description=(
+        "Retrieve a per-topic hierarchical knowledge graph: "
+        "root → topics → argument patterns, for the brain map visualisation."
+    ),
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
+)
+async def get_brain_graph(
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    topics_result = await db.execute(
+        select(DebateSession.topic).where(DebateSession.user_id == user_id).distinct()
+    )
+    topics = topics_result.scalars().all()
+
+    # Mastered patterns for this user (current status only)
+    mastered_result = await db.execute(
+        select(MasteryLog.pattern_type).where(
+            MasteryLog.user_id == user_id, MasteryLog.status == "MASTERED"
+        )
+    )
+    mastered_patterns: set[str] = {r for r in mastered_result.scalars().all()}
+
+    nodes: list[GraphNode] = [GraphNode(id="brain", label="Brain", type="root", weight=1.0)]
+    edges: list[GraphEdge] = []
+
+    for topic in topics:
+        topic_id = "t_" + hashlib.md5(topic.encode()).hexdigest()[:8]
+        nodes.append(GraphNode(id=topic_id, label=topic, type="topic", weight=0.9))
+        edges.append(GraphEdge(source="brain", target=topic_id, weight=0.8))
+
+        pattern_result = await db.execute(
+            select(
+                Exchange.detected_pattern,
+                sqlfunc.count(Exchange.id).label("cnt"),
+                sqlfunc.avg(Exchange.judge_logic).label("avg_logic"),
+                sqlfunc.avg(Exchange.judge_evidence).label("avg_evidence"),
+                sqlfunc.avg(Exchange.judge_rhetoric).label("avg_rhetoric"),
+            )
+            .join(DebateSession, Exchange.session_id == DebateSession.id)
+            .where(
+                DebateSession.user_id == user_id,
+                DebateSession.topic == topic,
+                Exchange.detected_pattern.isnot(None),
+            )
+            .group_by(Exchange.detected_pattern)
+            .order_by(sqlfunc.count(Exchange.id).desc())
+            .limit(6)
+        )
+
+        for row in pattern_result.all():
+            pattern = row.detected_pattern
+            if not pattern:
+                continue
+            cnt = row.cnt or 0
+            avg_score = (
+                (row.avg_logic or 0) + (row.avg_evidence or 0) + (row.avg_rhetoric or 0)
+            ) / 3
+            weight = round(min(0.9, 0.3 + cnt * 0.1), 2)
+
+            if pattern in mastered_patterns:
+                node_type = "mastered"
+            elif avg_score >= 5.0:
+                node_type = "strength"
+            else:
+                node_type = "weakness"
+
+            pattern_id = f"{topic_id}_{pattern}"
+            nodes.append(GraphNode(id=pattern_id, label=pattern, type=node_type, weight=weight))
+            edges.append(GraphEdge(source=topic_id, target=pattern_id, weight=weight))
+
+    return SuccessResponse(data=GraphOut(nodes=nodes, edges=edges))
 
 
 @router.get(
