@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,12 +24,15 @@ from debatemind.schemas.session import (
     SourceStatusOut,
     SourceUploadOut,
     SourceUrlOut,
+    TranscriptExchange,
+    TranscriptOut,
 )
 from debatemind.services import storage_svc
 from debatemind.services.cognee_svc import improve_fingerprint
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
+from debatemind.services.transcript_svc import format_transcript_text
 from debatemind.types import (
     BadRequestError,
     NotFoundError,
@@ -398,3 +401,77 @@ async def get_summary(
     if summary is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return SuccessResponse(data=summary)
+
+
+async def _build_transcript(session_id: str, user_id: str, db: AsyncSession) -> TranscriptOut:
+    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    ex_result = await db.execute(
+        select(Exchange).where(Exchange.session_id == session_id).order_by(Exchange.turn_number)
+    )
+    exchanges = ex_result.scalars().all()
+    return TranscriptOut(
+        session_id=session.id,
+        topic=session.topic,
+        difficulty=session.difficulty,
+        started_at=session.started_at,
+        exchanges=[
+            TranscriptExchange(
+                turn_number=e.turn_number,
+                user_message=e.user_message,
+                opponent_response=e.opponent_response or "",
+                judge_logic=e.judge_logic,
+                judge_evidence=e.judge_evidence,
+                judge_rhetoric=e.judge_rhetoric,
+                fallacy=e.fallacy,
+                outcome=e.outcome,
+                created_at=e.created_at,
+            )
+            for e in exchanges
+        ],
+    )
+
+
+@router.get(
+    "/{session_id}/transcript",
+    response_model=SuccessResponse[TranscriptOut],
+    summary="Get session transcript",
+    description=(
+        "Retrieve the full ordered exchange history for a session, " "with judge scores inline."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def get_transcript(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    return SuccessResponse(data=await _build_transcript(session_id, user_id, db))
+
+
+@router.get(
+    "/{session_id}/transcript/export",
+    summary="Export session transcript",
+    description="Download the session transcript as a plain-text file.",
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def export_transcript(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    transcript = await _build_transcript(session_id, user_id, db)
+    text = format_transcript_text(transcript)
+    return PlainTextResponse(
+        text,
+        headers={"Content-Disposition": f'attachment; filename="transcript_{session_id}.txt"'},
+    )

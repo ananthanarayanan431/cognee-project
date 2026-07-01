@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -65,3 +66,23 @@ class SessionSummaryOut(BaseModel):
     mastered_count: int
     rounds_won: int
     patterns: list[WeaknessChange]
+
+
+class TranscriptExchange(BaseModel):
+    turn_number: int
+    user_message: str
+    opponent_response: str
+    judge_logic: Optional[float] = None
+    judge_evidence: Optional[float] = None
+    judge_rhetoric: Optional[float] = None
+    fallacy: Optional[str] = None
+    outcome: Optional[str] = None
+    created_at: datetime
+
+
+class TranscriptOut(BaseModel):
+    session_id: str
+    topic: str
+    difficulty: str
+    started_at: datetime
+    exchanges: list[TranscriptExchange]
