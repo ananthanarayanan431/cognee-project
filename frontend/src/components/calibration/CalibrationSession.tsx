@@ -11,8 +11,10 @@ export default function CalibrationSession() {
   const [index, setIndex] = useState(1);
   const [total, setTotal] = useState(3);
   const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [seconds, setSeconds] = useState(DURATION);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     api.getCalibrationStatus().then((s) => {
@@ -24,6 +26,9 @@ export default function CalibrationSession() {
       setIndex(s.index);
       setTotal(s.total);
       setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+      setError(true);
     });
   }, [setScreen]);
 
@@ -35,19 +40,27 @@ export default function CalibrationSession() {
   }, [topic, loading]);
 
   async function submit() {
-    if (!text.trim()) return;
-    const res = await api.submitCalibrationAnswer(text);
-    setText("");
-    if (res.done) {
-      setScreen("topic");
-      return;
+    if (!text.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await api.submitCalibrationAnswer(text);
+      setText("");
+      if (res.done) {
+        setScreen("topic");
+        return;
+      }
+      setTopic(res.next_topic ?? "");
+      setIndex(res.index);
+      setTotal(res.total);
+    } catch {
+      // leave text intact so the user can retry
+    } finally {
+      setSubmitting(false);
     }
-    setTopic(res.next_topic ?? "");
-    setIndex(res.index);
-    setTotal(res.total);
   }
 
   if (loading) return null;
+  if (error) return <div className="max-w-2xl mx-auto px-7 py-12 font-sans text-fog">Failed to load calibration. Please refresh.</div>;
 
   const mins = String(Math.floor(seconds / 60)).padStart(1, "0");
   const secs = String(seconds % 60).padStart(2, "0");
@@ -97,7 +110,7 @@ export default function CalibrationSession() {
 
       <button
         onClick={submit}
-        disabled={!text.trim()}
+        disabled={!text.trim() || submitting}
         className="w-full bg-scarlet text-white font-sans font-semibold uppercase tracking-wider text-sm py-4 rounded-lg disabled:opacity-60"
       >
         Continue →

@@ -1,24 +1,40 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useDebate } from "@/store/debate";
-import { api } from "@/lib/api";
+import { api, handleExpiredSession } from "@/lib/api";
 import { Transcript } from "@/types";
 
 export default function SessionTranscript() {
   const { sessionId, setScreen } = useDebate();
   const token = useDebate((s) => s.token);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
 
   useEffect(() => {
-    if (sessionId) api.getTranscript(sessionId).then(setTranscript).catch(() => setTranscript(null));
+    if (sessionId) {
+      api.getTranscript(sessionId)
+        .then((t) => { setTranscript(t); setFetchError(false); setLoading(false); })
+        .catch(() => { setFetchError(true); setLoading(false); });
+    }
   }, [sessionId]);
 
   async function exportTranscript() {
     if (!sessionId) return;
+    setExportError(null);
     const res = await fetch(api.transcriptExportUrl(sessionId), {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (res.status === 401) {
+      handleExpiredSession();
+      return;
+    }
+    if (!res.ok) {
+      setExportError("Export failed. Please try again.");
+      return;
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -28,8 +44,11 @@ export default function SessionTranscript() {
     URL.revokeObjectURL(url);
   }
 
-  if (!transcript) {
+  if (loading) {
     return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Loading transcript…</div>;
+  }
+  if (fetchError || !transcript) {
+    return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Failed to load transcript.</div>;
   }
 
   const ex = transcript.exchanges[cursor];
@@ -73,9 +92,12 @@ export default function SessionTranscript() {
         >
           ← Previous exchange
         </button>
-        <button onClick={exportTranscript} className="font-sans text-sm text-fog">
-          Export transcript ↓
-        </button>
+        <div className="flex flex-col items-center gap-1">
+          <button onClick={exportTranscript} className="font-sans text-sm text-fog">
+            Export transcript ↓
+          </button>
+          {exportError && <span className="font-sans text-[11px] text-scarlet">{exportError}</span>}
+        </div>
         <button
           onClick={() => setCursor((c) => Math.min(transcript.exchanges.length - 1, c + 1))}
           disabled={cursor >= transcript.exchanges.length - 1}

@@ -14,6 +14,7 @@ const STYLE_LABELS: { key: keyof ProgressData["thinking_style"]; label: string }
 export default function ProgressDashboard() {
   const setScreen = useDebate((s) => s.setScreen);
   const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [reactivateError, setReactivateError] = useState<string | null>(null);
 
   function reload() {
     api.getProgress().then(setProgress).catch(() => setProgress(null));
@@ -22,8 +23,13 @@ export default function ProgressDashboard() {
   useEffect(reload, []);
 
   async function reactivate(pattern: string) {
-    await api.reactivateMastery(pattern);
-    reload();
+    setReactivateError(null);
+    try {
+      await api.reactivateMastery(pattern);
+      reload();
+    } catch {
+      setReactivateError(`Failed to reactivate ${pattern}. Please try again.`);
+    }
   }
 
   const stats = [
@@ -131,6 +137,10 @@ export default function ProgressDashboard() {
             </div>
           ))}
         </div>
+      )}
+
+      {reactivateError && (
+        <p className="font-sans text-sm text-scarlet mb-4">{reactivateError}</p>
       )}
 
       {!progress && (

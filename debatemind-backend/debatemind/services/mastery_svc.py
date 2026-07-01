@@ -15,7 +15,6 @@ async def record_mastery_events(db: AsyncSession, user_id: str, patterns: list[s
         db.add(
             MasteryLog(user_id=user_id, pattern_type=pattern, rounds_to_mastery=MASTERY_THRESHOLD)
         )
-    await db.commit()
 
 
 async def reactivate_pattern(db: AsyncSession, user_id: str, pattern_type: str) -> bool:

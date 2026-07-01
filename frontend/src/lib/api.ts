@@ -24,7 +24,17 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     handleExpiredSession();
     throw new Error("Session expired. Please log in again.");
   }
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text;
+    try {
+      const json = JSON.parse(text);
+      message = json.detail ?? json.message ?? text;
+    } catch {
+      // not JSON, use raw text
+    }
+    throw new Error(message);
+  }
   const body = (await res.json()) as { success: boolean; data: T };
   return body.data;
 }
@@ -62,6 +72,10 @@ export const api = {
       headers: authHeader(),
       body: form,
     });
+    if (res.status === 401) {
+      handleExpiredSession();
+      throw new Error("Session expired. Please log in again.");
+    }
     if (!res.ok) throw new Error(await res.text());
     const body = (await res.json()) as {
       success: boolean;
@@ -92,4 +106,5 @@ export const api = {
   getSessions: () => apiFetch<SessionListItem[]>("/api/sessions"),
   describeUser: () => apiFetch<{ description: string }>("/api/users/me/describe"),
   exportProfileUrl: () => `${BASE}/api/users/me/export`,
+  getBrainGraph: () => apiFetch<{ nodes: import("@/types").GraphNode[]; edges: import("@/types").GraphEdge[] }>("/api/users/me/brain"),
 };

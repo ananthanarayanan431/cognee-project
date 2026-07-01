@@ -3,7 +3,7 @@ Unit/integration tests for progress_svc.get_progress_stats — exercises real
 SQLAlchemy queries against an in-memory SQLite DB (no mocking of SQL).
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -137,13 +137,20 @@ async def test_get_win_rate_by_topic_groups_correctly(db_session):
 
 
 async def test_get_mastered_patterns_orders_by_recency_and_flags_reactivated(db_session):
+    now = datetime.now(timezone.utc)
     db_session.add_all(
         [
-            MasteryLog(user_id="u1", pattern_type="StrawMan", rounds_to_mastery=4),
+            MasteryLog(
+                user_id="u1",
+                pattern_type="StrawMan",
+                rounds_to_mastery=4,
+                mastered_at=now - timedelta(days=1),
+            ),
             MasteryLog(
                 user_id="u1",
                 pattern_type="AdHominem",
                 rounds_to_mastery=6,
+                mastered_at=now,
                 reactivated_at=date.today(),
             ),
         ]
@@ -151,10 +158,12 @@ async def test_get_mastered_patterns_orders_by_recency_and_flags_reactivated(db_
     await db_session.commit()
 
     patterns = await get_mastered_patterns(db_session, "u1")
-    by_name = {p["pattern"]: p for p in patterns}
-    assert by_name["StrawMan"]["reactivated"] is False
-    assert by_name["AdHominem"]["reactivated"] is True
-    assert by_name["AdHominem"]["rounds_to_mastery"] == 6
+    # most-recent first (AdHominem mastered today, StrawMan yesterday)
+    assert patterns[0]["pattern"] == "AdHominem"
+    assert patterns[1]["pattern"] == "StrawMan"
+    assert patterns[0]["reactivated"] is True
+    assert patterns[0]["rounds_to_mastery"] == 6
+    assert patterns[1]["reactivated"] is False
 
 
 async def test_get_weakness_trend_excludes_mastered_unreactivated_patterns(db_session):

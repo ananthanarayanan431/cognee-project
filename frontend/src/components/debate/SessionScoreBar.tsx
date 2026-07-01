@@ -25,7 +25,7 @@ export default function SessionScoreBar({
             <div className="flex-1 h-1.5 rounded-[3px] bg-[#222] overflow-hidden">
               <div
                 className="h-full rounded-[3px] transition-[width] duration-500 ease-out"
-                style={{ width: `${Math.min(100, (value / 10) * 100)}%`, background: color }}
+                style={{ width: `${Math.max(0, Math.min(100, (value / 10) * 100))}%`, background: color }}
               />
             </div>
             <span className="font-mono text-[9px] text-[#888] w-7 flex-none text-right">

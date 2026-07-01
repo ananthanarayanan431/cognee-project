@@ -342,8 +342,6 @@ async def send_message(
             return
 
         try:
-            _session_wins[session_id] = final_state.get("consecutive_wins", 0)
-
             exchange = Exchange(
                 session_id=session_id,
                 turn_number=turn,
@@ -357,8 +355,9 @@ async def send_message(
                 outcome=final_state.get("outcome"),
             )
             db.add(exchange)
-            await db.commit()
             await record_mastery_events(db, user_id, final_state.get("mastery_events", []))
+            await db.commit()
+            _session_wins[session_id] = final_state.get("consecutive_wins", 0)
 
             judge_payload = {
                 "type": "judge",
@@ -412,7 +411,15 @@ async def end_session(
         .values(status="ended", ended_at=datetime.now(timezone.utc))
     )
     await db.commit()
-    asyncio.create_task(improve_fingerprint(user_id))
+
+    def _log_task_exc(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception():
+            logger.exception(
+                "improve_fingerprint failed for user %s", user_id, exc_info=task.exception()
+            )
+
+    task = asyncio.create_task(improve_fingerprint(user_id))
+    task.add_done_callback(_log_task_exc)
     _session_wins.pop(session_id, None)
     return SuccessResponse(data=EndSessionOut(status="ended"))
 

@@ -43,11 +43,16 @@ export const useDebate = create<DebateStore>((set) => ({
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
   sessions: [],
 
-  hydrate: () => set({
-    token: localStorage.getItem("dm_token"),
-    userId: localStorage.getItem("dm_uid"),
-    calibrationDone: localStorage.getItem("dm_calibration") === "1",
-  }),
+  hydrate: () => {
+    const token = localStorage.getItem("dm_token");
+    const calibrationDone = localStorage.getItem("dm_calibration") === "1";
+    set({
+      token,
+      userId: localStorage.getItem("dm_uid"),
+      calibrationDone,
+      screen: token ? (calibrationDone ? "topic" : "calibration") : "landing",
+    });
+  },
   setScreen: (screen) => set({ screen }),
   setAuth: (token, userId, calibrationDone) => {
     localStorage.setItem("dm_token", token);

@@ -8,13 +8,22 @@ import WeaknessBar from "@/components/shared/WeaknessBar";
 export default function SessionEnd() {
   const { sessionId, sessionConfig, setScreen } = useDebate();
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    if (sessionId) api.getSessionSummary(sessionId).then(setSummary).catch(() => setSummary(null));
+    if (sessionId) {
+      api.getSessionSummary(sessionId)
+        .then((s) => { setSummary(s); setLoading(false); })
+        .catch(() => { setFetchError(true); setLoading(false); });
+    }
   }, [sessionId]);
 
-  if (!summary) {
+  if (loading) {
     return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Loading summary…</div>;
+  }
+  if (fetchError || !summary) {
+    return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Failed to load summary.</div>;
   }
 
   return (
