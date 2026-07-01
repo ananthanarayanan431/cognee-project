@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { IconChartLine, IconHistory } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import MessageBubble from "./MessageBubble";
@@ -34,7 +35,7 @@ export default function DebateView() {
   return (
     <div className="flex h-screen flex-col">
       {/* Nav */}
-      <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-fog/20 sticky top-0 z-20">
+      <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
           onClick={() => setScreen("topic")}
           className="font-display text-[22px] text-ink cursor-pointer leading-none"
@@ -49,6 +50,18 @@ export default function DebateView() {
             </>
           )}
         </span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setScreen("progress")} aria-label="Progress" className="text-fog hover:text-ink transition-colors">
+            <IconChartLine size={18} stroke={1.75} />
+          </button>
+          <button
+            onClick={() => setScreen("transcript")}
+            aria-label="Transcript"
+            className="text-fog hover:text-ink transition-colors"
+          >
+            <IconHistory size={18} stroke={1.75} />
+          </button>
+        </div>
         <button
           onClick={endSession}
           className="font-sans text-xs font-semibold uppercase tracking-wide text-fog hover:text-ink transition-colors"

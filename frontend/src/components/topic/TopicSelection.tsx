@@ -120,7 +120,7 @@ export default function TopicSelection() {
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
       <h1 className="font-sans font-medium text-2xl text-ink mb-5">What do you want to argue about?</h1>
-      <div className="flex items-center justify-between bg-white border border-fog/30 rounded-lg px-4 py-3 mb-6">
+      <div className="flex items-center justify-between bg-white border border-border rounded-lg px-4 py-3 mb-6">
         <span className="font-serif text-base text-ink">{topic}</span>
         <button onClick={() => { setTopic(""); setActiveChip(""); }} className="text-fog text-lg">✕</button>
       </div>
@@ -129,7 +129,7 @@ export default function TopicSelection() {
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Add context — what's the angle, what should the opponent know?"
-        className="w-full bg-white border border-fog/30 rounded-lg px-4 py-3 mb-6 font-sans text-sm text-ink resize-none"
+        className="w-full bg-white border border-border rounded-lg px-4 py-3 mb-6 font-sans text-sm text-ink resize-none"
         rows={2}
       />
 
@@ -176,7 +176,7 @@ export default function TopicSelection() {
         {DIFFICULTIES.map((d) => (
           <div key={d.key} onClick={() => setDifficulty(d.key)}
             className={`flex-1 rounded-lg p-3 cursor-pointer border transition-all ${
-              difficulty === d.key ? "border-scarlet bg-scarlet/5" : "border-fog/30 bg-white"
+              difficulty === d.key ? "border-scarlet bg-scarlet/5" : "border-border bg-white"
             }`}>
             <p className={`font-sans text-sm font-medium ${difficulty === d.key ? "text-scarlet" : "text-ink"}`}>{d.name}</p>
             <p className="font-sans text-[11px] text-fog mt-1">{d.desc}</p>
@@ -189,7 +189,7 @@ export default function TopicSelection() {
       <div className="flex mb-8">
         {POSITIONS.map((p, i) => (
           <button key={p} onClick={() => setPosition(p.toLowerCase().replace(" ", "_"))}
-            className={`font-sans text-sm font-medium px-4 py-2 border border-fog/30 -ml-px transition-all
+            className={`font-sans text-sm font-medium px-4 py-2 border border-border -ml-px transition-all
               ${i === 0 ? "rounded-l-lg" : ""} ${i === POSITIONS.length - 1 ? "rounded-r-lg" : ""}
               ${position === p.toLowerCase().replace(" ", "_") ? "bg-scarlet border-scarlet text-white z-10 relative" : "bg-white text-ink"}`}>
             {p}
