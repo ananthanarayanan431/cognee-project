@@ -1,3 +1,27 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --dm-surface-page: #F5F5F0;
+  --dm-surface-card: #FFFFFF;
+  --dm-text-primary: #0D0D0D;
+  --dm-border: #D5D8DC;
+}
+
+.dark {
+  --dm-surface-page: #111111;
+  --dm-surface-card: #1e1e1e;
+  --dm-text-primary: #E8E8E6;
+  --dm-border: #333333;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

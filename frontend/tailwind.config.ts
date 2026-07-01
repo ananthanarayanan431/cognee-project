@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
@@ -13,6 +14,8 @@ const config: Config = {
         ember:   "#E67E22",
         verdant: "#27AE60",
         ink:     "#0D0D0D",
+        border:  "#D5D8DC",
+        light:   "#F8F9FA",
       },
       fontFamily: {
         serif:   ["var(--font-spectral)", "Georgia", "serif"],
