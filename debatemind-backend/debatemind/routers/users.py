@@ -8,7 +8,13 @@ from debatemind.schemas.progress import ProgressOut
 from debatemind.services.cognee_svc import recall_weaknesses
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import reactivate_pattern
-from debatemind.services.progress_svc import get_progress_stats
+from debatemind.services.progress_svc import (
+    get_mastered_patterns,
+    get_progress_stats,
+    get_streak,
+    get_weakness_trend,
+    get_win_rate_by_topic,
+)
 from debatemind.types import NotFoundError, SuccessResponse, UnauthorizedError
 
 router = APIRouter()
@@ -35,12 +41,11 @@ async def get_fingerprint(user_id: str = Depends(current_user_id)):
     response_model=SuccessResponse[ProgressOut],
     summary="Get user progress stats",
     description=(
-        "Retrieve the user's overall debate statistics including win rate, session "
-        "count, thinking style breakdown, and top weaknesses."
+        "Retrieve the user's overall debate statistics including win rate, streak, "
+        "session count, thinking style, mastered patterns, win rate by topic, and "
+        "weakness trend."
     ),
-    responses={
-        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
-    },
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
 )
 async def get_progress(
     user_id: str = Depends(current_user_id),
@@ -48,7 +53,20 @@ async def get_progress(
 ):
     weaknesses = await recall_weaknesses(user_id)
     stats = await get_progress_stats(db, user_id)
-    return SuccessResponse(data=ProgressOut(weaknesses=weaknesses[:5], **stats))
+    streak = await get_streak(db, user_id)
+    mastered = await get_mastered_patterns(db, user_id)
+    win_rate_by_topic = await get_win_rate_by_topic(db, user_id)
+    weakness_trend = await get_weakness_trend(db, user_id)
+    return SuccessResponse(
+        data=ProgressOut(
+            weaknesses=weaknesses[:5],
+            streak=streak,
+            mastered=mastered,
+            win_rate_by_topic=win_rate_by_topic,
+            weakness_trend=weakness_trend,
+            **stats,
+        )
+    )
 
 
 @router.post(
