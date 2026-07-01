@@ -9,8 +9,9 @@ const ROWS = [
 export default function SessionScoreBar({
   scores,
 }: {
-  scores: { logic: number; evidence: number; rhetoric: number };
+  scores: { logic: number; evidence: number; rhetoric: number } | null;
 }) {
+  if (!scores) return null;
   return (
     <div className="px-5 pb-4">
       <p className="font-sans text-[9px] font-semibold text-[#666] uppercase tracking-widest mb-2.5">
