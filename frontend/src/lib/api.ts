@@ -60,7 +60,12 @@ export const api = {
     ),
   endSession: (sessionId: string) =>
     apiFetch<{ status: string }>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
-  getTopics: () => apiFetch<{ label: string; chips: string[] }[]>("/api/topics/suggest"),
+  getTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/suggest"),
+  generateTopics: (domain: string, count: number) =>
+    apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/generate", {
+      method: "POST",
+      body: JSON.stringify({ domain, count }),
+    }),
   getGraph: (sessionId: string) =>
     apiFetch<{ nodes: unknown[]; edges: unknown[] }>(`/api/sessions/${sessionId}/graph`),
   getProgress: () => apiFetch<ProgressData>("/api/users/me/progress"),

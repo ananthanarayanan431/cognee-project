@@ -137,3 +137,10 @@ export interface SessionListItem {
   started_at: string;
   ended_at: string | null;
 }
+
+export interface DebatableQuestion {
+  id: string;
+  domain: string;
+  title: string;
+  description: string;
+}
