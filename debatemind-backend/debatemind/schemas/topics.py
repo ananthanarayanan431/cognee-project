@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DebatableQuestion(BaseModel):
@@ -10,4 +10,4 @@ class DebatableQuestion(BaseModel):
 
 class GenerateTopicsIn(BaseModel):
     domain: str
-    count: int = 5
+    count: int = Field(default=5, ge=1)

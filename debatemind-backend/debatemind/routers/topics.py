@@ -1,6 +1,11 @@
-from fastapi import APIRouter
+import json
+import logging
 
-from debatemind.schemas.topics import DebatableQuestion
+from fastapi import APIRouter, HTTPException
+
+from debatemind.agents.client import openrouter
+from debatemind.config import settings
+from debatemind.schemas.topics import DebatableQuestion, GenerateTopicsIn
 from debatemind.types import SuccessResponse
 
 router = APIRouter()
@@ -168,3 +173,46 @@ QUESTIONS: list[DebatableQuestion] = [
 )
 async def suggest():
     return SuccessResponse(data=QUESTIONS)
+
+
+_logger = logging.getLogger(__name__)
+
+_GENERATE_SYSTEM = (
+    "You are a debate-question writer. Return ONLY valid JSON with a single key "
+    '"questions" whose value is an array of debate question objects. '
+    "Each object must have exactly these keys: "
+    '"id" (kebab-case slug derived from the title), '
+    '"domain" (the domain string passed in), '
+    '"title" (a concise debatable statement), '
+    '"description" (3-5 sentences explaining the stakes, main angles, and why it is contested). '
+    "Do not include any text outside the JSON."
+)
+
+
+@router.post(
+    "/generate",
+    response_model=SuccessResponse[list[DebatableQuestion]],
+    summary="Generate debate questions for a domain",
+)
+async def generate(body: GenerateTopicsIn):
+    count = min(body.count, 10)
+    user_prompt = (
+        f"Generate {count} original, debatable questions for the domain: {body.domain}. "
+        "Each question should be thought-provoking, contestable, and distinct from the others."
+    )
+    try:
+        completion = await openrouter.chat.completions.create(
+            model=settings.main_model,
+            max_tokens=1500,
+            messages=[
+                {"role": "system", "content": _GENERATE_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        raw = completion.choices[0].message.content or ""
+        parsed = json.loads(raw)
+        questions = [DebatableQuestion(**q) for q in parsed["questions"]]
+    except Exception as exc:
+        _logger.error("Topic generation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Topic generation failed. Please try again.")
+    return SuccessResponse(data=questions)
