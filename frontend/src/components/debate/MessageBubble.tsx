@@ -2,6 +2,7 @@
 import { Message } from "@/types";
 import PulseAvatar from "./PulseAvatar";
 import JudgeScoreBar from "./JudgeScore";
+import MasteredBadge from "@/components/shared/MasteredBadge";
 
 export default function MessageBubble({ msg, thinking }: { msg: Message; thinking?: boolean }) {
   if (msg.role === "user") {
@@ -25,6 +26,13 @@ export default function MessageBubble({ msg, thinking }: { msg: Message; thinkin
         {msg.text || <span className="italic text-fog text-sm">Studying your argument…</span>}
       </div>
       {msg.showJudge && msg.judge && <JudgeScoreBar score={msg.judge} />}
+      {msg.mastery && msg.mastery.length > 0 && (
+        <div className="flex gap-1.5 mt-2 flex-wrap">
+          {msg.mastery.map((p) => (
+            <MasteredBadge key={p} pattern={p} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

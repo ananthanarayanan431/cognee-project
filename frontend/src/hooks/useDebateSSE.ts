@@ -59,7 +59,7 @@ export function useSendMessage() {
             updateLastOpponent((current?.text ?? "") + evt.text);
           }
           if (evt.type === "judge") {
-            setTimeout(() => revealJudge(evt as JudgeScore), 2000);
+            setTimeout(() => revealJudge(evt as JudgeScore, evt.mastery as string[] | undefined), 2000);
           }
           if (evt.type === "graph") {
             setGraph(evt.data as GraphData);

@@ -4,6 +4,7 @@ export interface Message {
   text: string;
   judge?: JudgeScore;
   showJudge?: boolean;
+  mastery?: string[];
 }
 
 export interface JudgeScore {

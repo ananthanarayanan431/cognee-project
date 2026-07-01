@@ -19,7 +19,7 @@ interface DebateStore {
   setSession: (id: string, config: SessionConfig) => void;
   addMessage: (m: Message) => void;
   updateLastOpponent: (text: string) => void;
-  revealJudge: (judge: Message["judge"]) => void;
+  revealJudge: (judge: Message["judge"], mastery?: string[]) => void;
   setThinking: (v: boolean) => void;
   setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
@@ -61,11 +61,13 @@ export const useDebate = create<DebateStore>((set) => ({
       if (last?.role === "opponent") msgs[msgs.length - 1] = { ...last, text };
       return { messages: msgs };
     }),
-  revealJudge: (judge) =>
+  revealJudge: (judge, mastery) =>
     set((s) => {
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
-      if (last?.role === "opponent") msgs[msgs.length - 1] = { ...last, judge, showJudge: true };
+      if (last?.role === "opponent") {
+        msgs[msgs.length - 1] = { ...last, judge, showJudge: true, mastery };
+      }
       const scores = judge
         ? { logic: judge.logic, evidence: judge.evidence, rhetoric: judge.rhetoric }
         : s.sessionScores;
