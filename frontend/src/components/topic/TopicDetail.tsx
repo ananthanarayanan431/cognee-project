@@ -45,13 +45,14 @@ export default function TopicDetail() {
     setStartError("");
     setStarting(true);
     try {
-      const res = await api.startSession(topic.title, topic.description, difficulty, position);
+      const res = await api.startSession(topic.title, topic.description, difficulty, position, topic.id);
       api.getSessions().then(setSessions).catch(() => {});
       setSession(res.session_id, {
+        topic_id: res.topic_id,
         topic: topic.title,
         description: topic.description,
         difficulty,
-        position: position as never,
+        position: position as "for" | "against" | "neutral",
       });
     } catch {
       setStartError("Failed to start session — please try again.");
@@ -61,11 +62,12 @@ export default function TopicDetail() {
 
   function resumeSession(session: SessionListItem) {
     setSession(session.session_id, {
+      topic_id: session.topic_id,
       topic: session.topic,
       description: "",
       difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
       position: "against",
-    });
+    }, false);
   }
 
   function viewMetrics(session: SessionListItem) {

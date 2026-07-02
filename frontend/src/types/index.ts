@@ -34,6 +34,7 @@ export interface GraphData {
 }
 
 export interface SessionConfig {
+  topic_id?: string | null;
   topic: string;
   description: string;
   difficulty: "balanced" | "targeted" | "ruthless";
@@ -129,6 +130,7 @@ export interface Transcript {
 
 export interface SessionListItem {
   session_id: string;
+  topic_id: string | null;
   topic: string;
   difficulty: string;
   status: "active" | "ended";

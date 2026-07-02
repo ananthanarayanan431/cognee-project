@@ -104,20 +104,20 @@ export default function TopicSelection() {
   function selectTopic(card: DebatableQuestion) {
     const count = sessionCountByTopic[card.title.toLowerCase()] ?? 0;
     if (count === 0) {
-      doStart(card.title, card.description);
+      doStart(card.title, card.description, card.id);
     } else {
-      setTopicDetail({ title: card.title, description: card.description });
+      setTopicDetail({ id: card.id, title: card.title, description: card.description });
     }
   }
 
-  async function doStart(t: string, desc: string) {
+  async function doStart(t: string, desc: string, topicId?: string | null) {
     const trimmed = t.trim();
     if (!trimmed) return;
     setStartError("");
     setSubmitting(true);
     let res;
     try {
-      res = await api.startSession(trimmed, desc, difficulty, "against");
+      res = await api.startSession(trimmed, desc, difficulty, "against", topicId);
     } catch {
       setStartError("Failed to start session — please try again.");
       setSubmitting(false);
@@ -125,12 +125,12 @@ export default function TopicSelection() {
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    setSession(res.session_id, { topic: trimmed, description: desc, difficulty, position: "against" as never });
+    setSession(res.session_id, { topic_id: res.topic_id, topic: trimmed, description: desc, difficulty, position: "against" });
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
     e.stopPropagation();
-    doStart(card.title, card.description);
+    doStart(card.title, card.description, card.id);
   }
 
   async function generateMore() {
@@ -184,7 +184,7 @@ export default function TopicSelection() {
     <div className="flex flex-col h-full min-h-0 bg-chalk">
 
       {/* ── Floating input card ──────────────────────────────── */}
-      <div className="flex-none px-5 pt-5 pb-4">
+      <div className="flex-none px-5 pt-8 pb-4">
         <div className="bg-white border border-border rounded-2xl px-5 py-4 shadow-sm">
           <textarea
             value={topic}

@@ -4,7 +4,7 @@ import { resolveInitialScreen, type Screen } from "@/lib/screens";
 
 interface DebateStore {
   screen: Screen;
-  topicDetailTopic: { title: string; description: string } | null;
+  topicDetailTopic: { id?: string | null; title: string; description: string } | null;
   token: string | null;
   userId: string | null;
   calibrationDone: boolean;
@@ -36,7 +36,7 @@ interface DebateStore {
   setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
   setSessions: (sessions: SessionListItem[]) => void;
-  setTopicDetail: (topic: { title: string; description: string } | null) => void;
+  setTopicDetail: (topic: { id?: string | null; title: string; description: string } | null) => void;
   reset: () => void;
 }
 

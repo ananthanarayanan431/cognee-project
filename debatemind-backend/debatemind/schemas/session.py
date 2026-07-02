@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class SessionStartIn(BaseModel):
+    topic_id: Optional[str] = None
     topic: str
     description: str = ""
     difficulty: str = "targeted"
@@ -13,6 +14,7 @@ class SessionStartIn(BaseModel):
 
 class SessionOut(BaseModel):
     session_id: str
+    topic_id: Optional[str] = None
     topic: str
     description: str
     difficulty: str
@@ -67,6 +69,7 @@ class TranscriptExchange(BaseModel):
 
 class TranscriptOut(BaseModel):
     session_id: str
+    topic_id: Optional[str] = None
     topic: str
     difficulty: str
     started_at: datetime
@@ -75,6 +78,7 @@ class TranscriptOut(BaseModel):
 
 class SessionListItemOut(BaseModel):
     session_id: str
+    topic_id: Optional[str] = None
     topic: str
     difficulty: str
     status: str

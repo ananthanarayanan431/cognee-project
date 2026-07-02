@@ -57,12 +57,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ clerk_token: authToken }),
     }),
-  startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
-    apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(
+  startSession: (topic: string, description: string, difficulty: string, user_position: string, topic_id?: string | null) =>
+    apiFetch<{ session_id: string; topic_id: string | null; topic: string; description: string; has_source: boolean; source_status: string }>(
       "/api/sessions/start",
       {
         method: "POST",
-        body: JSON.stringify({ topic, description, difficulty, user_position }),
+        body: JSON.stringify({ topic_id: topic_id ?? null, topic, description, difficulty, user_position }),
       }
     ),
   endSession: (sessionId: string) =>

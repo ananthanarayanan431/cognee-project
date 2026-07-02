@@ -381,6 +381,7 @@ export default function SessionSidebar() {
     setSession(
       session.session_id,
       {
+        topic_id: session.topic_id,
         topic: session.topic,
         description: "",
         difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",

@@ -81,6 +81,7 @@ async def list_sessions(
         data=[
             SessionListItemOut(
                 session_id=session.id,
+                topic_id=session.topic_id,
                 topic=session.topic,
                 difficulty=session.difficulty,
                 status=session.status,
@@ -112,6 +113,7 @@ async def start_session(
 ):
     session = DebateSession(
         user_id=user_id,
+        topic_id=body.topic_id,
         topic=body.topic,
         description=body.description,
         difficulty=body.difficulty,
@@ -124,6 +126,7 @@ async def start_session(
     return SuccessResponse(
         data=SessionOut(
             session_id=session.id,
+            topic_id=session.topic_id,
             topic=session.topic,
             description=session.description or "",
             difficulty=session.difficulty,
@@ -520,6 +523,7 @@ async def _build_transcript(session_id: str, user_id: str, db: AsyncSession) -> 
     exchanges = ex_result.scalars().all()
     return TranscriptOut(
         session_id=session.id,
+        topic_id=session.topic_id,
         topic=session.topic,
         difficulty=session.difficulty,
         started_at=session.started_at,
