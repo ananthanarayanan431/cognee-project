@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     database_url: str
     secret_key: str
     openrouter_api_key: str
-    fast_model: str = "anthropic/claude-haiku-4-5"
-    main_model: str = "anthropic/claude-sonnet-4-6"
+    fast_model: str = "openai/gpt-4.1-mini"
+    main_model: str = "openai/gpt-4.1-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     cognee_mode: str = "local"  # "local" (self-hosted via docker-compose) | "cloud"
     cognee_db_host: str = "localhost"

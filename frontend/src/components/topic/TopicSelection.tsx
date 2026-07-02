@@ -36,6 +36,7 @@ export default function TopicSelection() {
   const [allOpen, setAllOpen] = useState(true);
   const [newOpen, setNewOpen] = useState(true);
   const [newQuestions, setNewQuestions] = useState<DebatableQuestion[]>([]);
+  const [generateDomain, setGenerateDomain] = useState<Exclude<Domain, "ALL">>("POLICY");
   const [savingId, setSavingId] = useState<string | null>(null);
   const { setSession, setSessions, setTopicDetail, sessions } = useDebate();
 
@@ -134,10 +135,9 @@ export default function TopicSelection() {
   }
 
   async function generateMore() {
-    const domain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
     setGenerating(true);
     try {
-      const generated = await api.generateTopics(domain, 5);
+      const generated = await api.generateTopics(generateDomain, 10);
       const existingIds = new Set([
         ...Object.values(cardsByDomain).flat().map(q => q.id),
         ...newQuestions.map(q => q.id),
@@ -178,7 +178,6 @@ export default function TopicSelection() {
 
   const favoriteTopics = filtered.filter(q => favorites.has(q.id));
   const regularTopics = filtered.filter(q => !favorites.has(q.id));
-  const generateDomain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-chalk">
@@ -247,13 +246,30 @@ export default function TopicSelection() {
 
         <div className="flex-1" />
 
-        <button
-          onClick={generateMore}
-          disabled={generating}
-          className="font-sans text-xs text-fog border border-dashed border-fog/30 rounded-full px-3 py-1 disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all flex-none"
-        >
-          {generating ? "Generating…" : `+ Generate ${generateDomain.toLowerCase()}`}
-        </button>
+        <div className="flex items-center gap-1 flex-none">
+          <select
+            value={generateDomain}
+            onChange={(e) => setGenerateDomain(e.target.value as Exclude<Domain, "ALL">)}
+            disabled={generating}
+            className="font-sans text-xs text-fog border border-dashed border-fog/30 rounded-l-full px-2.5 py-1 bg-white outline-none cursor-pointer disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all"
+          >
+            {DOMAINS.filter(d => d !== "ALL").map(d => (
+              <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>
+            ))}
+          </select>
+          <button
+            onClick={generateMore}
+            disabled={generating}
+            className="font-sans text-xs text-fog border border-dashed border-fog/30 border-l-0 rounded-r-full px-3 py-1 disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all flex items-center gap-1.5"
+          >
+            {generating ? (
+              <>
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin flex-none" />
+                Generating…
+              </>
+            ) : "+ Generate"}
+          </button>
+        </div>
 
         {/* Search */}
         <div className="relative flex-none">
