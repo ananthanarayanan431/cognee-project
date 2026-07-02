@@ -1,6 +1,19 @@
 import { SignUp } from "@clerk/nextjs";
 
 const appearance = {
+  variables: {
+    fontFamily: "var(--font-inter), Inter, -apple-system, sans-serif",
+    fontFamilyButtons: "var(--font-inter), Inter, -apple-system, sans-serif",
+    fontSize: "14px",
+    fontWeight: { normal: 400, medium: 500, semibold: 600, bold: 700 },
+    colorPrimary: "#0D9488",
+    colorText: "#1e293b",
+    colorTextSecondary: "#64748B",
+    colorBackground: "#ffffff",
+    colorInputBackground: "#F8FAFC",
+    colorInputText: "#1e293b",
+    borderRadius: "8px",
+  },
   elements: {
     footer: { display: "none" },
     card: {
@@ -8,30 +21,15 @@ const appearance = {
       border: "1px solid #E2E8F0",
       borderRadius: "12px",
     },
-    headerTitle: { color: "#1e293b", fontWeight: "600" },
-    headerSubtitle: { color: "#64748B" },
+    formButtonPrimary: {
+      textTransform: "none" as const,
+      letterSpacing: "0",
+      fontWeight: "600",
+    },
     socialButtonsBlockButton: {
       border: "1px solid #E2E8F0",
-      color: "#1e293b",
       borderRadius: "8px",
-      "&:hover": { backgroundColor: "#F8FAFC" },
     },
-    dividerLine: { backgroundColor: "#E2E8F0" },
-    dividerText: { color: "#64748B" },
-    formFieldLabel: { color: "#1e293b" },
-    formFieldInput: {
-      border: "1px solid #E2E8F0",
-      borderRadius: "8px",
-      color: "#1e293b",
-      "&:focus": { borderColor: "#0D9488", boxShadow: "none" },
-    },
-    formButtonPrimary: {
-      backgroundColor: "#0D9488",
-      borderRadius: "8px",
-      "&:hover": { backgroundColor: "#0b8277" },
-    },
-    identityPreviewText: { color: "#1e293b" },
-    formResendCodeLink: { color: "#0D9488" },
   },
 };
 
