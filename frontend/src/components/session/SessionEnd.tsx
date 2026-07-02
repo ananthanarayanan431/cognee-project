@@ -30,13 +30,14 @@ export default function SessionEnd() {
     <div className="max-w-3xl mx-auto px-7 py-12">
       <button onClick={() => setScreen("topic")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-6 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
       <h1 className="font-sans font-bold text-3xl text-ink mb-1">Session complete</h1>
-      <p className="font-sans text-base text-fog mb-7">{summary.topic} · {summary.difficulty}</p>
+      <p className="font-sans text-base text-fog mb-2">{summary.topic} · {summary.difficulty}</p>
+      <p className="font-sans text-[11px] text-fog mb-7">Your fingerprint has been updated · patterns tracked across all sessions</p>
 
       <div className="grid grid-cols-4 gap-3 mb-9">
         {[
-          { v: summary.score.toFixed(1), unit: "/10", label: "Score", color: "text-scarlet" },
+          { v: summary.score.toFixed(1), unit: "/10", label: "Overall score", color: "text-scarlet" },
           { v: summary.exchanges, unit: "", label: "Exchanges", color: "text-ink" },
-          { v: summary.weaknesses_exposed, unit: "", label: "Weaknesses exposed", color: "text-ink" },
+          { v: summary.weaknesses_exposed, unit: "", label: "Weak spots found", color: "text-ink" },
           { v: summary.rounds_won, unit: "", label: "Rounds won", color: "text-verdant" },
         ].map(({ v, unit, label, color }) => (
           <div key={label} className="bg-white border border-border rounded-lg p-4">

@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 import type { DebatableQuestion } from "@/types";
 
-const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"] as const;
+const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "ETHICS", "LIFE"] as const;
 type Domain = (typeof DOMAINS)[number];
 
 const DIFFICULTIES = [
@@ -182,7 +182,7 @@ export default function TopicSelection() {
           <textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="What do you want to argue about?"
+            placeholder="Type any topic — politics, ethics, tech, philosophy…"
             className="w-full bg-transparent font-sans text-[15px] text-ink resize-none outline-none placeholder:text-fog leading-snug"
             rows={2}
           />
@@ -193,7 +193,7 @@ export default function TopicSelection() {
               className="font-sans text-xs text-ink border border-border rounded-lg px-3 py-1.5 bg-white outline-none cursor-pointer"
             >
               {DOMAINS.map(d => (
-                <option key={d} value={d}>{d === "ALL" ? "All domains" : d}</option>
+                <option key={d} value={d}>{d === "ALL" ? "All domains" : d.charAt(0) + d.slice(1).toLowerCase()}</option>
               ))}
             </select>
 
@@ -229,7 +229,7 @@ export default function TopicSelection() {
               className="font-sans text-sm font-semibold px-5 py-1.5 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-2"
             >
               <span className="text-[10px]">▶</span>
-              <span>{submitting ? "Starting…" : "Start AI Chat"}</span>
+              <span>{submitting ? "Starting…" : "Start debate"}</span>
             </button>
           </div>
         </div>

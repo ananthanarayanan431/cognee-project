@@ -69,7 +69,7 @@ export default function CalibrationSession() {
   return (
     <div className="max-w-2xl mx-auto px-7 py-12">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-sans font-bold text-3xl text-ink">Let&apos;s see how you think.</h1>
+        <h1 className="font-sans font-bold text-3xl text-ink">Calibrate your argument style.</h1>
         <div className="flex items-center gap-3">
           <span className="flex gap-1">
             {dots.map((filled, i) => (
@@ -84,19 +84,19 @@ export default function CalibrationSession() {
       </div>
 
       <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-1">
-        Getting to know your thinking…
+        Baseline question {index} of {total}
       </p>
       <p className="font-sans text-lg text-ink mb-6">{topic}</p>
 
       <div className="bg-white border border-border rounded-lg px-4 py-3 mb-6 flex items-center justify-between">
-        <p className="font-sans text-base text-ink">What&apos;s your opening position on this topic?</p>
+        <p className="font-sans text-base text-ink">What&apos;s your position? Argue your case.</p>
         <span className="font-mono text-xs text-fog flex-none ml-4">{mins}:{secs}</span>
       </div>
 
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Make your argument…"
+        placeholder="State your position and reasoning clearly…"
         rows={4}
         className="w-full bg-white border border-border rounded-lg px-4 py-3 mb-4 font-sans text-sm text-ink resize-none outline-none focus:border-scarlet placeholder:text-fog"
       />

@@ -10,10 +10,10 @@ import FingerprintGraph from "@/components/graph/FingerprintGraph";
 import SessionScoreBar from "./SessionScoreBar";
 
 const STAGE_LABELS: Record<string, string> = {
-  extract: "Reading your argument…",
-  opponent: "Drafting a response…",
-  judge: "Judging the exchange…",
-  mastery: "Checking mastery…",
+  extract: "Analysing your argument…",
+  opponent: "Building a counterargument…",
+  judge: "Scoring the exchange…",
+  mastery: "Updating your fingerprint…",
 };
 
 export default function DebateView() {
@@ -78,12 +78,12 @@ export default function DebateView() {
             {
               id: "opening-1",
               role: "opponent",
-              text: "Hi! I'm your AI debate opponent. I'll challenge every argument you make — that's how you get sharper.",
+              text: "I'm your AI opponent. I'll push back on every argument, flag logical fallacies as they happen, and target your weakest reasoning — that's how you actually improve.",
             },
             {
               id: "opening-2",
               role: "opponent",
-              text: `The motion: **${topic}**\n\nMake your opening argument — what's your position?`,
+              text: `**Motion: ${topic}**\n\nMake your opening argument. What's your position and why?`,
             },
           ]);
         }
@@ -187,9 +187,12 @@ export default function DebateView() {
         {/* Graph panel — hidden on mobile, shown on large screens */}
         <aside className="w-80 min-w-[280px] max-w-[360px] bg-white border-l border-border flex-col text-ink overflow-y-auto hidden lg:flex">
           <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-            <span className="font-sans text-[11px] font-semibold uppercase tracking-widest">
-              Cognitive Fingerprint
-            </span>
+            <div>
+              <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-ink">
+                Cognitive Fingerprint
+              </span>
+              <p className="font-sans text-[10px] text-fog mt-0.5">Your argument pattern map</p>
+            </div>
           </div>
           <FingerprintGraph data={graph} />
           <SessionScoreBar scores={sessionScores} />

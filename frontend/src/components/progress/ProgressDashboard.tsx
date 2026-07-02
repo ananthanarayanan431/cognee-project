@@ -144,9 +144,10 @@ export default function ProgressDashboard() {
       )}
 
       {!progress && (
-        <p className="font-sans text-sm text-fog text-center mt-12 italic">
-          Complete a debate session to see your cognitive fingerprint evolve.
-        </p>
+        <div className="text-center mt-12 space-y-2">
+          <p className="font-sans text-sm font-semibold text-ink">No sessions yet</p>
+          <p className="font-sans text-sm text-fog">Complete your first debate to start building your cognitive fingerprint — the AI tracks patterns across every session.</p>
+        </div>
       )}
     </div>
   );
