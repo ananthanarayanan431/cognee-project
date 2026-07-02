@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import type { VoiceSessionSummary } from "@/types";
 
 export type VoiceStatus = "idle" | "connecting" | "connected" | "ended" | "error";
 
@@ -48,9 +49,39 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const voiceSessionIdRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  // Accumulates AI transcript deltas so we can persist the full utterance on done.
+  const aiDeltaRef = useRef<string>("");
   // Keep debateSessionId in a ref so the data-channel handler never goes stale.
   const sessionIdRef = useRef(debateSessionId);
   sessionIdRef.current = debateSessionId;
+
+  // Hydrate transcript + summary from DB when the component mounts (resuming a past session).
+  useEffect(() => {
+    api.getVoiceSummary(debateSessionId).then((data: VoiceSessionSummary) => {
+      if (!data.has_voice_session) return;
+
+      setSummary({
+        duration_seconds: data.duration_seconds ?? null,
+        closing_summary: data.closing_summary ?? null,
+        fallacies: data.fallacies,
+        strong_arguments: data.strong_arguments,
+        concessions: data.concessions,
+        position_flips: data.position_flips,
+      });
+
+      if (data.transcript.length > 0) {
+        setTranscript(
+          data.transcript.map((line, i) => ({
+            id: `hist-${i}`,
+            speaker: line.speaker,
+            text: line.text,
+            timestamp: Date.now() - (data.transcript.length - i) * 500,
+          }))
+        );
+      }
+    }).catch(() => { /* No past session — start fresh */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debateSessionId]);
 
   const cleanup = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -81,6 +112,10 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const text = ((msg.transcript as string) ?? "").trim();
       if (text) {
         setTranscript((prev) => [...prev, { id: nextId(), speaker: "user", text, timestamp: Date.now() }]);
+        const vsId = voiceSessionIdRef.current;
+        if (vsId) {
+          api.saveTranscriptLine(sessionIdRef.current, vsId, "user", text).catch(() => {});
+        }
       }
     }
 
@@ -88,6 +123,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     if (type === "response.audio_transcript.delta") {
       const delta = (msg.delta as string) ?? "";
       if (delta) {
+        aiDeltaRef.current += delta;
         setTranscript((prev) => {
           const last = prev[prev.length - 1];
           if (last?.speaker === "ai") {
@@ -95,6 +131,16 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           }
           return [...prev, { id: nextId(), speaker: "ai", text: delta, timestamp: Date.now() }];
         });
+      }
+    }
+
+    // ── AI speech transcript (complete utterance) — persist to DB ─────────────
+    if (type === "response.audio_transcript.done") {
+      const text = ((msg.transcript as string) ?? aiDeltaRef.current).trim();
+      aiDeltaRef.current = "";
+      const vsId = voiceSessionIdRef.current;
+      if (text && vsId) {
+        api.saveTranscriptLine(sessionIdRef.current, vsId, "ai", text).catch(() => {});
       }
     }
 
@@ -172,6 +218,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setError(null);
     setTranscript([]);
     setSummary(null);
+    aiDeltaRef.current = "";
 
     try {
       // 1. Mic access

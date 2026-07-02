@@ -155,3 +155,25 @@ export interface VoiceTokenResponse {
   voice_session_id: string;
   [key: string]: unknown;
 }
+
+export interface VoiceTranscriptLine {
+  speaker: "user" | "ai";
+  text: string;
+}
+
+export interface VoiceSessionSummary {
+  has_voice_session: boolean;
+  voice_session_id?: string;
+  status?: string;
+  duration_seconds?: number | null;
+  closing_summary?: string | null;
+  transcript: VoiceTranscriptLine[];
+  fallacies: string[];
+  strong_arguments: string[];
+  concessions: string[];
+  position_flips: string[];
+}
+
+export interface TranscriptLineSaved {
+  ok: boolean;
+}

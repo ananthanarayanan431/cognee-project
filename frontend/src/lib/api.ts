@@ -1,4 +1,4 @@
-import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem } from "@/types";
+import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem, VoiceSessionSummary, TranscriptLineSaved } from "@/types";
 import { useDebate } from "@/store/debate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
@@ -147,5 +147,12 @@ export const api = {
     apiFetch<Record<string, unknown>>(`/api/voice/${sessionId}/tools`, {
       method: "POST",
       body: JSON.stringify({ voice_session_id: voiceSessionId, tool, arguments: args }),
+    }),
+  getVoiceSummary: (sessionId: string) =>
+    apiFetch<VoiceSessionSummary>(`/api/voice/${sessionId}/summary`),
+  saveTranscriptLine: (sessionId: string, voiceSessionId: string, speaker: "user" | "ai", text: string) =>
+    apiFetch<TranscriptLineSaved>(`/api/voice/${sessionId}/transcript-line`, {
+      method: "POST",
+      body: JSON.stringify({ voice_session_id: voiceSessionId, speaker, text }),
     }),
 };

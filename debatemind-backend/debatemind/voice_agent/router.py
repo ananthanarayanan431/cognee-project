@@ -26,15 +26,16 @@ Pattern (WebRTC + ephemeral key + server-side tool execution):
 
 Endpoints
 ─────────
-POST /{session_id}/token    Mint ephemeral key + create VoiceSession row
-POST /{session_id}/tools    Execute a tool call dispatched by the AI
+POST /{session_id}/token           Mint ephemeral key + create VoiceSession row
+POST /{session_id}/tools           Execute a tool call dispatched by the AI
+POST /{session_id}/transcript-line Persist a single transcript line (user or AI)
+GET  /{session_id}/summary         Load the most recent voice session's notes + transcript
 """
 
 import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,24 +43,20 @@ from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession
-from debatemind.models.voice_session import VoiceSession
+from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
+from debatemind.schemas.voice import (
+    ToolCallIn,
+    TranscriptLineIn,
+    TranscriptLineOut,
+    TranscriptLineSavedOut,
+    VoiceSessionSummaryOut,
+)
 from debatemind.types.responses import SuccessResponse
 from debatemind.voice_agent.session import create_voice_session
 from debatemind.voice_agent.tools import execute_tool
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-
-class ToolCallRequest(BaseModel):
-    voice_session_id: str
-    tool: str
-    arguments: dict = {}
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +81,7 @@ async def get_voice_token(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Response shape:
+    Response shape (passthrough from OpenAI + our voice_session_id):
 
         {
           "client_secret": {"value": "ek_...", "expires_at": <unix ts>},
@@ -143,20 +140,9 @@ async def get_voice_token(
 )
 async def run_tool(
     session_id: str,
-    body: ToolCallRequest,
+    body: ToolCallIn,
     user_id: str = Depends(current_user_id),
 ):
-    """
-    Request body:
-        {
-          "voice_session_id": "...",
-          "tool": "save_debate_observation",
-          "arguments": {"note_type": "fallacy", "content": "..."}
-        }
-
-    Response: whatever the tool handler returns (a JSON-serialisable dict).
-    """
-    # Verify the voice session belongs to this user and debate session
     async with AsyncSessionLocal() as db:
         vs_row = await db.execute(
             select(VoiceSession).where(VoiceSession.id == body.voice_session_id)
@@ -184,3 +170,114 @@ async def run_tool(
         )
 
     return SuccessResponse(data=result)
+
+
+@router.post(
+    "/{session_id}/transcript-line",
+    response_model=SuccessResponse[TranscriptLineSavedOut],
+    summary="Persist a single transcript line",
+    description=(
+        "Saves one transcript line (user speech or AI utterance) to the database "
+        "so voice session history can be replayed after the session ends."
+    ),
+)
+async def save_transcript_line(
+    session_id: str,
+    body: TranscriptLineIn,
+    user_id: str = Depends(current_user_id),
+):
+    if not body.text.strip():
+        return SuccessResponse(data=TranscriptLineSavedOut(ok=True))
+
+    async with AsyncSessionLocal() as db:
+        vs_result = await db.execute(
+            select(VoiceSession).where(
+                VoiceSession.id == body.voice_session_id,
+                VoiceSession.user_id == user_id,
+                VoiceSession.debate_session_id == session_id,
+            )
+        )
+        vs = vs_result.scalar_one_or_none()
+        if not vs:
+            raise HTTPException(status_code=404, detail="Voice session not found")
+
+        note = VoiceSessionNote(
+            voice_session_id=vs.id,
+            note_type=f"transcript_{body.speaker}",
+            content=body.text.strip(),
+        )
+        db.add(note)
+        await db.commit()
+
+    return SuccessResponse(data=TranscriptLineSavedOut(ok=True))
+
+
+@router.get(
+    "/{session_id}/summary",
+    response_model=SuccessResponse[VoiceSessionSummaryOut],
+    summary="Load most recent voice session history",
+    description=(
+        "Returns the transcript, AI observations (fallacies, strong arguments, "
+        "concessions, position flips), closing summary, and duration for the most "
+        "recent voice session tied to this debate session."
+    ),
+)
+async def get_voice_summary(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    vs_result = await db.execute(
+        select(VoiceSession)
+        .where(
+            VoiceSession.debate_session_id == session_id,
+            VoiceSession.user_id == user_id,
+        )
+        .order_by(VoiceSession.created_at.desc())
+        .limit(1)
+    )
+    vs = vs_result.scalar_one_or_none()
+    if not vs:
+        return SuccessResponse(data=VoiceSessionSummaryOut(has_voice_session=False))
+
+    notes_result = await db.execute(
+        select(VoiceSessionNote)
+        .where(VoiceSessionNote.voice_session_id == vs.id)
+        .order_by(VoiceSessionNote.created_at.asc())
+    )
+    notes = notes_result.scalars().all()
+
+    transcript: list[TranscriptLineOut] = []
+    fallacies: list[str] = []
+    strong_arguments: list[str] = []
+    concessions: list[str] = []
+    position_flips: list[str] = []
+
+    for n in notes:
+        if n.note_type == "transcript_user":
+            transcript.append(TranscriptLineOut(speaker="user", text=n.content))
+        elif n.note_type == "transcript_ai":
+            transcript.append(TranscriptLineOut(speaker="ai", text=n.content))
+        elif n.note_type == "fallacy":
+            fallacies.append(n.content)
+        elif n.note_type == "strong_argument":
+            strong_arguments.append(n.content)
+        elif n.note_type == "concession":
+            concessions.append(n.content)
+        elif n.note_type == "position_flip":
+            position_flips.append(n.content)
+
+    return SuccessResponse(
+        data=VoiceSessionSummaryOut(
+            has_voice_session=True,
+            voice_session_id=vs.id,
+            status=vs.status,
+            duration_seconds=vs.duration_seconds,
+            closing_summary=vs.closing_summary,
+            transcript=transcript,
+            fallacies=fallacies,
+            strong_arguments=strong_arguments,
+            concessions=concessions,
+            position_flips=position_flips,
+        )
+    )
