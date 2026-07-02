@@ -10,6 +10,9 @@ interface DebateStore {
   calibrationDone: boolean;
   sessionId: string | null;
   sessionConfig: SessionConfig | null;
+  // True only for a just-created session (so the AI opening streams once).
+  // False when reopening an existing session from the sidebar.
+  isFreshSession: boolean;
   messages: Message[];
   graph: GraphData;
   thinking: boolean;
@@ -24,7 +27,7 @@ interface DebateStore {
   setJudgeModel: (model: string) => void;
   setScreen: (s: DebateStore["screen"]) => void;
   setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
-  setSession: (id: string, config: SessionConfig) => void;
+  setSession: (id: string, config: SessionConfig, fresh?: boolean) => void;
   addMessage: (m: Message) => void;
   setMessages: (msgs: Message[]) => void;
   updateLastOpponent: (text: string) => void;
@@ -45,6 +48,7 @@ export const useDebate = create<DebateStore>((set) => ({
   calibrationDone: false,
   sessionId: null,
   sessionConfig: null,
+  isFreshSession: false,
   messages: [],
   graph: { nodes: [], edges: [] },
   thinking: false,
@@ -86,10 +90,11 @@ export const useDebate = create<DebateStore>((set) => ({
       screen: calibrationDone ? "topic" : "calibration",
     });
   },
-  setSession: (sessionId, sessionConfig) =>
+  setSession: (sessionId, sessionConfig, fresh = true) =>
     set({
       sessionId,
       sessionConfig,
+      isFreshSession: fresh,
       messages: [],
       screen: "debate",
       graph: { nodes: [], edges: [] },

@@ -74,8 +74,13 @@ export default function DebateView() {
               },
             });
           }
-        } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
-          // Fresh session — the AI opponent generates and streams the opening.
+        } else if (
+          transcript.exchanges.length === 0 &&
+          currentMessages.length === 0 &&
+          useDebate.getState().isFreshSession
+        ) {
+          // Fresh session (just created) — the AI opponent streams the opening.
+          // Reopened empty sessions skip this: the user just starts arguing.
           streamOpening(sessionId);
         }
       }

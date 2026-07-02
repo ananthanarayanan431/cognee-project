@@ -60,19 +60,25 @@ function SessionCard({
 
   return (
     <div ref={ref} className="relative flex items-center rounded-md hover:bg-fog/5 transition-colors">
-      {/* Click row → open / resume the session */}
-      <button onClick={onOpen} className="flex-1 min-w-0 text-left px-2.5 py-1.5">
-        <p className="font-sans text-[12px] text-ink leading-tight truncate">{session.topic}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span className={`font-sans text-[8px] font-semibold uppercase tracking-wide px-1 py-px rounded ${difficultyClass}`}>
-            {session.difficulty}
-          </span>
-          <span className="font-sans text-[10px] text-fog">{session.exchanges}t</span>
-          {session.status === "active" && (
-            <span className="w-1.5 h-1.5 rounded-full bg-verdant" title="Active" />
-          )}
-          <span className="font-sans text-[10px] text-fog ml-auto">{formatDate(session.started_at)}</span>
-        </div>
+      {/* Click row → open / resume the session (single line) */}
+      <button
+        onClick={onOpen}
+        title={`${session.topic} · ${session.difficulty} · ${session.exchanges} turns`}
+        className="flex-1 min-w-0 flex items-center gap-2 text-left px-2 py-1.5"
+      >
+        <span
+          className={`flex-none w-4 h-4 rounded flex items-center justify-center font-sans text-[9px] font-bold ${difficultyClass}`}
+          title={session.difficulty}
+        >
+          {session.difficulty.charAt(0).toUpperCase()}
+        </span>
+        <span className="flex-1 min-w-0 font-sans text-[12px] text-ink leading-tight truncate">
+          {session.topic}
+        </span>
+        {session.status === "active" && (
+          <span className="flex-none w-1.5 h-1.5 rounded-full bg-verdant" title="Active" />
+        )}
+        <span className="flex-none font-sans text-[10px] text-fog">{formatDate(session.started_at)}</span>
       </button>
 
       {/* Kebab menu */}
@@ -372,12 +378,16 @@ export default function SessionSidebar() {
   }, [token, setSessions]);
 
   function handleOpen(session: SessionListItem) {
-    setSession(session.session_id, {
-      topic: session.topic,
-      description: "",
-      difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
-      position: "against",
-    });
+    setSession(
+      session.session_id,
+      {
+        topic: session.topic,
+        description: "",
+        difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
+        position: "against",
+      },
+      false, // reopening an existing session — do not stream a fresh opening
+    );
   }
 
   function handleMetrics(session: SessionListItem) {
