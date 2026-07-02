@@ -4,6 +4,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconMessageCircle,
+  IconPhone,
   IconPlayerPlay,
   IconSearch,
   IconStar,
@@ -38,7 +39,7 @@ export default function TopicSelection() {
   const [newQuestions, setNewQuestions] = useState<DebatableQuestion[]>([]);
   const [generateDomain, setGenerateDomain] = useState<Exclude<Domain, "ALL">>("POLICY");
   const [savingId, setSavingId] = useState<string | null>(null);
-  const { setSession, setSessions, setTopicDetail, sessions } = useDebate();
+  const { setSession, setSessions, setTopicDetail, sessions, setVoiceMode } = useDebate();
 
   const storeCountByTopic = useMemo(() => {
     const map: Record<string, number> = {};
@@ -111,7 +112,7 @@ export default function TopicSelection() {
     }
   }
 
-  async function doStart(t: string, desc: string, topicId?: string | null) {
+  async function doStart(t: string, desc: string, topicId?: string | null, voice = false) {
     const trimmed = t.trim();
     if (!trimmed) return;
     setStartError("");
@@ -127,11 +128,17 @@ export default function TopicSelection() {
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
     setSession(res.session_id, { topic_id: res.topic_id, topic: trimmed, description: desc, difficulty, position: "against" });
+    if (voice) setVoiceMode(true);
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
     e.stopPropagation();
     doStart(card.title, card.description, card.id);
+  }
+
+  function startWithVoiceCard(card: DebatableQuestion, e: React.MouseEvent) {
+    e.stopPropagation();
+    doStart(card.title, card.description, card.id, true);
   }
 
   async function generateMore() {
@@ -317,6 +324,7 @@ export default function TopicSelection() {
                     onAdd={() => addNewQuestion(card)}
                     onDismiss={() => dismissNewQuestion(card.id)}
                     onStart={(e) => startWithCard(card, e)}
+                    onVoiceStart={(e) => startWithVoiceCard(card, e)}
                     submitting={submitting}
                   />
                 ))}
@@ -345,6 +353,7 @@ export default function TopicSelection() {
                     onSelect={() => selectTopic(card)}
                     onToggleFav={(e) => toggleFavorite(card.id, e)}
                     onStart={(e) => startWithCard(card, e)}
+                    onVoiceStart={(e) => startWithVoiceCard(card, e)}
                     submitting={submitting}
                   />
                 ))}
@@ -383,6 +392,7 @@ export default function TopicSelection() {
                       onSelect={() => selectTopic(card)}
                       onToggleFav={(e) => toggleFavorite(card.id, e)}
                       onStart={(e) => startWithCard(card, e)}
+                      onVoiceStart={(e) => startWithVoiceCard(card, e)}
                       submitting={submitting}
                     />
                   ))}
@@ -436,6 +446,7 @@ function TopicRow({
   onSelect,
   onToggleFav,
   onStart,
+  onVoiceStart,
   submitting,
 }: {
   card: DebatableQuestion;
@@ -444,6 +455,7 @@ function TopicRow({
   onSelect: () => void;
   onToggleFav: (e: React.MouseEvent) => void;
   onStart: (e: React.MouseEvent) => void;
+  onVoiceStart: (e: React.MouseEvent) => void;
   submitting: boolean;
 }) {
   return (
@@ -458,7 +470,7 @@ function TopicRow({
       <div className="flex items-center gap-2 flex-none">
         <span className="flex items-center gap-1 font-sans text-[10px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-1 whitespace-nowrap">
           <IconMessageCircle size={10} className="text-fog/60" />
-          {sessionCount} {sessionCount === 1 ? "session" : "sessions"}
+          {sessionCount} {sessionCount === 1 ? "log" : "logs"}
         </span>
         <span className="font-sans text-[9px] font-semibold text-fog/60 border border-border rounded-full px-2 py-1 uppercase tracking-wide">
           {card.domain}
@@ -476,9 +488,18 @@ function TopicRow({
         <button
           onClick={onStart}
           disabled={submitting}
+          title="Chat debate"
+          className="w-7 h-7 rounded-full bg-ink text-white flex items-center justify-center disabled:opacity-40 hover:bg-ink/80 transition-colors"
+        >
+          <IconMessageCircle size={12} />
+        </button>
+        <button
+          onClick={onVoiceStart}
+          disabled={submitting}
+          title="Voice call debate"
           className="w-7 h-7 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors"
         >
-          <IconPlayerPlay size={11} />
+          <IconPhone size={12} />
         </button>
       </div>
     </div>
@@ -493,6 +514,7 @@ function NewTopicRow({
   onAdd,
   onDismiss,
   onStart,
+  onVoiceStart,
   submitting,
 }: {
   card: DebatableQuestion;
@@ -502,6 +524,7 @@ function NewTopicRow({
   onAdd: () => void;
   onDismiss: () => void;
   onStart: (e: React.MouseEvent) => void;
+  onVoiceStart: (e: React.MouseEvent) => void;
   submitting: boolean;
 }) {
   return (
@@ -537,9 +560,18 @@ function NewTopicRow({
         <button
           onClick={onStart}
           disabled={submitting}
+          title="Chat debate"
+          className="w-7 h-7 rounded-full bg-ink text-white flex items-center justify-center disabled:opacity-40 hover:bg-ink/80 transition-colors"
+        >
+          <IconMessageCircle size={12} />
+        </button>
+        <button
+          onClick={onVoiceStart}
+          disabled={submitting}
+          title="Voice call debate"
           className="w-7 h-7 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors"
         >
-          <IconPlayerPlay size={11} />
+          <IconPhone size={12} />
         </button>
       </div>
     </div>
