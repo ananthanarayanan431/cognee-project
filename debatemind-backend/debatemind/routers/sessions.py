@@ -17,6 +17,7 @@ from debatemind.cognee import improve_fingerprint, remember_session_summary
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
+from debatemind.models.voice_session import VoiceSession
 from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.session import (
     EndSessionOut,
@@ -143,9 +144,11 @@ async def list_sessions(
         .group_by(Exchange.session_id)
         .subquery()
     )
+    voice_subq = select(VoiceSession.debate_session_id).distinct().subquery()
     result = await db.execute(
-        select(DebateSession, count_subq.c.cnt)
+        select(DebateSession, count_subq.c.cnt, voice_subq.c.debate_session_id)
         .outerjoin(count_subq, DebateSession.id == count_subq.c.session_id)
+        .outerjoin(voice_subq, DebateSession.id == voice_subq.c.debate_session_id)
         .where(DebateSession.user_id == user_id)
         .order_by(DebateSession.started_at.desc())
     )
@@ -161,10 +164,11 @@ async def list_sessions(
                 status=session.status,
                 overall_score=session.overall_score,
                 exchanges=cnt or 0,
+                has_voice_session=voice_session_marker is not None,
                 started_at=session.started_at,
                 ended_at=session.ended_at,
             )
-            for session, cnt in rows
+            for session, cnt, voice_session_marker in rows
         ]
     )
 

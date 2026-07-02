@@ -85,5 +85,6 @@ class SessionListItemOut(BaseModel):
     status: str
     overall_score: float
     exchanges: int
+    has_voice_session: bool
     started_at: datetime
     ended_at: Optional[datetime] = None
