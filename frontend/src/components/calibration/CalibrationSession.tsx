@@ -84,7 +84,7 @@ export default function CalibrationSession() {
       </div>
 
       <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-1">
-        Baseline question {index} of {total}
+        Answer honestly — this shapes how the AI reads you
       </p>
       <p className="font-sans text-lg text-ink mb-6">{topic}</p>
 

@@ -1,5 +1,5 @@
 "use client";
-import { useDebate } from "@/store/debate";
+import { SignInButton } from "@clerk/nextjs";
 
 const CARDS = [
   {
@@ -48,8 +48,6 @@ const FALLACIES = [
 ];
 
 export default function LandingPage() {
-  const setScreen = useDebate((s) => s.setScreen);
-
   return (
     <div className="min-h-screen bg-chalk font-sans text-ink antialiased">
 
@@ -69,12 +67,11 @@ export default function LandingPage() {
             <a href="#research" className="hover:text-ink transition-colors">Research</a>
             <a href="#cognee" className="hover:text-ink transition-colors">Memory</a>
           </nav>
-          <button
-            onClick={() => setScreen("auth")}
-            className="bg-scarlet text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-scarlet/90 transition-colors"
-          >
-            Sign in
-          </button>
+          <SignInButton mode="redirect">
+            <button className="bg-scarlet text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-scarlet/90 transition-colors">
+              Sign in
+            </button>
+          </SignInButton>
         </div>
       </header>
 
@@ -100,12 +97,11 @@ export default function LandingPage() {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
-            <button
-              onClick={() => setScreen("auth")}
-              className="bg-scarlet text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-scarlet/90 transition-colors"
-            >
-              Start arguing for free →
-            </button>
+            <SignInButton mode="redirect">
+              <button className="bg-scarlet text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-scarlet/90 transition-colors">
+                Start arguing for free →
+              </button>
+            </SignInButton>
             <a
               href="#how-it-works"
               className="bg-white border border-border text-ink text-sm font-medium px-6 py-2.5 rounded-lg hover:bg-border/30 transition-colors"
@@ -148,12 +144,11 @@ export default function LandingPage() {
                 <h3 className="font-semibold text-ink text-sm">{c.title}</h3>
                 <p className="text-fog text-sm leading-relaxed flex-1">{c.body}</p>
                 <p className="text-[11px] text-scarlet font-semibold">{c.stat}</p>
-                <button
-                  onClick={() => setScreen("auth")}
-                  className="text-scarlet text-sm font-medium text-left hover:underline"
-                >
-                  Get started →
-                </button>
+                <SignInButton mode="redirect">
+                  <button className="text-scarlet text-sm font-medium text-left hover:underline">
+                    Get started →
+                  </button>
+                </SignInButton>
               </div>
             ))}
           </div>
@@ -364,14 +359,13 @@ export default function LandingPage() {
           <p className="text-fog text-base mb-8">
             Start your first debate today. Every session builds the memory graph that makes the next one harder.
           </p>
-          <button
-            onClick={() => setScreen("auth")}
-            className="bg-scarlet text-white text-sm font-semibold px-8 py-3 rounded-lg hover:bg-scarlet/90 transition-colors"
-          >
-            Start arguing for free →
-          </button>
+          <SignInButton mode="redirect">
+            <button className="bg-scarlet text-white text-sm font-semibold px-8 py-3 rounded-lg hover:bg-scarlet/90 transition-colors">
+              Start arguing for free →
+            </button>
+          </SignInButton>
           <p className="text-xs text-fog mt-4">
-            Debate training improves critical thinking by up to 44% · MIT, 2025
+            Debate participation improves critical thinking by up to 44% — meta-analysis of debate studies
           </p>
         </div>
       </section>

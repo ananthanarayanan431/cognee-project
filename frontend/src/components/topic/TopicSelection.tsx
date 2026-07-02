@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 import type { DebatableQuestion } from "@/types";
 
-const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "ETHICS", "LIFE"] as const;
+const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"] as const;
 type Domain = (typeof DOMAINS)[number];
 
 const DIFFICULTIES = [
