@@ -38,7 +38,7 @@ async def verify_sso_jwt(token: str) -> dict:
     global _jwks_cache
     if not _jwks_cache:
         async with httpx.AsyncClient() as client:
-            r = await client.get(settings.auth_jwks_url)
+            r = await client.get(settings.clerk_jwks_url)
             r.raise_for_status()
             _jwks_cache = r.json()
     header = jwt.get_unverified_header(token)

@@ -149,7 +149,21 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
             },
         )
         return []
-    except Exception:
+    except Exception as e:
+        # Check by name to survive uvicorn hot-reload, which can cause NoDataError
+        # class identity to diverge between fingerprint.py and the venv's chunks_retriever.
+        if type(e).__name__ == "NoDataError":
+            logger.warning(
+                "cognee.search no data",
+                extra={
+                    "event": "cognee.search.no_data",
+                    "operation": "recall_weaknesses",
+                    "dataset": dataset,
+                    "user_id": user_id,
+                    "elapsed_ms": elapsed_ms(t0),
+                },
+            )
+            return []
         logger.exception(
             "cognee.search error",
             extra={

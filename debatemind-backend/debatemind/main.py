@@ -12,8 +12,14 @@ from debatemind.routers import auth, calibration, health, sessions, topics, user
 from debatemind.services.cognee_config import configure_cognee
 
 
+class _CogneeNoDataFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "No data found in the system" not in record.getMessage()
+
+
 def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("cognee.shared.logging_utils").addFilter(_CogneeNoDataFilter())
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

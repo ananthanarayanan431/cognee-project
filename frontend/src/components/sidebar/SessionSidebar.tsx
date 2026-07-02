@@ -217,7 +217,7 @@ function BrainMapModal({
 
 // ── Brain Section ─────────────────────────────────────────────────────────────
 
-function BrainSection({ winRate, onOpenBrainMap }: { winRate: number | null; onOpenBrainMap: () => void }) {
+function BrainSection({ winRate }: { winRate: number | null }) {
   const { sessions } = useDebate();
   const [description, setDescription] = useState<string | null>(null);
   const [loadingDesc, setLoadingDesc] = useState(false);
@@ -351,8 +351,8 @@ export default function SessionSidebar() {
       <div className="px-4 py-3.5 border-b border-border flex items-center gap-2">
         <button
           onClick={() => {
-            setScreen("topic");
-            window.history.pushState({ screen: "topic" }, "", "/");
+            setScreen("landing");
+            window.history.pushState({ screen: "landing" }, "", "/");
           }}
           className="font-sans font-semibold text-[18px] text-ink leading-none hover:text-scarlet transition-colors text-left"
           title="Home"
@@ -361,7 +361,7 @@ export default function SessionSidebar() {
         </button>
       </div>
 
-      <BrainSection winRate={winRate} onOpenBrainMap={() => setShowBrainMap(true)} />
+      <BrainSection winRate={winRate} />
 
       {/* Session history */}
       <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5">

@@ -99,7 +99,9 @@ export default function Home() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [handlePopState]);
 
-  if (!token) {
+  // Landing page is public — visible to both authenticated and unauthenticated users.
+  // Authenticated users land here via the DebateMind logo or navigating to "/".
+  if (!token || screen === "landing") {
     return <LandingPage />;
   }
   if (screen === "calibration") return <CalibrationSession />;
@@ -113,7 +115,7 @@ export default function Home() {
       {screen === "progress" && <ProgressDashboard />}
       {screen === "transcript" && <SessionTranscript />}
       {screen === "settings" && <SettingsPage />}
-      {!["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings"].includes(screen) && <TopicSelection />}
+      {!["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings", "calibration"].includes(screen) && <TopicSelection />}
     </AuthenticatedShell>
   );
 }

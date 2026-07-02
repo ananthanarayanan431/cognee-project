@@ -7,8 +7,9 @@ export function handleExpiredSession() {
   localStorage.removeItem("dm_token");
   localStorage.removeItem("dm_uid");
   localStorage.removeItem("dm_calibration");
-  useDebate.setState({ token: null, userId: null, screen: "landing" });
-  if (typeof window !== "undefined") window.location.href = "/sign-in";
+  // Clear token only — page.tsx's exchange effect detects isSignedIn && !token
+  // and automatically fetches a fresh backend token from Clerk. No redirect needed.
+  useDebate.setState({ token: null, userId: null });
 }
 
 function authHeader(): Record<string, string> {
@@ -52,9 +53,9 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   exchangeToken: (authToken: string) =>
-    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/sso-exchange", {
+    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/clerk-exchange", {
       method: "POST",
-      body: JSON.stringify({ token: authToken }),
+      body: JSON.stringify({ clerk_token: authToken }),
     }),
   startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
     apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(

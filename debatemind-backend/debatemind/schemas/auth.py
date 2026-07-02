@@ -20,3 +20,7 @@ class TokenOut(BaseModel):
 
 class SSOExchangeIn(BaseModel):
     token: str
+
+
+class ClerkExchangeIn(BaseModel):
+    clerk_token: str

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.config import settings
 from debatemind.database import get_db
 from debatemind.models.user import User
-from debatemind.schemas.auth import LoginIn, RegisterIn, SSOExchangeIn, TokenOut
+from debatemind.schemas.auth import ClerkExchangeIn, LoginIn, RegisterIn, TokenOut
 from debatemind.services.auth import (
     create_access_token,
     hash_password,
@@ -72,27 +72,27 @@ async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
 
 
 @router.post(
-    "/sso-exchange",
+    "/clerk-exchange",
     response_model=SuccessResponse[TokenOut],
-    summary="Exchange SSO session token for a backend token",
+    summary="Exchange Clerk JWT for a backend token",
 )
-async def sso_exchange(body: SSOExchangeIn, db: AsyncSession = Depends(get_db)):
+async def clerk_exchange(body: ClerkExchangeIn, db: AsyncSession = Depends(get_db)):
     try:
-        payload = await verify_sso_jwt(body.token)
+        payload = await verify_sso_jwt(body.clerk_token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
-    sso_user_id: str = payload.get("sub", "")
-    if not sso_user_id:
+    clerk_user_id: str = payload.get("sub", "")
+    if not clerk_user_id:
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
-    # Fetch email from SSO provider (best-effort)
+    # Fetch email from Clerk API (best-effort)
     email: str | None = None
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"https://api.clerk.com/v1/users/{sso_user_id}",
-                headers={"Authorization": f"Bearer {settings.auth_secret_key}"},
+                f"https://api.clerk.com/v1/users/{clerk_user_id}",
+                headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
                 timeout=10,
             )
             if r.is_success:
@@ -109,25 +109,25 @@ async def sso_exchange(body: SSOExchangeIn, db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
 
-    # 1. Look up by sso_id
-    result = await db.execute(select(User).where(User.sso_id == sso_user_id))
+    # 1. Look up by clerk_id (sso_id column)
+    result = await db.execute(select(User).where(User.sso_id == clerk_user_id))
     user = result.scalar_one_or_none()
 
-    # 2. Link existing email/password account to SSO
+    # 2. Link existing email/password account
     if not user and email:
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if user:
-            user.sso_id = sso_user_id
+            user.sso_id = clerk_user_id
             await db.commit()
             await db.refresh(user)
 
     # 3. Create new user
     if not user:
         user = User(
-            email=email or f"{sso_user_id}@sso.user",
+            email=email or f"{clerk_user_id}@clerk.user",
             hashed_password=hash_password(secrets.token_hex(32)),
-            sso_id=sso_user_id,
+            sso_id=clerk_user_id,
         )
         db.add(user)
         await db.commit()

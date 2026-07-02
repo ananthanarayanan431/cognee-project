@@ -1,4 +1,3 @@
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,10 +22,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:3000"]
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 1440  # 24 hours
     refresh_token_expire_days: int = 7
-    auth_secret_key: str = Field("", validation_alias="clerk_secret_key")
-    auth_jwks_url: str = Field("", validation_alias="clerk_jwks_url")
+    clerk_secret_key: str = ""
+    clerk_jwks_url: str = ""
 
 
 settings = Settings()
