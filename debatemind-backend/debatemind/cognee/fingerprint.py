@@ -238,6 +238,151 @@ async def remember_session_summary(
     )
 
 
+async def remember_personal_fact(user_id: str, session_id: str, fact_text: str) -> None:
+    """Write a personal fact the user revealed (name, likes, background) to Cognee.
+
+    Kept as its own record type (Type: PersonalFact) so recall_user_facts can
+    retrieve these independently of argument/weakness records.
+    """
+    text = (
+        f"User: {user_id}\n"
+        f"Session: {session_id}\n"
+        "Type: PersonalFact\n"
+        f"Fact: {fact_text}\n"
+        f"Summary: The user shared a personal fact: {fact_text}\n"
+    )
+    dataset = fingerprint_dataset(user_id)
+
+    logger.info(
+        "cognee.add start",
+        extra={
+            "event": "cognee.add.start",
+            "operation": "remember_personal_fact",
+            "dataset": dataset,
+            "user_id": user_id,
+            "session_id": session_id,
+            "content_length": len(text),
+        },
+    )
+    t0 = time.monotonic()
+    await asyncio.wait_for(cognee.add(text, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    logger.info(
+        "cognee.add ok",
+        extra={
+            "event": "cognee.add.ok",
+            "operation": "remember_personal_fact",
+            "dataset": dataset,
+            "user_id": user_id,
+            "content_length": len(text),
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+
+    t0 = time.monotonic()
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
+    logger.info(
+        "cognee.cognify ok",
+        extra={
+            "event": "cognee.cognify.ok",
+            "operation": "remember_personal_fact",
+            "dataset": dataset,
+            "user_id": user_id,
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+
+
+async def recall_user_facts(user_id: str, topic: str = "") -> list[dict]:
+    """Read back personal facts previously shared by the user (name, likes, etc.).
+
+    Used by the opponent to reference something the user revealed about
+    themselves as a pointed, specific jab — scoped loosely to the current
+    topic so the most relevant facts surface first, but not excluded if the
+    connection is only found by the opponent's own reasoning downstream.
+    """
+    dataset = fingerprint_dataset(user_id)
+    query = (
+        f"personal facts about the user relevant to {topic}: "
+        "preferences, background, interests, dislikes, occupation"
+        if topic
+        else "personal facts about the user: preferences, background, interests, dislikes"
+    )
+    user_marker = f"User: {user_id}"
+
+    logger.info(
+        "cognee.search start",
+        extra={
+            "event": "cognee.search.start",
+            "operation": "recall_user_facts",
+            "dataset": dataset,
+            "user_id": user_id,
+            "topic": topic,
+            "query_type": "CHUNKS",
+            "query": query,
+            "top_k": 10,
+        },
+    )
+    t0 = time.monotonic()
+    try:
+        results = await asyncio.wait_for(
+            cognee.search(
+                query_text=query,
+                query_type=SearchType.CHUNKS,
+                datasets=[dataset],
+                top_k=10,
+            ),
+            timeout=SEARCH_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "cognee.search timeout",
+            extra={
+                "event": "cognee.search.timeout",
+                "operation": "recall_user_facts",
+                "dataset": dataset,
+                "user_id": user_id,
+                "elapsed_ms": elapsed_ms(t0),
+            },
+        )
+        return []
+    except Exception as e:
+        if type(e).__name__ == "NoDataError":
+            return []
+        logger.exception(
+            "cognee.search error",
+            extra={
+                "event": "cognee.search.error",
+                "operation": "recall_user_facts",
+                "dataset": dataset,
+                "user_id": user_id,
+                "elapsed_ms": elapsed_ms(t0),
+            },
+        )
+        return []
+
+    owned = [
+        {"text": t}
+        for r in results
+        if f"{user_marker}\n" in (t := result_text(r)) and "Type: PersonalFact" in t
+    ]
+    logger.info(
+        "cognee.search ok",
+        extra={
+            "event": "cognee.search.ok",
+            "operation": "recall_user_facts",
+            "dataset": dataset,
+            "user_id": user_id,
+            "results_raw": len(results),
+            "results_owned": len(owned),
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+    return owned[:5]
+
+
 async def recall_weaknesses(user_id: str, exclude_patterns: set[str] | None = None) -> list[dict]:
     dataset = fingerprint_dataset(user_id)
     # Semantic query targets weakness-related chunks; user-ownership filter below

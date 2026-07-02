@@ -10,7 +10,7 @@ from debatemind.agents.prompts.opponent import (
     opponent_user_message,
 )
 from debatemind.agents.state import DebateState
-from debatemind.cognee import recall_weaknesses
+from debatemind.cognee import recall_user_facts, recall_weaknesses
 from debatemind.cognee._base import filter_out_patterns
 from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
@@ -25,6 +25,11 @@ from debatemind.services.mastery_svc import get_active_mastered_patterns
 # background remember_argument() write completes (see pipeline.py).
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
 
+# Same shape as _weakness_cache, but for personal facts (name, likes, etc.)
+# recalled via recall_user_facts(). Kept separate since it's invalidated
+# independently, by remember_personal_fact() writes rather than argument writes.
+_facts_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
+
 
 def invalidate_weakness_cache(user_id: str) -> None:
     """Force the next recall_weaknesses() call for this user to hit Cognee live.
@@ -34,6 +39,15 @@ def invalidate_weakness_cache(user_id: str) -> None:
     very next turn, instead of waiting up to an hour for the TTL to lapse.
     """
     _weakness_cache.pop(user_id, None)
+
+
+def invalidate_facts_cache(user_id: str) -> None:
+    """Force the next recall_user_facts() call for this user to hit Cognee live.
+
+    Called after a new personal fact is written so it's available to the
+    opponent as ammo on the very next turn instead of waiting on the TTL.
+    """
+    _facts_cache.pop(user_id, None)
 
 
 async def generate_opponent(state: DebateState) -> DebateState:
@@ -58,17 +72,28 @@ async def generate_opponent(state: DebateState) -> DebateState:
         or "No prior weaknesses recorded — probe broadly."
     )
 
+    if user_id not in _facts_cache:
+        _facts_cache[user_id] = await recall_user_facts(user_id, state["topic"])
+    state["personal_fact_context"] = _facts_cache[user_id]
+
+    personal_facts_text = "\n".join(r.get("text", "") for r in state["personal_fact_context"][:5])
+
     difficulty = state.get("difficulty", "targeted")
 
     user_position = state.get("user_position", "")
 
     msg = await openrouter.chat.completions.create(
         model=state.get("model") or settings.main_model,
-        max_tokens=300,
+        max_tokens=200,
         messages=[
             {
                 "role": "system",
-                "content": opponent_system_prompt(weakness_text, difficulty, user_position),
+                "content": opponent_system_prompt(
+                    weakness_text,
+                    difficulty,
+                    user_position,
+                    personal_facts_text=personal_facts_text,
+                ),
             },
             {
                 "role": "user",
@@ -101,7 +126,7 @@ async def generate_opening(
     """
     msg = await openrouter.chat.completions.create(
         model=model or settings.main_model,
-        max_tokens=200,
+        max_tokens=150,
         messages=[
             {
                 "role": "system",
@@ -131,7 +156,7 @@ async def generate_continuation(
     """
     msg = await openrouter.chat.completions.create(
         model=model or settings.main_model,
-        max_tokens=200,
+        max_tokens=150,
         messages=[
             {
                 "role": "system",

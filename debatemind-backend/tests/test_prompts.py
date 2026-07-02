@@ -126,7 +126,7 @@ class TestOpponentPrompts:
 
     def test_system_prompt_has_role_and_tactics_block(self):
         p = opponent_system_prompt("x", "targeted")
-        assert "debate opponent" in p.lower()
+        assert "debatemind" in p.lower()
         assert "<tactics" in p and "</tactics>" in p
 
     def test_user_message_contains_topic_and_argument(self):

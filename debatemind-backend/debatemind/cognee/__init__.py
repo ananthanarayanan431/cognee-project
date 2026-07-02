@@ -11,16 +11,20 @@ from debatemind.cognee.fingerprint import (
     improve_fingerprint,
     reactivate_pattern_fact,
     recall_topic_weaknesses,
+    recall_user_facts,
     recall_weaknesses,
     remember_argument,
+    remember_personal_fact,
     remember_session_summary,
 )
 
 __all__ = [
     "remember_argument",
     "remember_session_summary",
+    "remember_personal_fact",
     "recall_weaknesses",
     "recall_topic_weaknesses",
+    "recall_user_facts",
     "improve_fingerprint",
     "forget_pattern",
     "reactivate_pattern_fact",

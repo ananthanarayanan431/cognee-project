@@ -20,9 +20,11 @@ async def extract_argument(state: DebateState) -> DebateState:
         state["extracted_fallacy"] = data.get("fallacy")
         state["extracted_reasoning"] = data.get("reasoning", "")
         state["evidence_quality"] = data.get("evidence_quality", "Moderate")
+        state["personal_facts"] = data.get("personal_facts") or []
     except Exception:
         state["extracted_pattern"] = "EvidenceBased"
         state["extracted_fallacy"] = None
         state["extracted_reasoning"] = ""
         state["evidence_quality"] = "Moderate"
+        state["personal_facts"] = []
     return state
