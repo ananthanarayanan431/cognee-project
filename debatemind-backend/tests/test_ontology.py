@@ -2,11 +2,13 @@
 
 The ontology is a static, hand-authored OWL/RDF file committed inside the
 package. It is a WIDE, generic model of how a person thinks — reasoning
-approaches, argument patterns, fallacies, cognitive biases — plus a
-hierarchical knowledge-domain taxonomy and performance state. These tests guard
-that the asset exists, is well-formed, exposes the expected vocabulary, keeps
-the extractor's controlled strings in sync (the accuracy linchpin), and that the
-resolver degrades gracefully when the file is missing.
+approaches, argument patterns, fallacies, cognitive biases — plus an OPEN
+knowledge-domain root (no hardcoded subject areas: concrete domains are created
+dynamically per user by the extractor). These tests guard that the asset
+exists, is well-formed, exposes the expected generic vocabulary, keeps the
+extractor's controlled strings in sync (the accuracy linchpin), stays free of a
+baked-in domain taxonomy, and that the resolver degrades gracefully when the
+file is missing.
 """
 
 import owlready2
@@ -65,10 +67,8 @@ def test_ontology_exposes_the_wide_class_taxonomy():
         "Outcome",
         "MasteryStatus",
         "SkillLevel",
-        # knowledge hierarchy
+        # knowledge: an OPEN root only, no hardcoded subject areas
         "KnowledgeDomain",
-        "Technology",
-        "ArtificialIntelligence",
     }
     assert expected.issubset(names)
 
@@ -105,10 +105,22 @@ def test_reasoning_and_bias_individuals_present():
         assert name in names
 
 
-def test_knowledge_domain_is_hierarchical():
-    """Domain is one branch of a wide taxonomy: KnowledgeDomain > Technology >
-    ArtificialIntelligence (the user's example)."""
+def test_knowledge_domain_is_an_open_root_with_no_hardcoded_subjects():
+    """Generic, test-oriented app: KnowledgeDomain must stay an OPEN root with
+    NO committed subject-area subclasses. Concrete domains ("skills") are created
+    dynamically per user by the extractor at runtime, hung off this root and off
+    Topic. This guards against anyone re-introducing a fixed domain taxonomy
+    (e.g. Technology / ArtificialIntelligence / Politics) into the ontology."""
     onto = _load()
     by_name = {c.name: c for c in onto.classes()}
-    assert issubclass(by_name["Technology"], by_name["KnowledgeDomain"])
-    assert issubclass(by_name["ArtificialIntelligence"], by_name["Technology"])
+    assert "KnowledgeDomain" in by_name
+
+    domain_subclasses = [
+        c.name
+        for c in onto.classes()
+        if by_name["KnowledgeDomain"] in c.is_a and c is not by_name["KnowledgeDomain"]
+    ]
+    assert not domain_subclasses, (
+        "KnowledgeDomain must have no hardcoded subject subclasses — domains are "
+        f"created dynamically per user. Found baked-in: {domain_subclasses}"
+    )

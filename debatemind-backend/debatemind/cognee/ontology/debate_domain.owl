@@ -5,9 +5,11 @@
   A static, hand-authored controlled vocabulary that guides Cognee's knowledge-
   graph extraction (passed to cognee.cognify(ontology_file_path=...)). It is a
   WIDE, generic model of *how a person thinks* — reasoning approaches, argument
-  patterns, fallacies, cognitive biases — plus a hierarchical knowledge-domain
-  taxonomy and performance state. The knowledge domain is one branch of many,
-  not the focus; the emphasis is the thinker's cognitive fingerprint.
+  patterns, fallacies, cognitive biases — plus an OPEN knowledge-domain root
+  whose concrete domains are created dynamically, per user, at runtime. We do
+  NOT hardcode any subject areas/skills: this is a generic, test-oriented app
+  and must not presume what a given user debates about. The emphasis is the
+  thinker's cognitive fingerprint, not a fixed subject taxonomy.
 
   Accuracy contract: the ArgumentPattern and EvidenceQuality individuals mirror
   EXACTLY the strings the grading pipeline writes to Cognee
@@ -94,81 +96,19 @@
         <rdfs:comment>Overall debating proficiency of the thinker.</rdfs:comment>
     </owl:Class>
 
-    <!-- ============ Knowledge dimension (hierarchical taxonomy) ============ -->
-    <!-- Wide and generic: KnowledgeDomain > Domain area > sub-domain. One
-         branch of the model, extend freely. -->
+    <!-- ============ Knowledge dimension (OPEN, dynamic per-user) ============ -->
+    <!-- Deliberately NOT a hardcoded subject taxonomy. This is a generic,
+         test-oriented app: we do not presume what any user debates about, nor
+         which subject areas ("skills") they engage. KnowledgeDomain is an open
+         root ONLY. The concrete domains a user touches — and any finer
+         structure or cross-links — are created dynamically by cognify's
+         extractor at runtime, as nodes/edges hung off this root and off Topic
+         (via aboutTopic / discussesDomain). If a user shows a distinct skill or
+         subject, it lands as its own node/edge automatically; the graph grows
+         to fit the person. Do NOT re-introduce a fixed list of domains here. -->
 
     <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#KnowledgeDomain">
-        <rdfs:comment>Root of the subject-matter taxonomy a debate can be about.</rdfs:comment>
-    </owl:Class>
-
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Technology">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#ArtificialIntelligence">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Technology"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#MachineLearning">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#ArtificialIntelligence"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#AIRegulation">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#ArtificialIntelligence"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#DataPrivacy">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Technology"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#SocialMedia">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Technology"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Automation">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Technology"/>
-    </owl:Class>
-
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Science">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#ClimateScience">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Science"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Medicine">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Science"/>
-    </owl:Class>
-
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Health">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Environment">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Economics">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Politics">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Governance">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Politics"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#PublicPolicy">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Politics"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Ethics">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Education">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Society">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Law">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Philosophy">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
-    </owl:Class>
-    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Culture">
-        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
+        <rdfs:comment>Open root for subject matter. Concrete domains/skills are created per-user at runtime by the extractor, not enumerated here.</rdfs:comment>
     </owl:Class>
 
     <!-- ======================= Object properties ======================= -->
