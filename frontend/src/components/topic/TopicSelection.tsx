@@ -226,6 +226,15 @@ export default function TopicSelection() {
             <div className="flex-1" />
 
             <button
+              onClick={() => doStart(topic, "", undefined, true)}
+              disabled={submitting || !topic.trim()}
+              title="Start voice call debate"
+              className="w-8 h-8 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors flex-none"
+            >
+              <IconPhone size={13} />
+            </button>
+
+            <button
               onClick={() => doStart(topic, "")}
               disabled={submitting || !topic.trim()}
               className="font-sans text-xs font-semibold px-5 py-2 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-1.5 flex-none"
