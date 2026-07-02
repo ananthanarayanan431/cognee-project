@@ -29,7 +29,7 @@ export default function SessionEnd() {
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
       <button onClick={() => setScreen("topic")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-6 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
-      <h1 className="font-display text-3xl text-ink mb-1">Session complete</h1>
+      <h1 className="font-sans font-bold text-3xl text-ink mb-1">Session complete</h1>
       <p className="font-sans text-base text-fog mb-7">{summary.topic} · {summary.difficulty}</p>
 
       <div className="grid grid-cols-4 gap-3 mb-9">
@@ -40,7 +40,7 @@ export default function SessionEnd() {
           { v: summary.rounds_won, unit: "", label: "Rounds won", color: "text-verdant" },
         ].map(({ v, unit, label, color }) => (
           <div key={label} className="bg-white border border-border rounded-lg p-4">
-            <div className={`font-display text-3xl ${color}`}>{v}<span className="text-sm text-fog font-sans">{unit}</span></div>
+            <div className={`font-sans font-bold text-3xl ${color}`}>{v}<span className="text-sm text-fog font-sans font-normal">{unit}</span></div>
             <div className="font-sans text-[11px] text-fog mt-1">{label}</div>
           </div>
         ))}
@@ -64,7 +64,7 @@ export default function SessionEnd() {
           Debate again →
         </button>
         <button onClick={() => setScreen("topic")}
-          className="bg-slate text-white font-sans font-semibold uppercase tracking-wide text-sm rounded-lg px-6 py-3">
+          className="bg-ink text-white font-sans font-semibold uppercase tracking-wide text-sm rounded-lg px-6 py-3">
           Choose new topic
         </button>
         <button onClick={() => setScreen("transcript")}

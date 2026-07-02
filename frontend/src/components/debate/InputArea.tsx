@@ -73,7 +73,7 @@ export default function InputArea() {
           }}
           placeholder="Make your argument…"
           rows={1}
-          className="flex-1 resize-none font-serif text-sm text-ink bg-white border border-border rounded-lg px-3 py-2.5 min-h-14 leading-relaxed outline-none focus:border-scarlet placeholder:italic placeholder:text-fog"
+          className="flex-1 resize-none font-sans text-sm text-ink bg-white border border-border rounded-lg px-3 py-2.5 min-h-14 leading-relaxed outline-none focus:border-scarlet placeholder:text-fog"
         />
         <button
           onClick={submit}

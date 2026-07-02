@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --dm-surface-page: #F5F5F0;
+  --dm-surface-page: #F8FAFC;
   --dm-surface-card: #FFFFFF;
-  --dm-text-primary: #0D0D0D;
-  --dm-border: #D5D8DC;
+  --dm-text-primary: #1e293b;
+  --dm-border: #E2E8F0;
 }
 
 .dark {

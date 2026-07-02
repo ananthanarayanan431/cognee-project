@@ -175,7 +175,7 @@ export default function DebateView() {
                     OPPONENT
                   </span>
                 </div>
-                <span className="font-serif italic text-sm text-fog">
+                <span className="font-sans italic text-sm text-fog">
                   {currentStage ? (STAGE_LABELS[currentStage] ?? "Thinking…") : "Thinking…"}
                 </span>
               </div>
@@ -185,7 +185,7 @@ export default function DebateView() {
         </div>
 
         {/* Graph panel — hidden on mobile, shown on large screens */}
-        <aside className="w-80 min-w-[280px] max-w-[360px] bg-carbon border-l border-white/10 flex-col text-white overflow-y-auto hidden lg:flex">
+        <aside className="w-80 min-w-[280px] max-w-[360px] bg-white border-l border-border flex-col text-ink overflow-y-auto hidden lg:flex">
           <div className="px-5 pt-4 pb-2 flex items-center justify-between">
             <span className="font-sans text-[11px] font-semibold uppercase tracking-widest">
               Cognitive Fingerprint
@@ -193,7 +193,7 @@ export default function DebateView() {
           </div>
           <FingerprintGraph data={graph} />
           <SessionScoreBar scores={sessionScores} />
-          <div className="flex gap-3.5 px-5 pb-4 font-sans text-[10px] text-[#888]">
+          <div className="flex gap-3.5 px-5 pb-4 font-sans text-[10px] text-fog">
             {[
               { color: "#C0392B", label: "Weakness" },
               { color: "#27AE60", label: "Strength" },

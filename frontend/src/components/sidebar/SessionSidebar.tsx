@@ -20,9 +20,9 @@ import { GraphData, SessionListItem } from "@/types";
 import BrainGraph from "@/components/graph/BrainGraph";
 
 const DIFFICULTY_COLOR: Record<string, string> = {
-  balanced: "bg-blue-500/20 text-blue-300",
-  targeted: "bg-amber-500/20 text-amber-300",
-  ruthless: "bg-scarlet/20 text-scarlet",
+  balanced: "bg-blue-50 text-blue-600 border border-blue-100",
+  targeted: "bg-amber-50 text-amber-700 border border-amber-100",
+  ruthless: "bg-scarlet/10 text-scarlet border border-scarlet/20",
 };
 
 function formatDate(iso: string) {
@@ -39,34 +39,34 @@ function SessionCard({
   onMetrics: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const difficultyClass = DIFFICULTY_COLOR[session.difficulty] ?? "bg-white/10 text-white/50";
+  const difficultyClass = DIFFICULTY_COLOR[session.difficulty] ?? "bg-fog/10 text-fog border-fog/20";
 
   return (
-    <div className="border border-white/10 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+        className="w-full flex items-start gap-2 px-3 py-2.5 hover:bg-fog/5 transition-colors text-left"
       >
-        <span className="mt-0.5 flex-shrink-0 text-white/30">
+        <span className="mt-0.5 flex-shrink-0 text-fog/50">
           {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="font-sans text-[12px] text-white/80 leading-snug truncate">{session.topic}</p>
+          <p className="font-sans text-[12px] text-ink leading-snug truncate">{session.topic}</p>
           <div className="flex items-center gap-1.5 mt-1">
             <span className={`font-sans text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${difficultyClass}`}>
               {session.difficulty}
             </span>
-            <span className="font-sans text-[10px] text-white/30">{session.exchanges} turns</span>
-            <span className="font-sans text-[10px] text-white/30 ml-auto">{formatDate(session.started_at)}</span>
+            <span className="font-sans text-[10px] text-fog">{session.exchanges} turns</span>
+            <span className="font-sans text-[10px] text-fog ml-auto">{formatDate(session.started_at)}</span>
           </div>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-white/10 px-3 py-2 flex gap-2">
+        <div className="border-t border-border px-3 py-2 flex gap-2">
           <button
             onClick={onMetrics}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-white/5 hover:bg-white/10 transition-colors font-sans text-[10px] text-white/60 hover:text-white/90"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-fog/5 hover:bg-fog/10 transition-colors font-sans text-[10px] text-fog hover:text-ink"
           >
             <IconChartBar size={11} />
             Metrics
@@ -74,7 +74,7 @@ function SessionCard({
           {session.status === "active" && (
             <button
               onClick={onResume}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-scarlet/20 hover:bg-scarlet/30 transition-colors font-sans text-[10px] text-scarlet"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[10px] text-scarlet"
             >
               <IconPlayerPlay size={11} />
               Resume
@@ -117,7 +117,6 @@ function BrainMapModal({
       .finally(() => setLoading(false));
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -127,13 +126,12 @@ function BrainMapModal({
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-black/8 flex-shrink-0">
+      <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <IconBrain size={18} className="text-scarlet" />
-          <span className="font-sans text-[15px] font-semibold text-black/80">Your Brain Map</span>
+          <span className="font-sans text-[15px] font-semibold text-ink">Your Brain Map</span>
         </div>
 
-        {/* Legend */}
         <div className="flex items-center gap-5">
           {LEGEND.map((l) => (
             <div key={l.label} className="flex items-center gap-1.5">
@@ -141,23 +139,17 @@ function BrainMapModal({
                 className="inline-block w-3 h-3 rounded-full border"
                 style={{ background: l.color, borderColor: l.border }}
               />
-              <span className="font-sans text-[12px] text-black/50">{l.label}</span>
+              <span className="font-sans text-[12px] text-fog">{l.label}</span>
             </div>
           ))}
         </div>
 
-        <button
-          onClick={onClose}
-          className="text-black/30 hover:text-black/70 transition-colors p-1"
-        >
+        <button onClick={onClose} className="text-fog/60 hover:text-ink transition-colors p-1">
           <IconX size={18} />
         </button>
       </div>
 
-      {/* Body: graph (left 50%) + profile panel (right 50%) */}
       <div className="flex flex-1 overflow-hidden">
-
-        {/* Graph canvas — dark background so node/link colors stay readable */}
         <div className="flex-1 relative overflow-hidden bg-[#0d0d0d]">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -173,8 +165,6 @@ function BrainMapModal({
             </div>
           )}
           {graphData && !loading && <BrainGraph data={graphData} />}
-
-          {/* Zoom hint */}
           <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
             <span className="font-sans text-[10px] text-white/20">
               Scroll to zoom · drag nodes · click topic to expand
@@ -182,41 +172,36 @@ function BrainMapModal({
           </div>
         </div>
 
-        {/* Right profile panel */}
-        <div className="w-1/2 border-l border-black/8 flex flex-col overflow-y-auto flex-shrink-0">
-          {/* Stats row */}
-          <div className="flex border-b border-black/8">
-            <div className="flex-1 px-8 py-6 text-center border-r border-black/8">
-              <p className="font-mono text-[40px] font-bold text-black leading-none">{totalSessions}</p>
-              <p className="font-sans text-[11px] text-black/40 uppercase tracking-widest mt-2">Sessions</p>
+        <div className="w-1/2 border-l border-border flex flex-col overflow-y-auto flex-shrink-0">
+          <div className="flex border-b border-border">
+            <div className="flex-1 px-8 py-6 text-center border-r border-border">
+              <p className="font-mono text-[40px] font-bold text-ink leading-none">{totalSessions}</p>
+              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Sessions</p>
             </div>
             <div className="flex-1 px-8 py-6 text-center">
-              <p className="font-mono text-[40px] font-bold text-black leading-none">
+              <p className="font-mono text-[40px] font-bold text-ink leading-none">
                 {winRate !== null ? `${winRate}%` : "—"}
               </p>
-              <div className="flex items-center justify-center gap-1 mt-2">
-                <p className="font-sans text-[11px] text-black/40 uppercase tracking-widest">Win Rate</p>
-              </div>
+              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Win Rate</p>
             </div>
           </div>
 
-          {/* Profile description */}
           <div className="flex-1 p-8">
             {description ? (
               <div className="prose prose-sm max-w-none
-                prose-headings:font-sans prose-headings:font-semibold prose-headings:text-black/80
+                prose-headings:font-sans prose-headings:font-semibold prose-headings:text-ink
                 prose-h1:text-[18px] prose-h1:mb-4 prose-h1:mt-0
                 prose-h2:text-[15px] prose-h2:mb-3 prose-h2:mt-6
-                prose-p:text-[15px] prose-p:text-black/65 prose-p:leading-[1.8] prose-p:my-3
-                prose-strong:text-black/80 prose-strong:font-semibold
-                prose-ul:my-3 prose-li:text-[15px] prose-li:text-black/65 prose-li:leading-[1.8]
+                prose-p:text-[15px] prose-p:text-fog prose-p:leading-[1.8] prose-p:my-3
+                prose-strong:text-ink prose-strong:font-semibold
+                prose-ul:my-3 prose-li:text-[15px] prose-li:text-fog prose-li:leading-[1.8]
               ">
                 <ReactMarkdown>{description}</ReactMarkdown>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-3 h-full text-center">
-                <IconSparkles size={24} className="text-black/15" />
-                <p className="font-sans text-[14px] text-black/35 leading-relaxed max-w-[260px]">
+                <IconSparkles size={24} className="text-fog/30" />
+                <p className="font-sans text-[14px] text-fog leading-relaxed max-w-[260px]">
                   Use &ldquo;Describe me&rdquo; in the sidebar to generate your debate profile.
                 </p>
               </div>
@@ -270,48 +255,48 @@ function BrainSection({ winRate, onOpenBrainMap }: { winRate: number | null; onO
   }
 
   return (
-    <div className="px-4 py-3 border-b border-white/10">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <IconBrain size={14} className="text-scarlet" />
-            <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-white/60">
-              Your Brain
-            </span>
-          </div>
-          <button
-            onClick={handleExport}
-            title="Export profile"
-            className="text-white/30 hover:text-white/60 transition-colors"
-          >
-            <IconDownload size={13} />
-          </button>
+    <div className="px-4 py-3 border-b border-border">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <IconBrain size={14} className="text-scarlet" />
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-fog">
+            Your Brain
+          </span>
         </div>
+        <button
+          onClick={handleExport}
+          title="Export profile"
+          className="text-fog/50 hover:text-fog transition-colors"
+        >
+          <IconDownload size={13} />
+        </button>
+      </div>
 
-        <div className="flex gap-3 mb-2.5">
-          <div className="flex-1 bg-white/5 rounded-lg px-2.5 py-2 text-center">
-            <p className="font-mono text-[15px] font-bold text-white">{totalSessions}</p>
-            <p className="font-sans text-[9px] text-white/40 uppercase tracking-wide mt-0.5">Sessions</p>
-          </div>
-          <div className="flex-1 bg-white/5 rounded-lg px-2.5 py-2 text-center">
-            <p className="font-mono text-[15px] font-bold text-white">{winRate !== null ? `${winRate}%` : "—"}</p>
-            <p className="font-sans text-[9px] text-white/40 uppercase tracking-wide mt-0.5">Win rate</p>
-          </div>
+      <div className="flex gap-3 mb-2.5">
+        <div className="flex-1 bg-fog/5 rounded-lg px-2.5 py-2 text-center">
+          <p className="font-mono text-[15px] font-bold text-ink">{totalSessions}</p>
+          <p className="font-sans text-[9px] text-fog uppercase tracking-wide mt-0.5">Sessions</p>
         </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={handleDescribe}
-            disabled={loadingDesc}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-scarlet/15 hover:bg-scarlet/25 transition-colors font-sans text-[11px] text-scarlet disabled:opacity-50"
-          >
-            <IconSparkles size={12} />
-            {loadingDesc ? "Analyzing…" : showDesc ? "Hide profile" : "Describe me"}
-          </button>
+        <div className="flex-1 bg-fog/5 rounded-lg px-2.5 py-2 text-center">
+          <p className="font-mono text-[15px] font-bold text-ink">{winRate !== null ? `${winRate}%` : "—"}</p>
+          <p className="font-sans text-[9px] text-fog uppercase tracking-wide mt-0.5">Win rate</p>
         </div>
+      </div>
 
-        {showDesc && description && (
-          <p className="mt-2.5 font-sans text-[11px] text-white/55 leading-relaxed">{description}</p>
-        )}
+      <div className="flex gap-2">
+        <button
+          onClick={handleDescribe}
+          disabled={loadingDesc}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[11px] text-scarlet disabled:opacity-50"
+        >
+          <IconSparkles size={12} />
+          {loadingDesc ? "Analyzing…" : showDesc ? "Hide profile" : "Describe me"}
+        </button>
+      </div>
+
+      {showDesc && description && (
+        <p className="mt-2.5 font-sans text-[11px] text-fog leading-relaxed">{description}</p>
+      )}
     </div>
   );
 }
@@ -350,15 +335,15 @@ export default function SessionSidebar() {
   }
 
   return (
-    <aside className="w-[260px] min-w-[220px] bg-carbon border-r border-white/10 flex flex-col text-white overflow-hidden">
-      {/* Logo — navigates to home (topic selection, URL: /) */}
-      <div className="px-4 py-3.5 border-b border-white/10 flex items-center gap-2">
+    <aside className="w-[260px] min-w-[220px] bg-white border-r border-border flex flex-col overflow-hidden">
+      {/* Logo */}
+      <div className="px-4 py-3.5 border-b border-border flex items-center gap-2">
         <button
           onClick={() => {
             setScreen("topic");
             window.history.pushState({ screen: "topic" }, "", "/");
           }}
-          className="font-display text-[18px] text-white leading-none hover:text-white/80 transition-colors text-left"
+          className="font-sans font-semibold text-[18px] text-ink leading-none hover:text-scarlet transition-colors text-left"
           title="Home"
         >
           DebateMind
@@ -369,18 +354,18 @@ export default function SessionSidebar() {
 
       {/* Session history */}
       <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5">
-        <IconHistory size={13} className="text-white/30" />
-        <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-white/40">
+        <IconHistory size={13} className="text-fog/50" />
+        <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-fog">
           Sessions
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 pb-4 flex flex-col gap-2">
         {loading && (
-          <p className="font-sans text-[11px] text-white/30 text-center py-4">Loading…</p>
+          <p className="font-sans text-[11px] text-fog text-center py-4">Loading…</p>
         )}
         {!loading && sessions.length === 0 && (
-          <p className="font-sans text-[11px] text-white/30 text-center py-4">No sessions yet.</p>
+          <p className="font-sans text-[11px] text-fog text-center py-4">No sessions yet.</p>
         )}
         {sessions.map((s) => (
           <SessionCard
@@ -393,23 +378,23 @@ export default function SessionSidebar() {
       </div>
 
       {/* Bottom nav */}
-      <div className="border-t border-white/10 flex-shrink-0">
-        <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-white/25 px-4 pt-3 pb-1">
+      <div className="border-t border-border flex-shrink-0">
+        <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-fog/50 px-4 pt-3 pb-1">
           Platform
         </p>
         <button
           onClick={() => setShowBrainMap(true)}
-          className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-white/5 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-fog/5 transition-colors text-left"
         >
-          <IconNetwork size={14} className="text-white/35" />
-          <span className="font-sans text-[12px] text-white/55">Knowledge Graph</span>
+          <IconNetwork size={14} className="text-fog/50" />
+          <span className="font-sans text-[12px] text-fog">Knowledge Graph</span>
         </button>
         <button
           onClick={() => setScreen("settings")}
-          className="w-full flex items-center gap-2.5 px-4 py-2 mb-2 hover:bg-white/5 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-4 py-2 mb-2 hover:bg-fog/5 transition-colors text-left"
         >
-          <IconSettings size={14} className="text-white/35" />
-          <span className="font-sans text-[12px] text-white/55">Settings</span>
+          <IconSettings size={14} className="text-fog/50" />
+          <span className="font-sans text-[12px] text-fog">Settings</span>
         </button>
       </div>
 

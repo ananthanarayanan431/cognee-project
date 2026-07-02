@@ -56,7 +56,7 @@ export default function SessionTranscript() {
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
       <button onClick={() => setScreen("end")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-5 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
-      <h1 className="font-display text-2xl text-ink mb-1">{transcript.topic}</h1>
+      <h1 className="font-sans font-bold text-2xl text-ink mb-1">{transcript.topic}</h1>
       <p className="font-sans text-sm text-fog mb-7">
         {transcript.difficulty} · {new Date(transcript.started_at).toLocaleDateString()} · {transcript.exchanges.length} exchanges
       </p>
@@ -66,13 +66,13 @@ export default function SessionTranscript() {
           <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-1">
             YOU — {new Date(ex.created_at).toLocaleTimeString()}
           </p>
-          <p className="font-serif text-[15px] text-slate mb-5">{ex.user_message}</p>
+          <p className="font-sans text-[15px] text-ink mb-5">{ex.user_message}</p>
 
           <p className="font-sans text-[11px] font-semibold text-scarlet uppercase tracking-wide mb-1">
             OPPONENT — {new Date(ex.created_at).toLocaleTimeString()}
             {ex.fallacy && <span className="text-fog normal-case font-normal"> · {ex.fallacy} detected</span>}
           </p>
-          <p className="font-serif text-[15px] text-ink mb-5">{ex.opponent_response}</p>
+          <p className="font-sans text-[15px] text-ink mb-5">{ex.opponent_response}</p>
 
           {ex.judge_logic !== null && (
             <p className="font-mono text-[11px] text-fog mb-7">

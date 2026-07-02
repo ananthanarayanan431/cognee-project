@@ -69,7 +69,7 @@ export default function CalibrationSession() {
   return (
     <div className="max-w-2xl mx-auto px-7 py-12">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-3xl text-ink">Let&apos;s see how you think.</h1>
+        <h1 className="font-sans font-bold text-3xl text-ink">Let&apos;s see how you think.</h1>
         <div className="flex items-center gap-3">
           <span className="flex gap-1">
             {dots.map((filled, i) => (
@@ -86,10 +86,10 @@ export default function CalibrationSession() {
       <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-1">
         Getting to know your thinking…
       </p>
-      <p className="font-serif text-lg text-slate mb-6">{topic}</p>
+      <p className="font-sans text-lg text-ink mb-6">{topic}</p>
 
       <div className="bg-white border border-border rounded-lg px-4 py-3 mb-6 flex items-center justify-between">
-        <p className="font-serif text-base text-ink">What&apos;s your opening position on this topic?</p>
+        <p className="font-sans text-base text-ink">What&apos;s your opening position on this topic?</p>
         <span className="font-mono text-xs text-fog flex-none ml-4">{mins}:{secs}</span>
       </div>
 
@@ -98,7 +98,7 @@ export default function CalibrationSession() {
         onChange={(e) => setText(e.target.value)}
         placeholder="Make your argument…"
         rows={4}
-        className="w-full bg-white border border-border rounded-lg px-4 py-3 mb-4 font-serif text-sm text-ink resize-none outline-none focus:border-scarlet placeholder:italic placeholder:text-fog"
+        className="w-full bg-white border border-border rounded-lg px-4 py-3 mb-4 font-sans text-sm text-ink resize-none outline-none focus:border-scarlet placeholder:text-fog"
       />
 
       <div className="h-1.5 bg-fog/20 rounded-full overflow-hidden mb-6">

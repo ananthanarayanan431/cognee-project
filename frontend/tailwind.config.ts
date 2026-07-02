@@ -6,15 +6,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        scarlet: "#C0392B",
-        slate:   "#2C3E50",
-        chalk:   "#F5F5F0",
+        scarlet: "#0D9488",
+        slate:   "#134E4A",
+        chalk:   "#F8FAFC",
         carbon:  "#1A1A1A",
-        fog:     "#7F8C8D",
+        fog:     "#64748B",
         ember:   "#E67E22",
         verdant: "#27AE60",
-        ink:     "#0D0D0D",
-        border:  "#D5D8DC",
+        ink:     "#1e293b",
+        border:  "#E2E8F0",
         light:   "#F8F9FA",
       },
       fontFamily: {
