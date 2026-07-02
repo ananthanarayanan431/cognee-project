@@ -262,7 +262,7 @@ export default function DebateView() {
                     O
                   </span>
                   <span className="font-sans text-[10px] font-semibold text-scarlet tracking-widest">
-                    OPPONENT
+                    DEBATEMIND
                   </span>
                 </div>
                 <span className="font-sans italic text-sm text-fog">

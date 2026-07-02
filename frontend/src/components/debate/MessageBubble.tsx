@@ -20,7 +20,7 @@ export default function MessageBubble({ msg, thinking }: { msg: Message; thinkin
     <div className="flex flex-col items-start">
       <div className="flex items-center gap-1.5 mb-1.5">
         <PulseAvatar thinking={!!thinking && !msg.text} />
-        <span className="font-sans text-[10px] font-semibold text-scarlet tracking-widest">OPPONENT</span>
+        <span className="font-sans text-[10px] font-semibold text-scarlet tracking-widest">DEBATEMIND</span>
       </div>
       <div className="max-w-[85%] bg-white text-ink border border-border font-sans text-base leading-relaxed px-3.5 py-2.5 rounded-[2px_12px_12px_12px]">
         {msg.text || <span className="italic text-fog text-sm">Studying your argument…</span>}
