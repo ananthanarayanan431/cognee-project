@@ -85,6 +85,9 @@ function ModelDropdown({
               <p className="font-sans text-[13px] text-ink truncate">{selectedModel.name}</p>
               <p className="font-sans text-[10px] text-fog mt-0.5">{selectedModel.id}</p>
             </>
+          ) : selected ? (
+            // Model ID known but not yet in list (loading race) — show raw ID
+            <p className="font-sans text-[13px] text-ink truncate">{selected}</p>
           ) : (
             <p className="font-sans text-[13px] text-fog">{placeholder}</p>
           )}
@@ -214,6 +217,28 @@ function RoleCard({
           </span>
         ))}
       </div>
+
+      {/* Active model display */}
+      {!loading && effectiveSelected && (
+        <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-scarlet/[0.04] border border-scarlet/15 rounded-xl">
+          <div className="flex-1 min-w-0">
+            <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-fog/50 mb-0.5">
+              Currently using
+            </p>
+            <p className="font-sans text-[13px] font-medium text-ink truncate">
+              {models.find((m) => m.id === effectiveSelected)?.name ?? effectiveSelected}
+            </p>
+          </div>
+          <span className={`font-sans text-[9px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 flex-none border ${
+            isCustom
+              ? "text-scarlet bg-scarlet/8 border-scarlet/20"
+              : "text-fog/60 bg-fog/5 border-border"
+          }`}>
+            {isCustom ? "Custom" : "Default"}
+          </span>
+        </div>
+      )}
+      {loading && <div className="h-10 bg-fog/5 rounded-xl animate-pulse" />}
 
       {loading ? (
         <div className="h-[52px] bg-fog/5 rounded-xl animate-pulse" />
