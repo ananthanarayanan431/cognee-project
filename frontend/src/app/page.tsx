@@ -32,6 +32,7 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 export default function Home() {
   const { isSignedIn, isLoaded, getToken } = useAuth();
   const screen = useDebate((s) => s.screen);
+  const sessionId = useDebate((s) => s.sessionId);
   const token = useDebate((s) => s.token);
   const hydrate = useDebate((s) => s.hydrate);
   const setScreen = useDebate((s) => s.setScreen);
@@ -61,15 +62,17 @@ export default function Home() {
   // Mirror the active screen into the URL. "calibration" is an auth-gated
   // interstitial with no addressable URL, so it is skipped. Every other screen
   // maps to a path via screenToPath ("topic" → "/", else "/?screen=<name>").
-  // A push only happens when the URL actually differs, so popstate-driven screen
-  // changes (which already updated the URL) never create a duplicate entry.
+  // Session-scoped screens also carry the active session id (&session=<id>) so
+  // the session is traceable from the URL. A push only happens when the URL
+  // actually differs, so popstate-driven screen changes (which already updated
+  // the URL) never create a duplicate entry.
   useEffect(() => {
     if (!token || screen === "calibration") return;
-    const target = screenToPath(screen);
+    const target = screenToPath(screen, sessionId);
     const current = window.location.pathname + window.location.search;
     if (current === target) return;
-    window.history.pushState({ screen }, "", target);
-  }, [screen, token]);
+    window.history.pushState({ screen, sessionId }, "", target);
+  }, [screen, sessionId, token]);
 
   // Handle browser back / forward. Prefer the history entry's stored screen,
   // fall back to the URL param, then to the landing page (bare "/").

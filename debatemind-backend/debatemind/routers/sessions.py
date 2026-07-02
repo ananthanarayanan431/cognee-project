@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
+from sqlalchemy import delete as sqldelete
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from debatemind.agents.opponent import generate_opening
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
 from debatemind.database import AsyncSessionLocal, get_db
@@ -276,6 +278,61 @@ async def send_message(
 
 
 @router.post(
+    "/{session_id}/opening",
+    summary="Stream opponent opening message",
+    description=(
+        "Generate the opponent's opening message for a fresh session and stream "
+        "it token-by-token (SSE). Events: token | error | [DONE]. Nothing is "
+        "persisted — the opening is ephemeral framing, not a scored exchange."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def session_opening(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+    x_model: str | None = Header(None, alias="X-Model"),
+):
+    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async def event_stream():
+        try:
+            opening = await generate_opening(
+                topic=session.topic,
+                description=session.description or "",
+                difficulty=session.difficulty,
+                user_position=session.user_position,
+                model=x_model or None,
+            )
+        except Exception:
+            logger.exception("opening generation failed for session %s", session_id)
+            yield (
+                "data: "
+                + json.dumps(
+                    {"type": "error", "detail": "Something went wrong starting the debate."}
+                )
+                + "\n\n"
+            )
+            return
+
+        words = opening.split()
+        for i, word in enumerate(words):
+            chunk = word + (" " if i < len(words) - 1 else "")
+            yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"
+            await asyncio.sleep(0.03)
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post(
     "/{session_id}/end",
     response_model=SuccessResponse[EndSessionOut],
     summary="End debate session",
@@ -304,6 +361,35 @@ async def end_session(
 
     _session_wins.pop(session_id, None)
     return SuccessResponse(data=EndSessionOut(status="ended"))
+
+
+@router.delete(
+    "/{session_id}",
+    response_model=SuccessResponse[EndSessionOut],
+    summary="Delete debate session",
+    description="Permanently delete a debate session and all of its exchanges.",
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def delete_session(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Remove child exchanges first (no DB-level cascade defined), then the session.
+    await db.execute(sqldelete(Exchange).where(Exchange.session_id == session_id))
+    await db.execute(sqldelete(DebateSession).where(DebateSession.id == session_id))
+    await db.commit()
+
+    _session_wins.pop(session_id, None)
+    return SuccessResponse(data=EndSessionOut(status="deleted"))
 
 
 @router.get(

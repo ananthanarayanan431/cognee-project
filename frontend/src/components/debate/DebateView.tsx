@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { GraphData, Message } from "@/types";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
+import { useStreamOpening } from "@/hooks/useDebateSSE";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
 import SessionScoreBar from "./SessionScoreBar";
 
@@ -20,18 +21,20 @@ export default function DebateView() {
   const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph } = useDebate();
   const scrollRef    = useRef<HTMLDivElement>(null);
   const hydratedRef  = useRef<string | null>(null);
+  const streamOpening = useStreamOpening();
 
   // Hydrate chat history and graph when resuming an existing session;
-  // inject AI opening messages for fresh sessions.
+  // stream an AI-generated opening for fresh sessions.
   useEffect(() => {
     if (!sessionId || hydratedRef.current === sessionId) return;
+    // Claim this session synchronously so a StrictMode double-mount (or a rapid
+    // re-render) can't fire two transcript fetches / opening streams.
+    hydratedRef.current = sessionId;
 
     Promise.allSettled([
       api.getTranscript(sessionId),
       api.getGraph(sessionId),
     ]).then(([transcriptResult, graphResult]) => {
-      hydratedRef.current = sessionId;
-
       if (transcriptResult.status === "fulfilled") {
         const transcript = transcriptResult.value;
         const currentMessages = useDebate.getState().messages;
@@ -72,20 +75,8 @@ export default function DebateView() {
             });
           }
         } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
-          // Fresh session — AI opens the conversation
-          const topic = useDebate.getState().sessionConfig?.topic ?? "";
-          setMessages([
-            {
-              id: "opening-1",
-              role: "opponent",
-              text: "I'm your AI opponent. I'll push back on every argument, flag logical fallacies as they happen, and target your weakest reasoning — that's how you actually improve.",
-            },
-            {
-              id: "opening-2",
-              role: "opponent",
-              text: `**Motion: ${topic}**\n\nMake your opening argument. What's your position and why?`,
-            },
-          ]);
+          // Fresh session — the AI opponent generates and streams the opening.
+          streamOpening(sessionId);
         }
       }
 
@@ -93,7 +84,7 @@ export default function DebateView() {
         setGraph(graphResult.value as unknown as GraphData);
       }
     });
-  }, [sessionId, setMessages, setGraph]);
+  }, [sessionId, setMessages, setGraph, streamOpening]);
 
   useEffect(() => {
     if (scrollRef.current) {

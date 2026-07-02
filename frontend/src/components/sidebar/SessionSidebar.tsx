@@ -1,18 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   IconBrain,
   IconChartBar,
-  IconChevronDown,
-  IconChevronRight,
+  IconDotsVertical,
   IconDownload,
   IconHistory,
   IconLogout,
   IconNetwork,
-  IconPlayerPlay,
   IconSettings,
   IconSparkles,
+  IconTrash,
   IconX,
 } from "@tabler/icons-react";
 import { useClerk as useAuthProvider } from "@clerk/nextjs";
@@ -33,54 +32,95 @@ function formatDate(iso: string) {
 
 function SessionCard({
   session,
-  onResume,
+  onOpen,
   onMetrics,
+  onDelete,
 }: {
   session: SessionListItem;
-  onResume: () => void;
+  onOpen: () => void;
   onMetrics: () => void;
+  onDelete: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen]     = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const difficultyClass = DIFFICULTY_COLOR[session.difficulty] ?? "bg-fog/10 text-fog border-fog/20";
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start gap-2 px-3 py-2.5 hover:bg-fog/5 transition-colors text-left"
-      >
-        <span className="mt-0.5 flex-shrink-0 text-fog/50">
-          {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-sans text-[12px] text-ink leading-snug truncate">{session.topic}</p>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className={`font-sans text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${difficultyClass}`}>
-              {session.difficulty}
-            </span>
-            <span className="font-sans text-[10px] text-fog">{session.exchanges} turns</span>
-            <span className="font-sans text-[10px] text-fog ml-auto">{formatDate(session.started_at)}</span>
-          </div>
+    <div ref={ref} className="relative flex items-center rounded-md hover:bg-fog/5 transition-colors">
+      {/* Click row → open / resume the session */}
+      <button onClick={onOpen} className="flex-1 min-w-0 text-left px-2.5 py-1.5">
+        <p className="font-sans text-[12px] text-ink leading-tight truncate">{session.topic}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className={`font-sans text-[8px] font-semibold uppercase tracking-wide px-1 py-px rounded ${difficultyClass}`}>
+            {session.difficulty}
+          </span>
+          <span className="font-sans text-[10px] text-fog">{session.exchanges}t</span>
+          {session.status === "active" && (
+            <span className="w-1.5 h-1.5 rounded-full bg-verdant" title="Active" />
+          )}
+          <span className="font-sans text-[10px] text-fog ml-auto">{formatDate(session.started_at)}</span>
         </div>
       </button>
 
-      {expanded && (
-        <div className="border-t border-border px-3 py-2 flex gap-2">
-          <button
-            onClick={onMetrics}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-fog/5 hover:bg-fog/10 transition-colors font-sans text-[10px] text-fog hover:text-ink"
-          >
-            <IconChartBar size={11} />
-            Metrics
-          </button>
-          {session.status === "active" && (
-            <button
-              onClick={onResume}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[10px] text-scarlet"
-            >
-              <IconPlayerPlay size={11} />
-              Resume
-            </button>
+      {/* Kebab menu */}
+      <button
+        onClick={() => { setMenuOpen((v) => !v); setConfirming(false); }}
+        className="flex-shrink-0 p-1 mr-1 rounded text-fog/40 hover:text-ink hover:bg-fog/10 transition-colors"
+        title="More"
+      >
+        <IconDotsVertical size={14} />
+      </button>
+
+      {menuOpen && (
+        <div className="absolute right-1 top-full mt-1 z-30 w-40 bg-white border border-border rounded-lg shadow-lg py-1">
+          {!confirming ? (
+            <>
+              <button
+                onClick={() => { setMenuOpen(false); onMetrics(); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left font-sans text-[12px] text-ink hover:bg-fog/5 transition-colors"
+              >
+                <IconChartBar size={13} className="text-fog" />
+                View metrics
+              </button>
+              <button
+                onClick={() => setConfirming(true)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left font-sans text-[12px] text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <IconTrash size={13} />
+                Delete session
+              </button>
+            </>
+          ) : (
+            <div className="px-3 py-2">
+              <p className="font-sans text-[11px] text-fog leading-snug mb-2">Delete this session permanently?</p>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirming(false); }}
+                  className="flex-1 font-sans text-[11px] text-fog border border-border rounded px-2 py-1 hover:bg-fog/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirming(false); onDelete(); }}
+                  className="flex-1 font-sans text-[11px] text-white bg-red-500 rounded px-2 py-1 hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -331,7 +371,7 @@ export default function SessionSidebar() {
       .finally(() => setLoading(false));
   }, [token, setSessions]);
 
-  function handleResume(session: SessionListItem) {
+  function handleOpen(session: SessionListItem) {
     setSession(session.session_id, {
       topic: session.topic,
       description: "",
@@ -344,6 +384,33 @@ export default function SessionSidebar() {
     useDebate.setState({ sessionId: session.session_id });
     setScreen("end");
   }
+
+  async function handleDelete(session: SessionListItem) {
+    const prev = sessions;
+    // Optimistic removal
+    setSessions(sessions.filter((s) => s.session_id !== session.session_id));
+    try {
+      await api.deleteSession(session.session_id);
+      // If the deleted session is the one currently open, return to the app home
+      const { sessionId, screen } = useDebate.getState();
+      if (sessionId === session.session_id && screen !== "topic") {
+        useDebate.setState({ sessionId: null });
+        setScreen("topic");
+      }
+    } catch {
+      setSessions(prev); // rollback on failure
+    }
+  }
+
+  // Split sessions into "Last 7 days" and "Earlier" buckets.
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const recentSessions = sessions.filter(
+    (s) => now - new Date(s.started_at).getTime() <= SEVEN_DAYS,
+  );
+  const earlierSessions = sessions.filter(
+    (s) => now - new Date(s.started_at).getTime() > SEVEN_DAYS,
+  );
 
   return (
     <aside className="w-[260px] min-w-[220px] bg-white border-r border-border flex flex-col overflow-hidden">
@@ -364,28 +431,58 @@ export default function SessionSidebar() {
       <BrainSection winRate={winRate} />
 
       {/* Session history */}
-      <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5">
+      <div className="flex items-center gap-1.5 px-4 pt-3 pb-1">
         <IconHistory size={13} className="text-fog/50" />
         <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-fog">
           Sessions
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-4 flex flex-col gap-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
         {loading && (
           <p className="font-sans text-[11px] text-fog text-center py-4">Loading…</p>
         )}
         {!loading && sessions.length === 0 && (
           <p className="font-sans text-[11px] text-fog text-center py-4">No sessions yet.</p>
         )}
-        {sessions.map((s) => (
-          <SessionCard
-            key={s.session_id}
-            session={s}
-            onResume={() => handleResume(s)}
-            onMetrics={() => handleMetrics(s)}
-          />
-        ))}
+
+        {recentSessions.length > 0 && (
+          <>
+            <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-fog/50 px-2.5 pt-2 pb-1">
+              Last 7 days
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {recentSessions.map((s) => (
+                <SessionCard
+                  key={s.session_id}
+                  session={s}
+                  onOpen={() => handleOpen(s)}
+                  onMetrics={() => handleMetrics(s)}
+                  onDelete={() => handleDelete(s)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {earlierSessions.length > 0 && (
+          <>
+            <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-fog/50 px-2.5 pt-3 pb-1">
+              Earlier
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {earlierSessions.map((s) => (
+                <SessionCard
+                  key={s.session_id}
+                  session={s}
+                  onOpen={() => handleOpen(s)}
+                  onMetrics={() => handleMetrics(s)}
+                  onDelete={() => handleDelete(s)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Bottom nav */}

@@ -1,7 +1,12 @@
 from cachetools import TTLCache
 
 from debatemind.agents.client import openrouter
-from debatemind.agents.prompts.opponent import opponent_system_prompt, opponent_user_message
+from debatemind.agents.prompts.opponent import (
+    opening_system_prompt,
+    opening_user_message,
+    opponent_system_prompt,
+    opponent_user_message,
+)
 from debatemind.agents.state import DebateState
 from debatemind.cognee import recall_weaknesses
 from debatemind.config import settings
@@ -48,3 +53,33 @@ async def generate_opponent(state: DebateState) -> DebateState:
     )
     state["opponent_response"] = msg.choices[0].message.content or ""
     return state
+
+
+async def generate_opening(
+    topic: str,
+    description: str,
+    difficulty: str,
+    user_position: str,
+    model: str | None = None,
+) -> str:
+    """Generate the opponent's opening message for a fresh session.
+
+    Frames the motion and invites the user to argue — no rebuttal, no prior
+    turns. Kept separate from the graph pipeline since nothing is persisted or
+    scored for the opening.
+    """
+    msg = await openrouter.chat.completions.create(
+        model=model or settings.main_model,
+        max_tokens=200,
+        messages=[
+            {
+                "role": "system",
+                "content": opening_system_prompt(difficulty, user_position),
+            },
+            {
+                "role": "user",
+                "content": opening_user_message(topic, description, user_position),
+            },
+        ],
+    )
+    return msg.choices[0].message.content or ""

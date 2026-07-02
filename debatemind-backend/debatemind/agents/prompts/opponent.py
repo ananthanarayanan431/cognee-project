@@ -78,3 +78,53 @@ def opponent_user_message(
         position_label = "unspecified"
     position_line = f"\nUser's declared position: {position_label}" if position_label else ""
     return f"Topic: {topic}{context_line}{position_line}\n\nUser argues: {user_argument}"
+
+
+def opening_system_prompt(difficulty: str, user_position: str = "") -> str:
+    """System prompt for the opponent's opening message that kicks off a session.
+
+    Unlike a normal turn, there is no user argument to counter yet — the opponent
+    frames the motion, sets the tone for the chosen difficulty, and hands the
+    floor to the user for their opening argument.
+    """
+    instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
+
+    position_label = user_position.lower() if user_position else "unspecified"
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+
+    position_line = (
+        f"The user is arguing **{position_label}** this motion."
+        if position_label != "unspecified"
+        else "The user has not committed to a side yet."
+    )
+
+    return f"""You are a world-class debate opponent about to open a live sparring
+session with the user. This is the very first message — no argument has been made
+yet, so do NOT rebut anything.
+
+<your_opening_job>
+- In one or two sharp sentences, introduce how you will challenge them (you push
+  back on every claim, flag fallacies as they happen, and target their weakest
+  reasoning — that is how they improve).
+- State the motion clearly on its own line, prefixed with "Motion:".
+- {position_line}
+- End by inviting them to make their opening argument and state their position.
+</your_opening_job>
+
+<tone difficulty="{difficulty}">
+{instruction}
+Set the tone accordingly, but stay welcoming — the debate hasn't started yet.
+</tone>
+
+Write in prose, under 70 words. No headers or bullet points. Do not fabricate
+any argument on the user's behalf."""
+
+
+def opening_user_message(topic: str, description: str = "", user_position: str = "") -> str:
+    context_line = f"\n\nContext: {description}" if description else ""
+    position_label = user_position.lower() if user_position else ""
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+    position_line = f"\nUser's declared position: {position_label}" if position_label else ""
+    return f"Motion to debate: {topic}{context_line}{position_line}\n\nOpen the session now."

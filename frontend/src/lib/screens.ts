@@ -44,6 +44,16 @@ const COLD_RESTORABLE: ReadonlySet<Screen> = new Set<Screen>([
   "settings",
 ]);
 
+// Screens bound to a specific debate session. These carry the session id in the
+// URL (`&session=<id>`) so an active session is traceable from the address bar
+// and logs. The id is display/trace-only — cold loads still fall back per
+// COLD_RESTORABLE and do not resume the session.
+const SESSION_SCOPED: ReadonlySet<Screen> = new Set<Screen>([
+  "debate",
+  "end",
+  "transcript",
+]);
+
 export function isScreen(s: string): s is Screen {
   return (
     s === "landing" ||
@@ -52,9 +62,18 @@ export function isScreen(s: string): s is Screen {
   );
 }
 
-/** Screen → URL path. "landing" is "/"; everything else is "/?screen=<name>". */
-export function screenToPath(screen: Screen): string {
-  return screen === "landing" ? "/" : `/?screen=${screen}`;
+/**
+ * Screen → URL path. "landing" is "/"; everything else is "/?screen=<name>".
+ * Session-scoped screens append `&session=<id>` when a session id is supplied
+ * so the active session is traceable from the URL.
+ */
+export function screenToPath(screen: Screen, sessionId?: string | null): string {
+  if (screen === "landing") return "/";
+  const base = `/?screen=${screen}`;
+  if (sessionId && SESSION_SCOPED.has(screen)) {
+    return `${base}&session=${sessionId}`;
+  }
+  return base;
 }
 
 /**

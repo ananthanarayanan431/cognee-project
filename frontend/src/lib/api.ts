@@ -125,6 +125,8 @@ export const api = {
       method: "POST",
     }),
   getSessions: () => apiFetch<SessionListItem[]>("/api/sessions"),
+  deleteSession: (sessionId: string) =>
+    apiFetch<{ status: string }>(`/api/sessions/${sessionId}`, { method: "DELETE" }),
   describeUser: () => apiFetch<{ description: string }>("/api/users/me/describe"),
   exportProfileUrl: () => `${BASE}/api/users/me/export`,
   getBrainGraph: () => apiFetch<{ nodes: import("@/types").GraphNode[]; edges: import("@/types").GraphEdge[] }>("/api/users/me/brain"),
