@@ -31,7 +31,8 @@ interface UseVoiceAgentReturn {
 }
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime";
-const MODEL = "gpt-4o-realtime-preview";
+// Must match the model the backend mints the session with (GA Realtime).
+const MODEL = "gpt-realtime";
 
 let _idCounter = 0;
 function nextId() {
