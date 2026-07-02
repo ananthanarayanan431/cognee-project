@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from langgraph.graph import END, StateGraph
 
 from debatemind.agents.extractor import extract_argument
@@ -5,28 +8,49 @@ from debatemind.agents.judge import judge_exchange
 from debatemind.agents.mastery import check_mastery
 from debatemind.agents.opponent import generate_opponent
 from debatemind.agents.state import DebateState
-from debatemind.services.cognee_svc import forget_pattern, remember_argument
+from debatemind.cognee import forget_pattern, remember_argument
+
+logger = logging.getLogger(__name__)
+
+
+def _log_remember_exc(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception():
+        logger.exception(
+            "remember_argument background task failed",
+            exc_info=task.exception(),
+        )
 
 
 async def _remember_node(state: DebateState) -> DebateState:
-    await remember_argument(
-        user_id=state["user_id"],
-        session_id=state["session_id"],
-        topic=state["topic"],
-        claim_text=state["user_message"],
-        pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-        fallacy=state.get("extracted_fallacy"),
-        evidence_quality=state.get("evidence_quality", "Moderate"),
-        outcome=state.get("outcome", "Neutral"),
+    task = asyncio.create_task(
+        remember_argument(
+            user_id=state["user_id"],
+            session_id=state["session_id"],
+            topic=state["topic"],
+            claim_text=state["user_message"],
+            pattern_type=state.get("extracted_pattern", "EvidenceBased"),
+            fallacy=state.get("extracted_fallacy"),
+            evidence_quality=state.get("evidence_quality", "Moderate"),
+            outcome=state.get("outcome", "Neutral"),
+        )
     )
+    task.add_done_callback(_log_remember_exc)
     return state
 
 
 async def _mastery_prune_node(state: DebateState) -> DebateState:
+    failed = []
     for pattern in state.get("mastery_events", []):
-        await forget_pattern(state["user_id"], pattern)
-    # Clear mastery_events after processing so the next turn starts clean (Bug 1)
-    state["mastery_events"] = []
+        try:
+            await forget_pattern(state["user_id"], pattern)
+        except Exception:
+            logger.exception(
+                "forget_pattern failed for user %s pattern %s — continuing",
+                state["user_id"],
+                pattern,
+            )
+            failed.append(pattern)
+    state["mastery_events"] = failed
     return state
 
 

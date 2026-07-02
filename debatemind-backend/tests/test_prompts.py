@@ -1,8 +1,8 @@
 """Unit tests for prompt builders — pure string functions, no I/O."""
 
-from debatemind.agents.constants import PATTERN_TYPES
-from debatemind.agents.prompts.extractor import extractor_prompt
-from debatemind.agents.prompts.judge import judge_prompt
+from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
+from debatemind.agents.prompts.extractor import EXTRACTOR_RESPONSE_SCHEMA, extractor_prompt
+from debatemind.agents.prompts.judge import JUDGE_RESPONSE_SCHEMA, judge_prompt
 from debatemind.agents.prompts.opponent import (
     _DIFFICULTY_INSTRUCTIONS,
     opponent_system_prompt,
@@ -16,16 +16,48 @@ class TestExtractorPrompt:
         assert "Climate change" in p
         assert "We must cut emissions now" in p
 
-    def test_contains_all_pattern_types(self):
+    def test_contains_all_pattern_types_and_descriptions(self):
         p = extractor_prompt("topic", "arg")
-        for pattern in PATTERN_TYPES:
+        for pattern, desc in PATTERN_TYPE_DESCRIPTIONS.items():
             assert pattern in p
+            assert desc in p
 
-    def test_requests_json_output(self):
+    def test_has_role_framing(self):
         p = extractor_prompt("topic", "arg")
-        assert "pattern_type" in p
-        assert "fallacy" in p
-        assert "evidence_quality" in p
+        assert "classifier" in p.lower()
+
+    def test_has_few_shot_examples(self):
+        p = extractor_prompt("topic", "arg")
+        assert p.count("<example>") >= 3
+        assert p.count("</example>") == p.count("<example>")
+
+    def test_includes_description_when_present(self):
+        p = extractor_prompt(
+            "Climate change", "We must cut emissions now", description="Focus on EU policy"
+        )
+        assert "Focus on EU policy" in p
+
+    def test_omits_context_line_when_description_absent(self):
+        p = extractor_prompt("topic", "arg")
+        assert "Context:" not in p
+
+
+class TestExtractorSchema:
+    def test_schema_is_strict_with_consistent_required_fields(self):
+        body = EXTRACTOR_RESPONSE_SCHEMA["schema"]
+        assert EXTRACTOR_RESPONSE_SCHEMA["strict"] is True
+        assert body["additionalProperties"] is False
+        assert set(body["required"]) == set(body["properties"].keys())
+
+    def test_reasoning_field_is_first(self):
+        first_key = next(iter(EXTRACTOR_RESPONSE_SCHEMA["schema"]["properties"]))
+        assert first_key == "reasoning"
+
+    def test_pattern_type_enum_matches_constants(self):
+        assert (  # noqa: E501
+            EXTRACTOR_RESPONSE_SCHEMA["schema"]["properties"]["pattern_type"]["enum"]
+            == PATTERN_TYPES
+        )
 
 
 class TestJudgePrompt:
@@ -42,7 +74,36 @@ class TestJudgePrompt:
 
     def test_win_condition_explained(self):
         p = judge_prompt("t", "u", "o")
-        assert "Won" in p and "Lost" in p
+        assert "Won" in p and "Lost" in p and "Neutral" in p
+
+    def test_has_rubric_anchors_for_each_dimension(self):
+        p = judge_prompt("t", "u", "o")
+        assert "<rubric>" in p and "</rubric>" in p
+        for dimension in ("logic", "evidence", "rhetoric"):
+            assert dimension in p
+
+    def test_warns_against_verbosity_bias(self):
+        p = judge_prompt("t", "u", "o")
+        assert "longer" in p.lower()
+
+
+class TestJudgeSchema:
+    def test_schema_is_strict_with_consistent_required_fields(self):
+        body = JUDGE_RESPONSE_SCHEMA["schema"]
+        assert JUDGE_RESPONSE_SCHEMA["strict"] is True
+        assert body["additionalProperties"] is False
+        assert set(body["required"]) == set(body["properties"].keys())
+
+    def test_reasoning_field_is_first(self):
+        first_key = next(iter(JUDGE_RESPONSE_SCHEMA["schema"]["properties"]))
+        assert first_key == "reasoning"
+
+    def test_outcome_enum_is_won_lost_neutral(self):
+        assert JUDGE_RESPONSE_SCHEMA["schema"]["properties"]["outcome"]["enum"] == [
+            "Won",
+            "Lost",
+            "Neutral",
+        ]
 
 
 class TestOpponentPrompts:
@@ -63,7 +124,45 @@ class TestOpponentPrompts:
         p = opponent_system_prompt("x", "nonexistent")
         assert _DIFFICULTY_INSTRUCTIONS["targeted"] in p
 
+    def test_system_prompt_has_role_and_tactics_block(self):
+        p = opponent_system_prompt("x", "targeted")
+        assert "debate opponent" in p.lower()
+        assert "<tactics" in p and "</tactics>" in p
+
     def test_user_message_contains_topic_and_argument(self):
         m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
         assert "Tax policy" in m
         assert "higher taxes reduce inequality" in m
+
+    def test_system_prompt_includes_source_text_when_present(self):
+        p = opponent_system_prompt(
+            "weakness A", "targeted", source_text="The report states X causes Y."
+        )
+        assert "The report states X causes Y." in p
+        assert "source_material" in p
+
+    def test_system_prompt_omits_source_block_when_absent(self):
+        p = opponent_system_prompt("weakness A", "targeted")
+        assert "source_material" not in p
+
+    def test_user_message_includes_description_when_present(self):
+        m = opponent_user_message(
+            "Tax policy",
+            "higher taxes reduce inequality",
+            description="Focus on US federal brackets",
+        )
+        assert "Focus on US federal brackets" in m
+
+    def test_user_message_omits_context_line_when_description_absent(self):
+        m = opponent_user_message("Tax policy", "higher taxes reduce inequality")
+        assert "Context:" not in m
+
+
+class TestPatternTypeDescriptions:
+    def test_has_a_description_for_every_pattern_type(self):
+        assert set(PATTERN_TYPE_DESCRIPTIONS.keys()) == set(PATTERN_TYPES)
+
+    def test_descriptions_are_non_empty_strings(self):
+        for desc in PATTERN_TYPE_DESCRIPTIONS.values():
+            assert isinstance(desc, str)
+            assert len(desc) > 0

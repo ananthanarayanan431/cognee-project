@@ -1,13 +1,99 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { IconChartLine, IconHistory } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
+import { GraphData, Message } from "@/types";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
+import { useStreamContinuation, useStreamOpening } from "@/hooks/useDebateSSE";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
+import SessionScoreBar from "./SessionScoreBar";
+
+const STAGE_LABELS: Record<string, string> = {
+  extract: "Analysing your argument…",
+  opponent: "Building a counterargument…",
+  judge: "Scoring the exchange…",
+  mastery: "Updating your fingerprint…",
+};
+
 export default function DebateView() {
-  const { messages, thinking, graph, sessionId, sessionConfig, setScreen } = useDebate();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph } = useDebate();
+  const scrollRef    = useRef<HTMLDivElement>(null);
+  const hydratedRef  = useRef<string | null>(null);
+  const streamOpening = useStreamOpening();
+  const streamContinuation = useStreamContinuation();
+
+  // Hydrate chat history and graph when resuming an existing session;
+  // stream an AI-generated opening for fresh sessions.
+  useEffect(() => {
+    if (!sessionId || hydratedRef.current === sessionId) return;
+    // Claim this session synchronously so a StrictMode double-mount (or a rapid
+    // re-render) can't fire two transcript fetches / opening streams.
+    hydratedRef.current = sessionId;
+
+    Promise.allSettled([
+      api.getTranscript(sessionId),
+      api.getGraph(sessionId),
+    ]).then(([transcriptResult, graphResult]) => {
+      if (transcriptResult.status === "fulfilled") {
+        const transcript = transcriptResult.value;
+        const currentMessages = useDebate.getState().messages;
+
+        if (transcript.exchanges.length > 0 && currentMessages.length === 0) {
+          // Resumed session — restore full transcript
+          const msgs: Message[] = [];
+          for (const ex of transcript.exchanges) {
+            msgs.push({ id: `h-${ex.turn_number}-user`, role: "user", text: ex.user_message });
+            if (ex.opponent_response) {
+              const hasScores = ex.judge_logic != null;
+              msgs.push({
+                id: `h-${ex.turn_number}-opp`,
+                role: "opponent",
+                text: ex.opponent_response,
+                judge: hasScores ? {
+                  logic:    ex.judge_logic    ?? 0,
+                  evidence: ex.judge_evidence ?? 0,
+                  rhetoric: ex.judge_rhetoric ?? 0,
+                  fallacy:  ex.fallacy,
+                  outcome:  ex.outcome ?? "",
+                } : undefined,
+                showJudge: hasScores,
+              });
+            }
+          }
+          setMessages(msgs);
+
+          // Restore session scores from last scored exchange
+          const last = [...transcript.exchanges].reverse().find((e) => e.judge_logic != null);
+          if (last) {
+            useDebate.setState({
+              sessionScores: {
+                logic:    last.judge_logic    ?? 0,
+                evidence: last.judge_evidence ?? 0,
+                rhetoric: last.judge_rhetoric ?? 0,
+              },
+            });
+          }
+
+          // Re-engage the user: opponent picks up from where the debate left off.
+          streamContinuation(sessionId);
+        } else if (
+          transcript.exchanges.length === 0 &&
+          currentMessages.length === 0 &&
+          useDebate.getState().isFreshSession
+        ) {
+          // Fresh session (just created) — the AI opponent streams the opening.
+          // Reopened empty sessions skip this: the user just starts arguing.
+          streamOpening(sessionId);
+        }
+      }
+
+      if (graphResult.status === "fulfilled") {
+        setGraph(graphResult.value as unknown as GraphData);
+      }
+    });
+  }, [sessionId, setMessages, setGraph, streamOpening, streamContinuation]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -15,22 +101,41 @@ export default function DebateView() {
     }
   }, [messages]);
 
+  const setSessions = useDebate((s) => s.setSessions);
+
   async function endSession() {
     if (sessionId) await api.endSession(sessionId);
+    api.getSessions().then(setSessions).catch(() => {});
     setScreen("end");
   }
 
   const lastMsg = messages[messages.length - 1];
 
+  const difficultyColors: Record<string, string> = {
+    balanced: "bg-blue-50 text-blue-700 border-blue-200",
+    targeted: "bg-amber-50 text-amber-700 border-amber-200",
+    ruthless: "bg-red-50 text-red-700 border-red-200",
+  };
+  const positionColors: Record<string, string> = {
+    for: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    against: "bg-scarlet/10 text-scarlet border-scarlet/20",
+    neutral: "bg-fog/10 text-fog border-fog/20",
+  };
+  const positionLabel: Record<string, string> = {
+    for: "Arguing For",
+    against: "Arguing Against",
+    neutral: "Neutral",
+  };
+
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       {/* Nav */}
-      <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-fog/20 sticky top-0 z-20">
+      <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
           onClick={() => setScreen("topic")}
-          className="font-display text-[22px] text-ink cursor-pointer leading-none"
+          className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors flex items-center gap-1.5"
         >
-          DebateMind
+          ← Back
         </button>
         <span className="font-sans text-[11px] font-medium text-fog tracking-wide hidden sm:block">
           {sessionConfig?.topic?.slice(0, 30)}{" "}
@@ -40,6 +145,18 @@ export default function DebateView() {
             </>
           )}
         </span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setScreen("progress")} aria-label="Progress" className="text-fog hover:text-ink transition-colors">
+            <IconChartLine size={18} stroke={1.75} />
+          </button>
+          <button
+            onClick={() => setScreen("transcript")}
+            aria-label="Transcript"
+            className="text-fog hover:text-ink transition-colors"
+          >
+            <IconHistory size={18} stroke={1.75} />
+          </button>
+        </div>
         <button
           onClick={endSession}
           className="font-sans text-xs font-semibold uppercase tracking-wide text-fog hover:text-ink transition-colors"
@@ -56,6 +173,38 @@ export default function DebateView() {
             ref={scrollRef}
             className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-3.5"
           >
+            {/* Session greeting card */}
+            {sessionConfig && (
+              <div className="bg-white rounded-2xl border border-border px-5 py-4 mb-1">
+                <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-fog mb-2">
+                  Motion
+                </p>
+                <p className="font-sans text-sm font-semibold text-ink leading-snug mb-3">
+                  {sessionConfig.topic}
+                </p>
+                {sessionConfig.description && (
+                  <p className="font-sans text-[11px] text-fog leading-relaxed mb-3">
+                    {sessionConfig.description}
+                  </p>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`font-sans text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                      positionColors[sessionConfig.position] ?? "bg-fog/10 text-fog border-fog/20"
+                    }`}
+                  >
+                    {positionLabel[sessionConfig.position] ?? sessionConfig.position}
+                  </span>
+                  <span
+                    className={`font-sans text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                      difficultyColors[sessionConfig.difficulty] ?? "bg-fog/10 text-fog border-fog/20"
+                    }`}
+                  >
+                    {sessionConfig.difficulty}
+                  </span>
+                </div>
+              </div>
+            )}
             {messages.map((m) => (
               <MessageBubble
                 key={m.id}
@@ -74,8 +223,8 @@ export default function DebateView() {
                     OPPONENT
                   </span>
                 </div>
-                <span className="font-serif italic text-sm text-fog">
-                  Studying your argument…
+                <span className="font-sans italic text-sm text-fog">
+                  {currentStage ? (STAGE_LABELS[currentStage] ?? "Thinking…") : "Thinking…"}
                 </span>
               </div>
             )}
@@ -84,14 +233,18 @@ export default function DebateView() {
         </div>
 
         {/* Graph panel — hidden on mobile, shown on large screens */}
-        <aside className="w-80 min-w-[280px] max-w-[360px] bg-carbon border-l border-white/10 flex-col text-white overflow-y-auto hidden lg:flex">
+        <aside className="w-80 min-w-[280px] max-w-[360px] bg-white border-l border-border flex-col text-ink overflow-y-auto hidden lg:flex">
           <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-            <span className="font-sans text-[11px] font-semibold uppercase tracking-widest">
-              Cognitive Fingerprint
-            </span>
+            <div>
+              <span className="font-sans text-[11px] font-semibold uppercase tracking-widest text-ink">
+                Cognitive Fingerprint
+              </span>
+              <p className="font-sans text-[10px] text-fog mt-0.5">Your argument pattern map</p>
+            </div>
           </div>
           <FingerprintGraph data={graph} />
-          <div className="flex gap-3.5 px-5 pb-4 font-sans text-[10px] text-[#888]">
+          <SessionScoreBar scores={sessionScores} />
+          <div className="flex gap-3.5 px-5 pb-4 font-sans text-[10px] text-fog">
             {[
               { color: "#C0392B", label: "Weakness" },
               { color: "#27AE60", label: "Strength" },

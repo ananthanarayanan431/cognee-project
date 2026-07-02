@@ -84,13 +84,23 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Backend (`debatemind-backend/.env`)
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/debatemind
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5437/debatemind
 SECRET_KEY=<random-secret>
 OPENROUTER_API_KEY=<your-openrouter-key>
 # Optional: override default models (any OpenRouter slug works)
 # FAST_MODEL=google/gemini-flash-1.5
 # MAIN_MODEL=meta-llama/llama-3.1-70b-instruct
+
+# Cognee storage backend: "local" (default, self-hosted via the cognee-db
+# service in docker-compose.yml) or "cloud" (leaves Cognee's storage at its
+# own defaults). Cognee's own LLM calls (during cognify()) reuse
+# OPENROUTER_API_KEY above in both modes — there is no separate Cognee key.
+COGNEE_MODE=local
 ```
+
+See `debatemind-backend/.env.example` for the full list of `COGNEE_DB_*` overrides
+(only relevant when `COGNEE_MODE=local`, and only needed if you changed the
+`cognee-db` service in `docker-compose.yml`).
 
 ## Available Commands
 

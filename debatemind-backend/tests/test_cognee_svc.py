@@ -1,0 +1,113 @@
+"""
+Unit tests for debatemind.cognee — verifies the service calls the real cognee SDK API
+(add/cognify/search), not the nonexistent remember/recall/improve methods.
+cognee.* calls are mocked; no real cognee storage/LLM calls happen here.
+"""
+
+from unittest.mock import AsyncMock
+
+from debatemind.cognee import fingerprint as fingerprint_mod
+from debatemind.cognee.fingerprint import (
+    forget_pattern,
+    improve_fingerprint,
+    reactivate_pattern_fact,
+    recall_weaknesses,
+    remember_argument,
+)
+
+
+async def test_remember_argument_adds_then_cognifies_the_dataset(monkeypatch):
+    call_order: list[str] = []
+
+    async def track_add(*args, **kwargs):
+        call_order.append("add")
+
+    async def track_cognify(*args, **kwargs):
+        call_order.append("cognify")
+
+    add_mock = AsyncMock(side_effect=track_add)
+    cognify_mock = AsyncMock(side_effect=track_cognify)
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
+
+    await remember_argument(
+        user_id="u1",
+        session_id="s1",
+        topic="AI Safety",
+        claim_text="AI will inevitably take over",
+        pattern_type="SlipperySlope",
+        fallacy="SlipperySlope",
+        evidence_quality="Weak",
+        outcome="Lost",
+    )
+
+    add_mock.assert_awaited_once()
+    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
+    assert kwargs["dataset_name"] == "user_u1_fingerprint"
+    assert "AI will inevitably take over" in text_arg
+    assert "SlipperySlope" in text_arg
+
+    cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+    assert call_order == ["add", "cognify"]
+
+
+async def test_recall_weaknesses_searches_and_wraps_results_as_text_dicts(monkeypatch):
+    search_mock = AsyncMock(return_value=["StrawMan pattern found", "AdHominem pattern found"])
+    monkeypatch.setattr(fingerprint_mod.cognee, "search", search_mock)
+
+    results = await recall_weaknesses("u1")
+
+    search_mock.assert_awaited_once()
+    kwargs = search_mock.call_args.kwargs
+    assert kwargs["query_type"] == fingerprint_mod.SearchType.GRAPH_COMPLETION
+    assert kwargs["datasets"] == ["user_u1_fingerprint"]
+    assert kwargs["top_k"] == 10
+    assert "u1" in kwargs["query_text"]
+
+    assert results == [
+        {"text": "StrawMan pattern found"},
+        {"text": "AdHominem pattern found"},
+    ]
+
+
+async def test_improve_fingerprint_recognifies_the_dataset(monkeypatch):
+    cognify_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
+
+    await improve_fingerprint("u1")
+
+    cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+
+
+async def test_forget_pattern_records_a_mastered_marker(monkeypatch):
+    add_mock = AsyncMock()
+    cognify_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
+
+    await forget_pattern("u1", "StrawMan")
+
+    add_mock.assert_awaited_once()
+    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
+    assert kwargs["dataset_name"] == "user_u1_fingerprint"
+    assert "MASTERED" in text_arg
+    assert "StrawMan" in text_arg
+
+    cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")
+
+
+async def test_reactivate_pattern_fact_records_a_reactivated_marker(monkeypatch):
+    add_mock = AsyncMock()
+    cognify_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
+
+    await reactivate_pattern_fact("u1", "AdHominem")
+
+    add_mock.assert_awaited_once()
+    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
+    assert kwargs["dataset_name"] == "user_u1_fingerprint"
+    assert "REACTIVATED" in text_arg
+    assert "AdHominem" in text_arg
+
+    cognify_mock.assert_awaited_once_with(datasets="user_u1_fingerprint")

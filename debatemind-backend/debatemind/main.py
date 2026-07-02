@@ -1,40 +1,61 @@
 import logging
+import logging.config
 from contextlib import asynccontextmanager
 
-import cognee
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from debatemind.config import settings
-from debatemind.database import Base, engine
-from debatemind.models import mastery, session, user  # noqa: F401
-from debatemind.routers import auth, sessions, topics, users
+from debatemind.middleware import RequestIDMiddleware
+from debatemind.routers import auth, calibration, health, sessions, topics, users
+from debatemind.services.cognee_config import configure_cognee
 
-logger = logging.getLogger("debatemind")
+
+class _CogneeNoDataFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "No data found in the system" not in record.getMessage()
+
+
+def setup_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("cognee.shared.logging_utils").addFilter(_CogneeNoDataFilter())
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+
+setup_logging()
+
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("DB not reachable at startup: %s", exc)
+    from cognee.modules.engine.operations.setup import setup as cognee_setup
 
-    if settings.cognee_api_key and settings.cognee_llm_api_key:
-        cognee.config.set_llm_config(
-            {
-                "provider": "anthropic",
-                "model": "claude-haiku-4-5-20251001",
-                "api_key": settings.cognee_llm_api_key,
-            }
-        )
+    configure_cognee(settings)
+    await cognee_setup()
 
     yield
 
 
 app = FastAPI(title="DebateMind API", lifespan=lifespan)
 
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -43,12 +64,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])
