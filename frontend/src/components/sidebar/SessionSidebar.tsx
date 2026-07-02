@@ -8,6 +8,7 @@ import {
   IconDownload,
   IconHistory,
   IconLogout,
+  IconMicrophone,
   IconNetwork,
   IconSettings,
   IconSparkles,
@@ -72,6 +73,9 @@ function SessionCard({
         >
           {session.difficulty.charAt(0).toUpperCase()}
         </span>
+        {session.has_voice_session && (
+          <IconMicrophone size={14} className="flex-none text-fog" aria-label="Voice session" />
+        )}
         <span className="flex-1 min-w-0 font-sans text-[12px] text-ink leading-tight truncate">
           {session.title || session.topic}
         </span>

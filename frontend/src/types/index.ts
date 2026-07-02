@@ -137,6 +137,7 @@ export interface SessionListItem {
   status: "active" | "ended";
   overall_score: number;
   exchanges: number;
+  has_voice_session: boolean;
   started_at: string;
   ended_at: string | null;
 }
