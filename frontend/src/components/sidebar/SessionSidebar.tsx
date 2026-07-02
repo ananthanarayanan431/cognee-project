@@ -353,7 +353,12 @@ export default function SessionSidebar() {
     <aside className="w-[260px] min-w-[220px] bg-carbon border-r border-white/10 flex flex-col text-white overflow-hidden">
       {/* Logo */}
       <div className="px-4 py-3.5 border-b border-white/10 flex items-center gap-2">
-        <span className="font-display text-[18px] text-white leading-none">DebateMind</span>
+        <button
+          onClick={() => setScreen("topic")}
+          className="font-display text-[18px] text-white leading-none hover:text-white/80 transition-colors text-left"
+        >
+          DebateMind
+        </button>
       </div>
 
       <BrainSection winRate={winRate} onOpenBrainMap={() => setShowBrainMap(true)} />

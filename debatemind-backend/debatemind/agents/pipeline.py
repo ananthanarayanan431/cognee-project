@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from langgraph.graph import END, StateGraph
@@ -12,9 +13,17 @@ from debatemind.cognee import forget_pattern, remember_argument
 logger = logging.getLogger(__name__)
 
 
+def _log_remember_exc(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception():
+        logger.exception(
+            "remember_argument background task failed",
+            exc_info=task.exception(),
+        )
+
+
 async def _remember_node(state: DebateState) -> DebateState:
-    try:
-        await remember_argument(
+    task = asyncio.create_task(
+        remember_argument(
             user_id=state["user_id"],
             session_id=state["session_id"],
             topic=state["topic"],
@@ -24,10 +33,8 @@ async def _remember_node(state: DebateState) -> DebateState:
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome=state.get("outcome", "Neutral"),
         )
-    except Exception:
-        logger.exception(
-            "remember_argument failed for session %s — continuing", state["session_id"]
-        )
+    )
+    task.add_done_callback(_log_remember_exc)
     return state
 
 

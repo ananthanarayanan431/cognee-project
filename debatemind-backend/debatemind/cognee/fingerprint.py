@@ -107,7 +107,11 @@ async def remember_argument(
 
 async def recall_weaknesses(user_id: str) -> list[dict]:
     dataset = fingerprint_dataset(user_id)
-    query = f"top weakness patterns and fallacies for user {user_id}"
+    # Semantic query targets weakness-related chunks; user-ownership filter below
+    # provides hard isolation because cognee's post-filter doesn't work for any
+    # built-in retriever (none return "document_id" in their result dicts).
+    query = "fallacy weak evidence poor argument outcome lost"
+    user_marker = f"User: {user_id}"
 
     logger.info(
         "cognee.search start",
@@ -116,9 +120,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
             "operation": "recall_weaknesses",
             "dataset": dataset,
             "user_id": user_id,
-            "query_type": "GRAPH_COMPLETION",
+            "query_type": "CHUNKS",
             "query": query,
-            "top_k": 10,
+            "top_k": 20,
         },
     )
     t0 = time.monotonic()
@@ -126,9 +130,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
         results = await asyncio.wait_for(
             cognee.search(
                 query_text=query,
-                query_type=SearchType.GRAPH_COMPLETION,
+                query_type=SearchType.CHUNKS,
                 datasets=[dataset],
-                top_k=10,
+                top_k=20,
             ),
             timeout=SEARCH_TIMEOUT,
         )
@@ -158,7 +162,10 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
         )
         return []
 
-    items = [{"text": result_text(r)} for r in results]
+    # Hard isolation: discard any chunk not tagged with this user's id.
+    # Cognee's search() post-filter is ineffective (no retriever emits "document_id"),
+    # so we enforce ownership here via the "User: <id>" marker in every stored record.
+    items = [{"text": t} for r in results if user_marker in (t := result_text(r))][:10]
     logger.info(
         "cognee.search ok",
         extra={
@@ -166,8 +173,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
             "operation": "recall_weaknesses",
             "dataset": dataset,
             "user_id": user_id,
-            "query_type": "GRAPH_COMPLETION",
-            "results_count": len(items),
+            "query_type": "CHUNKS",
+            "results_raw": len(results),
+            "results_filtered": len(items),
             "results_preview": [preview(it["text"], 120) for it in items[:3]],
             "elapsed_ms": elapsed_ms(t0),
         },

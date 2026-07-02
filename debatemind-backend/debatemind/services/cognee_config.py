@@ -1,4 +1,5 @@
 import cognee
+from cognee.infrastructure.databases.vector.embeddings.config import get_embedding_config
 
 from debatemind.config import Settings
 
@@ -6,6 +7,8 @@ from debatemind.config import Settings
 # OpenAI-compatible adapter) so Cognee's internal LLM calls share the same
 # gateway/key as the debate agents instead of calling Anthropic directly.
 LLM_MODEL = "openai/gpt-4.1-mini"
+EMBEDDING_MODEL = "openai/text-embedding-3-large"
+EMBEDDING_DIMENSIONS = 3072
 
 
 def configure_cognee(settings: Settings) -> None:
@@ -43,3 +46,13 @@ def configure_cognee(settings: Settings) -> None:
                 "llm_api_key": settings.openrouter_api_key,
             }
         )
+        # Route embeddings through OpenRouter so the same key is used for both
+        # LLM calls and embeddings. The OpenRouter key must go to openrouter.ai,
+        # not api.openai.com — cognee has no public set_embedding_config(), so
+        # we mutate the singleton directly (same pattern as set_llm_config).
+        embedding_config = get_embedding_config()
+        object.__setattr__(embedding_config, "embedding_provider", "openai")
+        object.__setattr__(embedding_config, "embedding_model", EMBEDDING_MODEL)
+        object.__setattr__(embedding_config, "embedding_dimensions", EMBEDDING_DIMENSIONS)
+        object.__setattr__(embedding_config, "embedding_endpoint", settings.openrouter_base_url)
+        object.__setattr__(embedding_config, "embedding_api_key", settings.openrouter_api_key)

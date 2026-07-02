@@ -11,10 +11,6 @@ def fingerprint_dataset(user_id: str) -> str:
     return f"user_{user_id}_fingerprint"
 
 
-def source_dataset(session_id: str) -> str:
-    return f"session_{session_id}_source"
-
-
 def elapsed_ms(t0: float) -> int:
     return int((time.monotonic() - t0) * 1000)
 
@@ -24,4 +20,8 @@ def preview(text: str, limit: int = 200) -> str:
 
 
 def result_text(r) -> str:
-    return r if isinstance(r, str) else getattr(r, "text", str(r))
+    if isinstance(r, str):
+        return r
+    if isinstance(r, dict):
+        return r.get("text", str(r))
+    return getattr(r, "text", str(r))
