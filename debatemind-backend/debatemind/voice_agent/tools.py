@@ -152,7 +152,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     "type": "string",
                     "enum": ["start", "end"],
                     "description": (
-                        "'start' stamps the session start; " "'end' stamps the session end."
+                        "'start' stamps the session start; 'end' stamps the session end."
                     ),
                 },
             },

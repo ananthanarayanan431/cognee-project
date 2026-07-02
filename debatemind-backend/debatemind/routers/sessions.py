@@ -107,6 +107,16 @@ async def _write_chat_session_summary(user_id: str, session_id: str) -> None:
         )
 
 
+async def _finalize_session_fingerprint(user_id: str, session_id: str) -> None:
+    """Ordered end-of-session fingerprint update: summary first, then re-index.
+
+    Sequencing these (rather than firing both as concurrent tasks) guarantees
+    the session summary is written before the consolidating cognify runs.
+    """
+    await _write_chat_session_summary(user_id, session_id)
+    await improve_fingerprint(user_id)
+
+
 # User-meaningful pipeline nodes, in execution order. remember/prune are
 # internal bookkeeping (memory-graph writes, mastery pruning) with no
 # user-facing meaning and are intentionally not surfaced as stage events.
@@ -508,19 +518,21 @@ async def end_session(
 
     _session_wins.pop(session_id, None)
 
-    # Write session-level performance summary to Cognee so future sessions on
-    # the same topic get topic-aware weakness context, not just exchange-level patterns.
-    asyncio.create_task(_write_chat_session_summary(user_id, session_id))
-
-    # Re-index the user's Cognee fingerprint now that all session exchanges are written.
-    def _log_improve_exc(task: asyncio.Task) -> None:
+    # Finalize the fingerprint in one ordered background task: write the
+    # session summary first, THEN re-index. Running these as two independent
+    # tasks (as before) let improve_fingerprint's cognify race ahead of the
+    # summary write, so the summary could miss the current re-index pass.
+    def _log_finalize_exc(task: asyncio.Task) -> None:
         if not task.cancelled() and task.exception():
-            logger.exception(
-                "improve_fingerprint failed for user %s", user_id, exc_info=task.exception()
+            logger.error(
+                "session fingerprint finalize failed for user %s session %s",
+                user_id,
+                session_id,
+                exc_info=task.exception(),
             )
 
-    improve_task = asyncio.create_task(improve_fingerprint(user_id))
-    improve_task.add_done_callback(_log_improve_exc)
+    finalize_task = asyncio.create_task(_finalize_session_fingerprint(user_id, session_id))
+    finalize_task.add_done_callback(_log_finalize_exc)
 
     return SuccessResponse(data=EndSessionOut(status="ended"))
 
@@ -640,7 +652,7 @@ async def _build_transcript(session_id: str, user_id: str, db: AsyncSession) -> 
     response_model=SuccessResponse[TranscriptOut],
     summary="Get session transcript",
     description=(
-        "Retrieve the full ordered exchange history for a session, " "with judge scores inline."
+        "Retrieve the full ordered exchange history for a session, with judge scores inline."
     ),
     responses={
         401: {"model": UnauthorizedError, "description": "Invalid or missing token"},

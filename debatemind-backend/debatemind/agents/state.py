@@ -13,6 +13,7 @@ class DebateState(TypedDict):
     consecutive_wins: int
     extracted_pattern: Optional[str]
     extracted_fallacy: Optional[str]
+    extracted_reasoning: Optional[str]  # extractor's one-sentence rationale, fed to Cognee
     evidence_quality: Optional[str]
     weakness_context: list[dict]
     opponent_response: Optional[str]

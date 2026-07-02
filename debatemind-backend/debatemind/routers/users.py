@@ -18,7 +18,7 @@ from debatemind.models.session import DebateSession, Exchange
 from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
 from debatemind.schemas.progress import ProgressOut
 from debatemind.services.graph_svc import build_graph
-from debatemind.services.mastery_svc import reactivate_pattern
+from debatemind.services.mastery_svc import get_active_mastered_patterns, reactivate_pattern
 from debatemind.services.progress_svc import (
     get_mastered_patterns,
     get_progress_stats,
@@ -85,11 +85,6 @@ async def get_brain_graph(
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    topics_result = await db.execute(
-        select(DebateSession.topic).where(DebateSession.user_id == user_id).distinct()
-    )
-    topics = topics_result.scalars().all()
-
     # Mastered patterns for this user (current status only)
     mastered_result = await db.execute(
         select(MasteryLog.pattern_type).where(
@@ -98,18 +93,14 @@ async def get_brain_graph(
             MasteryLog.reactivated_at.is_(None),
         )
     )
-    mastered_patterns: set[str] = {r for r in mastered_result.scalars().all()}
+    mastered_patterns: set[str] = set(mastered_result.scalars().all())
 
-    nodes: list[GraphNode] = [GraphNode(id="brain", label="Brain", type="root", weight=1.0)]
-    edges: list[GraphEdge] = []
-
-    for topic in topics:
-        topic_id = "t_" + hashlib.md5(topic.encode()).hexdigest()[:8]
-        nodes.append(GraphNode(id=topic_id, label=topic, type="topic", weight=0.9))
-        edges.append(GraphEdge(source="brain", target=topic_id, weight=0.8))
-
-        pattern_result = await db.execute(
+    # Single grouped query over (topic, pattern) — previously this ran one query
+    # per topic (N+1); now it's one round-trip regardless of topic count.
+    rows = (
+        await db.execute(
             select(
+                DebateSession.topic,
                 Exchange.detected_pattern,
                 sqlfunc.count(Exchange.id).label("cnt"),
                 sqlfunc.avg(Exchange.judge_logic).label("avg_logic"),
@@ -119,34 +110,47 @@ async def get_brain_graph(
             .join(DebateSession, Exchange.session_id == DebateSession.id)
             .where(
                 DebateSession.user_id == user_id,
-                DebateSession.topic == topic,
                 Exchange.detected_pattern.isnot(None),
             )
-            .group_by(Exchange.detected_pattern)
-            .order_by(sqlfunc.count(Exchange.id).desc())
-            .limit(6)
+            .group_by(DebateSession.topic, Exchange.detected_pattern)
+            .order_by(DebateSession.topic, sqlfunc.count(Exchange.id).desc())
         )
+    ).all()
 
-        for row in pattern_result.all():
-            pattern = row.detected_pattern
-            if not pattern:
-                continue
-            cnt = row.cnt or 0
-            avg_score = (
-                (row.avg_logic or 0) + (row.avg_evidence or 0) + (row.avg_rhetoric or 0)
-            ) / 3
-            weight = round(min(0.9, 0.3 + cnt * 0.1), 2)
+    nodes: list[GraphNode] = [GraphNode(id="brain", label="Brain", type="root", weight=1.0)]
+    edges: list[GraphEdge] = []
+    seen_topics: set[str] = set()
+    patterns_per_topic: dict[str, int] = {}
 
-            if pattern in mastered_patterns:
-                node_type = "mastered"
-            elif avg_score >= 5.0:
-                node_type = "strength"
-            else:
-                node_type = "weakness"
+    for row in rows:
+        topic = row.topic
+        pattern = row.detected_pattern
+        if not pattern:
+            continue
+        topic_id = "t_" + hashlib.md5(topic.encode()).hexdigest()[:8]
+        if topic not in seen_topics:
+            seen_topics.add(topic)
+            nodes.append(GraphNode(id=topic_id, label=topic, type="topic", weight=0.9))
+            edges.append(GraphEdge(source="brain", target=topic_id, weight=0.8))
+        # Cap at 6 patterns per topic (preserves the previous limit).
+        if patterns_per_topic.get(topic, 0) >= 6:
+            continue
+        patterns_per_topic[topic] = patterns_per_topic.get(topic, 0) + 1
 
-            pattern_id = f"{topic_id}_{pattern}"
-            nodes.append(GraphNode(id=pattern_id, label=pattern, type=node_type, weight=weight))
-            edges.append(GraphEdge(source=topic_id, target=pattern_id, weight=weight))
+        cnt = row.cnt or 0
+        avg_score = ((row.avg_logic or 0) + (row.avg_evidence or 0) + (row.avg_rhetoric or 0)) / 3
+        weight = round(min(0.9, 0.3 + cnt * 0.1), 2)
+
+        if pattern in mastered_patterns:
+            node_type = "mastered"
+        elif avg_score >= 5.0:
+            node_type = "strength"
+        else:
+            node_type = "weakness"
+
+        pattern_id = f"{topic_id}_{pattern}"
+        nodes.append(GraphNode(id=pattern_id, label=pattern, type=node_type, weight=weight))
+        edges.append(GraphEdge(source=topic_id, target=pattern_id, weight=weight))
 
     return SuccessResponse(data=GraphOut(nodes=nodes, edges=edges))
 
@@ -166,7 +170,8 @@ async def get_progress(
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    weaknesses = await recall_weaknesses(user_id)
+    excluded = await get_active_mastered_patterns(db, user_id)
+    weaknesses = await recall_weaknesses(user_id, exclude_patterns=excluded)
     stats = await get_progress_stats(db, user_id)
     streak = await get_streak(db, user_id)
     mastered = await get_mastered_patterns(db, user_id)
@@ -198,7 +203,8 @@ async def describe_user(
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    weaknesses = await recall_weaknesses(user_id)
+    excluded = await get_active_mastered_patterns(db, user_id)
+    weaknesses = await recall_weaknesses(user_id, exclude_patterns=excluded)
     stats = await get_progress_stats(db, user_id)
     mastered = await get_mastered_patterns(db, user_id)
     win_rate_by_topic = await get_win_rate_by_topic(db, user_id)
@@ -257,7 +263,8 @@ async def export_profile(
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    weaknesses = await recall_weaknesses(user_id)
+    excluded = await get_active_mastered_patterns(db, user_id)
+    weaknesses = await recall_weaknesses(user_id, exclude_patterns=excluded)
     stats = await get_progress_stats(db, user_id)
     streak = await get_streak(db, user_id)
     mastered = await get_mastered_patterns(db, user_id)

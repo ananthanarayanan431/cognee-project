@@ -11,9 +11,15 @@ from debatemind.agents.prompts.opponent import (
 )
 from debatemind.agents.state import DebateState
 from debatemind.cognee import recall_weaknesses
+from debatemind.cognee._base import filter_out_patterns
 from debatemind.config import settings
+from debatemind.database import AsyncSessionLocal
+from debatemind.services.mastery_svc import get_active_mastered_patterns
 
 # Bounded TTL cache: max 1024 users, entries expire after 1 hour.
+# Holds the *raw* (unfiltered) recall so mastered-pattern exclusion can be
+# re-applied per turn against the live mastery state instead of being frozen
+# into the cache — mastering a pattern takes effect on the very next turn.
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
 
 
@@ -23,7 +29,11 @@ async def generate_opponent(state: DebateState) -> DebateState:
     if user_id not in _weakness_cache:
         _weakness_cache[user_id] = await recall_weaknesses(user_id)
 
-    state["weakness_context"] = _weakness_cache[user_id]
+    # Exclude patterns the user has already mastered so the opponent stops
+    # exploiting beaten weaknesses (the behavioural payoff of forget()).
+    async with AsyncSessionLocal() as db:
+        mastered = await get_active_mastered_patterns(db, user_id)
+    state["weakness_context"] = filter_out_patterns(_weakness_cache[user_id], mastered)
 
     weakness_text = (
         "\n".join(r.get("text", "") for r in state["weakness_context"][:5])

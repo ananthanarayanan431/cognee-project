@@ -8,6 +8,22 @@ from debatemind.cognee import reactivate_pattern_fact
 from debatemind.models.mastery import MasteryLog
 
 
+async def get_active_mastered_patterns(db: AsyncSession, user_id: str) -> set[str]:
+    """Patterns the user has currently mastered (and not since reactivated).
+
+    Used to exclude these from opponent recall so the AI stops targeting a
+    weakness once it's been beaten — the behavioural half of forget().
+    """
+    rows = await db.execute(
+        select(MasteryLog.pattern_type).where(
+            MasteryLog.user_id == user_id,
+            MasteryLog.status == "MASTERED",
+            MasteryLog.reactivated_at.is_(None),
+        )
+    )
+    return set(rows.scalars().all())
+
+
 async def record_mastery_events(db: AsyncSession, user_id: str, patterns: list[str]) -> None:
     if not patterns:
         return

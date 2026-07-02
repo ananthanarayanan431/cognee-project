@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,15 @@ from debatemind.types import SuccessResponse, UnauthorizedError
 router = APIRouter()
 
 TOTAL = len(CALIBRATION_TOPICS)
+
+logger = logging.getLogger(__name__)
+
+
+def _log_remember_exc(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception():
+        logger.error(
+            "remember_argument (calibration) background task failed", exc_info=task.exception()
+        )
 
 
 async def _get_user(db: AsyncSession, user_id: str) -> User:
@@ -79,8 +89,11 @@ async def answer(
 
     state = await extract_argument({"topic": topic, "user_message": body.text, "description": ""})
 
-    try:
-        await remember_argument(
+    # Fire-and-forget: remember_argument runs add()+cognify() which can take many
+    # seconds. Awaiting it inline would block the calibration response (and risk a
+    # request timeout); background it so the user advances immediately.
+    remember_task = asyncio.create_task(
+        remember_argument(
             user_id=user_id,
             session_id=f"calibration_{user_id}",
             topic=topic,
@@ -89,11 +102,10 @@ async def answer(
             fallacy=state.get("extracted_fallacy"),
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome="Neutral",
+            reasoning=state.get("extracted_reasoning", "") or "",
         )
-    except Exception:
-        logging.getLogger(__name__).exception(
-            "remember_argument failed for user %s — continuing", user_id
-        )
+    )
+    remember_task.add_done_callback(_log_remember_exc)
 
     new_idx = calibration_svc.advance(user_id)
     if new_idx >= TOTAL:

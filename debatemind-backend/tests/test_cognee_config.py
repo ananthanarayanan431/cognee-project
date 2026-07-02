@@ -46,6 +46,21 @@ def _patch_cognee_config(monkeypatch):
     return mocks
 
 
+def test_embeddings_route_to_openai_not_openrouter(monkeypatch):
+    """Regression guard: embeddings MUST hit api.openai.com, never OpenRouter
+    (OpenRouter has no /embeddings endpoint, which silently disables recall)."""
+    _patch_cognee_config(monkeypatch)
+
+    cognee_config.configure_cognee(_settings(cognee_mode="local", openai_api_key="sk-openai-test"))
+
+    cfg = cognee_config.get_embedding_config()
+    assert cfg.embedding_provider == "openai"
+    assert cfg.embedding_endpoint == cognee_config.OPENAI_BASE_URL
+    assert cfg.embedding_endpoint == "https://api.openai.com/v1"
+    assert cfg.embedding_api_key == "sk-openai-test"
+    assert "openrouter" not in (cfg.embedding_endpoint or "")
+
+
 def test_local_mode_configures_postgres_pgvector_neo4j_and_openrouter_llm(monkeypatch):
     mocks = _patch_cognee_config(monkeypatch)
 

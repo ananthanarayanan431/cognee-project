@@ -34,6 +34,30 @@ async def test_extract_argument_parses_structured_response(monkeypatch):
     assert result["evidence_quality"] == "Strong"
 
 
+async def test_extract_argument_captures_reasoning(monkeypatch):
+    create_mock = AsyncMock(
+        return_value=_mock_completion(
+            '{"reasoning": "Generalizes from a single anecdote.", '
+            '"pattern_type": "AnecdotalEvidence", "fallacy": "Hasty Generalization", '
+            '"evidence_quality": "Weak"}'
+        )
+    )
+    monkeypatch.setattr(extractor.openrouter.chat.completions, "create", create_mock)
+
+    result = await extractor.extract_argument(_state())
+
+    assert result["extracted_reasoning"] == "Generalizes from a single anecdote."
+
+
+async def test_extract_argument_reasoning_defaults_empty_on_malformed(monkeypatch):
+    create_mock = AsyncMock(return_value=_mock_completion(None))
+    monkeypatch.setattr(extractor.openrouter.chat.completions, "create", create_mock)
+
+    result = await extractor.extract_argument(_state())
+
+    assert result["extracted_reasoning"] == ""
+
+
 async def test_extract_argument_requests_strict_json_schema(monkeypatch):
     create_mock = AsyncMock(
         return_value=_mock_completion(

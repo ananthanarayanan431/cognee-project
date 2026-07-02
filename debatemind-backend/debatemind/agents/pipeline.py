@@ -45,6 +45,7 @@ async def _remember_node(state: DebateState) -> DebateState:
             fallacy=fallacy,
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome=state.get("outcome", "Neutral"),
+            reasoning=state.get("extracted_reasoning", "") or "",
         )
     )
     task.add_done_callback(_log_remember_exc)

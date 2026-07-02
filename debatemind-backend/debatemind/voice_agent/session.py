@@ -24,6 +24,7 @@ from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
 from debatemind.models.session import DebateSession
 from debatemind.models.voice_session import VoiceSession
+from debatemind.services.mastery_svc import get_active_mastered_patterns
 from debatemind.voice_agent.prompts import build_voice_system_prompt
 from debatemind.voice_agent.tools import TOOL_DEFINITIONS
 
@@ -57,9 +58,11 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
     # topic-specific (session summaries + exchanges on this exact topic).
     # Merge and deduplicate so the AI gets the richest possible context.
     try:
+        async with AsyncSessionLocal() as db:
+            excluded = await get_active_mastered_patterns(db, user_id)
         generic_items, topic_items = await asyncio.gather(
-            recall_weaknesses(user_id),
-            recall_topic_weaknesses(user_id, session.topic),
+            recall_weaknesses(user_id, exclude_patterns=excluded),
+            recall_topic_weaknesses(user_id, session.topic, exclude_patterns=excluded),
             return_exceptions=True,
         )
         seen: set[str] = set()

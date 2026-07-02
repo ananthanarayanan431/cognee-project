@@ -7,7 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from debatemind.config import settings
-from debatemind.middleware import RequestIDMiddleware
+from debatemind.middleware import (
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
 from debatemind.routers import auth, calibration, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
 from debatemind.voice_agent import router as voice_router
@@ -57,12 +61,14 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="DebateMind API", lifespan=lifespan)
 
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware, enable_hsts=settings.enable_hsts)
+app.add_middleware(RateLimitMiddleware, per_minute=settings.rate_limit_per_minute)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Model", "X-Judge-Model"],
 )
 
 app.include_router(health.router)

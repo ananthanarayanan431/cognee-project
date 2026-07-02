@@ -25,12 +25,40 @@ from debatemind.cognee._base import (
     COGNIFY_TIMEOUT,
     SEARCH_TIMEOUT,
     elapsed_ms,
+    filter_out_patterns,
     fingerprint_dataset,
+    ontology_file,
     preview,
     result_text,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _argument_summary(
+    topic: str,
+    pattern_type: str,
+    fallacy: str | None,
+    evidence_quality: str,
+    outcome: str,
+    reasoning: str,
+) -> str:
+    """A natural-language sentence describing the argument.
+
+    The terse `key: value` markers alone give cognify's LLM extractor little to
+    work with; a prose sentence that names the topic, pattern, evidence, and
+    fallacy lets it link the argument to a KnowledgeDomain and type it against
+    the ontology (ReasoningApproach / EvidenceType / Fallacy). The reasoning
+    sentence, when present, is the richest signal for those wider node types.
+    """
+    fallacy_clause = f" and committed the {fallacy} fallacy" if fallacy else ""
+    summary = (
+        f'In a debate about "{topic}", the user made a {pattern_type} argument '
+        f"with {evidence_quality} evidence{fallacy_clause}; the outcome was {outcome}."
+    )
+    if reasoning:
+        summary += f" Reasoning: {reasoning}"
+    return summary
 
 
 async def remember_argument(
@@ -42,6 +70,7 @@ async def remember_argument(
     fallacy: str | None,
     evidence_quality: str,
     outcome: str,
+    reasoning: str = "",
 ) -> None:
     text = (
         f"User: {user_id}\n"
@@ -52,6 +81,13 @@ async def remember_argument(
         f"Fallacy: {fallacy or 'None'}\n"
         f"Evidence: {evidence_quality}\n"
         f"Outcome: {outcome}\n"
+    )
+    if reasoning:
+        text += f"Reasoning: {reasoning}\n"
+    text += (
+        "Summary: "
+        + _argument_summary(topic, pattern_type, fallacy, evidence_quality, outcome, reasoning)
+        + "\n"
     )
     dataset = fingerprint_dataset(user_id)
 
@@ -94,7 +130,10 @@ async def remember_argument(
         },
     )
     t0 = time.monotonic()
-    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
     logger.info(
         "cognee.cognify ok",
         extra={
@@ -142,6 +181,16 @@ async def remember_session_summary(
     )
     if coaching_note:
         text += f"CoachingNote: {coaching_note}\n"
+    # Prose sentence weaving topic (-> KnowledgeDomain), thinking style, and weak
+    # patterns so cognify can extract domain-linked, typed nodes rather than
+    # scoring the terse markers alone.
+    text += (
+        "Summary: "
+        f'Over {rounds_played} rounds debating "{topic}" in {mode} mode at '
+        f"{difficulty} difficulty, the user won {win_rate:.0%} of exchanges. "
+        f"Their thinking style leaned Logic {avg_logic:.1f}, Evidence {avg_evidence:.1f}, "
+        f"Rhetoric {avg_rhetoric:.1f}. Recurring weak patterns: {patterns_str}.\n"
+    )
 
     dataset = fingerprint_dataset(user_id)
 
@@ -173,7 +222,10 @@ async def remember_session_summary(
     )
 
     t0 = time.monotonic()
-    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
     logger.info(
         "cognee.cognify ok",
         extra={
@@ -186,7 +238,7 @@ async def remember_session_summary(
     )
 
 
-async def recall_weaknesses(user_id: str) -> list[dict]:
+async def recall_weaknesses(user_id: str, exclude_patterns: set[str] | None = None) -> list[dict]:
     dataset = fingerprint_dataset(user_id)
     # Semantic query targets weakness-related chunks; user-ownership filter below
     # provides hard isolation because cognee's post-filter doesn't work for any
@@ -260,7 +312,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
     # Hard isolation: discard any chunk not tagged with this user's id.
     # Cognee's search() post-filter is ineffective (no retriever emits "document_id"),
     # so we enforce ownership here via the "User: <id>" marker in every stored record.
-    items = [{"text": t} for r in results if user_marker in (t := result_text(r))][:10]
+    owned = [{"text": t} for r in results if user_marker in (t := result_text(r))]
+    # Drop mastered patterns so the opponent stops targeting what the user has beaten.
+    items = filter_out_patterns(owned, exclude_patterns)[:10]
     logger.info(
         "cognee.search ok",
         extra={
@@ -270,7 +324,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
             "user_id": user_id,
             "query_type": "CHUNKS",
             "results_raw": len(results),
+            "results_owned": len(owned),
             "results_filtered": len(items),
+            "excluded_patterns": sorted(exclude_patterns) if exclude_patterns else [],
             "results_preview": [preview(it["text"], 120) for it in items[:3]],
             "elapsed_ms": elapsed_ms(t0),
         },
@@ -278,7 +334,9 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
     return items
 
 
-async def recall_topic_weaknesses(user_id: str, topic: str) -> list[dict]:
+async def recall_topic_weaknesses(
+    user_id: str, topic: str, exclude_patterns: set[str] | None = None
+) -> list[dict]:
     """Semantic search scoped to a specific debate topic.
 
     Finds session-summary and argument records where the user struggled on
@@ -342,7 +400,8 @@ async def recall_topic_weaknesses(user_id: str, topic: str) -> list[dict]:
         )
         return []
 
-    items = [{"text": t} for r in results if user_marker in (t := result_text(r))][:5]
+    owned = [{"text": t} for r in results if user_marker in (t := result_text(r))]
+    items = filter_out_patterns(owned, exclude_patterns)[:5]
     logger.info(
         "cognee.search ok",
         extra={
@@ -352,6 +411,7 @@ async def recall_topic_weaknesses(user_id: str, topic: str) -> list[dict]:
             "user_id": user_id,
             "topic": topic,
             "results_raw": len(results),
+            "results_owned": len(owned),
             "results_filtered": len(items),
             "elapsed_ms": elapsed_ms(t0),
         },
@@ -372,7 +432,10 @@ async def improve_fingerprint(user_id: str) -> None:
         },
     )
     t0 = time.monotonic()
-    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
     logger.info(
         "cognee.cognify ok",
         extra={
@@ -432,7 +495,10 @@ async def forget_pattern(user_id: str, pattern_type: str) -> None:
         },
     )
     t0 = time.monotonic()
-    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
     logger.info(
         "cognee.cognify ok",
         extra={
@@ -493,7 +559,10 @@ async def reactivate_pattern_fact(user_id: str, pattern_type: str) -> None:
         },
     )
     t0 = time.monotonic()
-    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    await asyncio.wait_for(
+        cognee.cognify(datasets=dataset, ontology_file_path=ontology_file()),
+        timeout=COGNIFY_TIMEOUT,
+    )
     logger.info(
         "cognee.cognify ok",
         extra={

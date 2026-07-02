@@ -5,6 +5,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from debatemind.deps import current_user_id
 from debatemind.routers import topics as topics_router
 
 
@@ -12,6 +13,8 @@ from debatemind.routers import topics as topics_router
 def client():
     app = FastAPI()
     app.include_router(topics_router.router, prefix="/api/topics")
+    # /generate and other write endpoints require auth; supply a stub user.
+    app.dependency_overrides[current_user_id] = lambda: "u1"
     return TestClient(app)
 
 

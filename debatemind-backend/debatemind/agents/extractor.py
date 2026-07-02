@@ -18,9 +18,11 @@ async def extract_argument(state: DebateState) -> DebateState:
         data = json.loads(msg.choices[0].message.content or "")
         state["extracted_pattern"] = data.get("pattern_type", "EvidenceBased")
         state["extracted_fallacy"] = data.get("fallacy")
+        state["extracted_reasoning"] = data.get("reasoning", "")
         state["evidence_quality"] = data.get("evidence_quality", "Moderate")
     except Exception:
         state["extracted_pattern"] = "EvidenceBased"
         state["extracted_fallacy"] = None
+        state["extracted_reasoning"] = ""
         state["evidence_quality"] = "Moderate"
     return state
