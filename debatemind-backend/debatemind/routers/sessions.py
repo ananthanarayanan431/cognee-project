@@ -255,6 +255,19 @@ async def send_message(
     )
     turn = (count_result.scalar() or 0) + 1
 
+    # Last 3 exchanges, chronological — gives the opponent real in-session memory
+    # of what's already been argued, matching the pattern used by /continue.
+    history_result = await db.execute(
+        select(Exchange)
+        .where(Exchange.session_id == session_id)
+        .order_by(Exchange.turn_number.desc())
+        .limit(3)
+    )
+    recent_exchanges = [
+        {"user_message": ex.user_message, "opponent_response": ex.opponent_response}
+        for ex in reversed(history_result.scalars().all())
+    ]
+
     initial_state = DebateState(
         user_id=user_id,
         session_id=session_id,
@@ -265,6 +278,7 @@ async def send_message(
         user_message=body.text,
         turn_number=turn,
         consecutive_wins=_session_wins.get(session_id, 0),
+        recent_exchanges=recent_exchanges,
         model=x_model or None,
         judge_model=x_judge_model or None,
         extracted_pattern=None,

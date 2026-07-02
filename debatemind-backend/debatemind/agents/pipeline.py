@@ -6,19 +6,26 @@ from langgraph.graph import END, StateGraph
 from debatemind.agents.extractor import extract_argument
 from debatemind.agents.judge import judge_exchange
 from debatemind.agents.mastery import check_mastery
-from debatemind.agents.opponent import generate_opponent
+from debatemind.agents.opponent import generate_opponent, invalidate_weakness_cache
 from debatemind.agents.state import DebateState
 from debatemind.cognee import forget_pattern, remember_argument
 
 logger = logging.getLogger(__name__)
 
 
-def _log_remember_exc(task: asyncio.Task) -> None:
-    if not task.cancelled() and task.exception():
-        logger.exception(
-            "remember_argument background task failed",
-            exc_info=task.exception(),
-        )
+def _make_remember_callback(user_id: str):
+    def _callback(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception():
+            logger.exception(
+                "remember_argument background task failed",
+                exc_info=task.exception(),
+            )
+        # Invalidate regardless of outcome: on success the next turn should see
+        # the fresh write immediately rather than up to an hour later; on
+        # failure a retryable fresh recall is harmless.
+        invalidate_weakness_cache(user_id)
+
+    return _callback
 
 
 async def _remember_node(state: DebateState) -> DebateState:
@@ -48,7 +55,7 @@ async def _remember_node(state: DebateState) -> DebateState:
             reasoning=state.get("extracted_reasoning", "") or "",
         )
     )
-    task.add_done_callback(_log_remember_exc)
+    task.add_done_callback(_make_remember_callback(state["user_id"]))
     return state
 
 

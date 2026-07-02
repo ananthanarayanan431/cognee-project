@@ -71,13 +71,31 @@ def opponent_user_message(
     user_argument: str,
     description: str = "",
     user_position: str = "",
+    recent_exchanges: list[dict] | None = None,
 ) -> str:
     context_line = f"\n\nContext: {description}" if description else ""
     position_label = user_position.lower() if user_position else ""
     if position_label == "assign_randomly":
         position_label = "unspecified"
     position_line = f"\nUser's declared position: {position_label}" if position_label else ""
-    return f"Topic: {topic}{context_line}{position_line}\n\nUser argues: {user_argument}"
+
+    history_block = ""
+    if recent_exchanges:
+        parts: list[str] = []
+        for ex in recent_exchanges:
+            parts.append(f"User: {ex['user_message']}")
+            if ex.get("opponent_response"):
+                parts.append(f"Opponent: {ex['opponent_response']}")
+        transcript = "\n\n".join(parts)
+        history_block = (
+            f"\n\nEarlier this session:\n{transcript}\n\n"
+            "(Don't repeat a counter you already used above — press a new angle.)"
+        )
+
+    return (
+        f"Topic: {topic}{context_line}{position_line}"
+        f"{history_block}\n\nUser argues: {user_argument}"
+    )
 
 
 def opening_system_prompt(difficulty: str, user_position: str = "") -> str:

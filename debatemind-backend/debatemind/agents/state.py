@@ -11,6 +11,7 @@ class DebateState(TypedDict):
     user_message: str
     turn_number: int
     consecutive_wins: int
+    recent_exchanges: list[dict]
     extracted_pattern: Optional[str]
     extracted_fallacy: Optional[str]
     extracted_reasoning: Optional[str]  # extractor's one-sentence rationale, fed to Cognee

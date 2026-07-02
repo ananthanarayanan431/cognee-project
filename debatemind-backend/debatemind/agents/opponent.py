@@ -20,7 +20,20 @@ from debatemind.services.mastery_svc import get_active_mastered_patterns
 # Holds the *raw* (unfiltered) recall so mastered-pattern exclusion can be
 # re-applied per turn against the live mastery state instead of being frozen
 # into the cache — mastering a pattern takes effect on the very next turn.
+# The 1-hour TTL is just a safety net for idle users; freshness within an
+# active session comes from invalidate_weakness_cache(), called once each
+# background remember_argument() write completes (see pipeline.py).
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
+
+
+def invalidate_weakness_cache(user_id: str) -> None:
+    """Force the next recall_weaknesses() call for this user to hit Cognee live.
+
+    Called after a new argument is written to the knowledge graph so a fallacy
+    or weak pattern surfaced this session is available to the opponent on the
+    very next turn, instead of waiting up to an hour for the TTL to lapse.
+    """
+    _weakness_cache.pop(user_id, None)
 
 
 async def generate_opponent(state: DebateState) -> DebateState:
@@ -64,6 +77,7 @@ async def generate_opponent(state: DebateState) -> DebateState:
                     state["user_message"],
                     state.get("description") or "",
                     user_position,
+                    state.get("recent_exchanges") or [],
                 ),
             },
         ],
