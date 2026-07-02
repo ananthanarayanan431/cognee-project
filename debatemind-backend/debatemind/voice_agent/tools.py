@@ -15,6 +15,7 @@ Flow (WebRTC):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -22,6 +23,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from debatemind.cognee import remember_argument
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
@@ -181,6 +183,23 @@ TOOL_DEFINITIONS: list[dict] = [
 # ---------------------------------------------------------------------------
 # 2. Tool handlers
 # ---------------------------------------------------------------------------
+
+# Maps voice note_type → (pattern_type, evidence_quality, outcome) for Cognee writes.
+# "observation" is intentionally excluded — too generic for the fingerprint.
+_COGNEE_NOTE_MAP: dict[str, tuple[str, str, str]] = {
+    "fallacy": ("FallacyUsed", "Weak", "Lost"),
+    "concession": ("Concession", "Weak", "Lost"),
+    "position_flip": ("PositionFlip", "Weak", "Lost"),
+    "strong_argument": ("StrongArgument", "Strong", "Won"),
+}
+
+
+def _log_cognee_exc(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception():
+        logger.exception(
+            "remember_argument background task failed (voice)",
+            exc_info=task.exception(),
+        )
 
 
 async def execute_tool(
@@ -356,7 +375,7 @@ async def _get_voice_session_info(
 
 
 async def _save_debate_observation(
-    db: AsyncSession, args: dict, voice_session_id: str, _ds_id: str, _user_id: str
+    db: AsyncSession, args: dict, voice_session_id: str, debate_session_id: str, user_id: str
 ) -> dict:
     note_type = args.get("note_type", "observation")
     content = args.get("content", "")
@@ -371,6 +390,30 @@ async def _save_debate_observation(
     db.add(note)
     await db.commit()
     await db.refresh(note)
+
+    # Write semantically meaningful observations into the Cognee fingerprint so
+    # future sessions (chat or voice) can recall patterns identified during voice.
+    if note_type in _COGNEE_NOTE_MAP:
+        pattern_type, evidence_quality, outcome = _COGNEE_NOTE_MAP[note_type]
+        session_row = await db.execute(
+            select(DebateSession).where(DebateSession.id == debate_session_id)
+        )
+        session = session_row.scalar_one_or_none()
+        topic = session.topic if session else "unknown"
+
+        task = asyncio.create_task(
+            remember_argument(
+                user_id=user_id,
+                session_id=debate_session_id,
+                topic=topic,
+                claim_text=content,
+                pattern_type=pattern_type,
+                fallacy=content if note_type == "fallacy" else None,
+                evidence_quality=evidence_quality,
+                outcome=outcome,
+            )
+        )
+        task.add_done_callback(_log_cognee_exc)
 
     return {"saved": True, "note_id": note.id, "note_type": note_type}
 
