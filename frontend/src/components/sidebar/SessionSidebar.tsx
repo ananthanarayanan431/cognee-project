@@ -10,6 +10,7 @@ import {
   IconHistory,
   IconNetwork,
   IconPlayerPlay,
+  IconSettings,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
@@ -229,12 +230,11 @@ function BrainMapModal({
 
 // ── Brain Section ─────────────────────────────────────────────────────────────
 
-function BrainSection({ winRate }: { winRate: number | null }) {
+function BrainSection({ winRate, onOpenBrainMap }: { winRate: number | null; onOpenBrainMap: () => void }) {
   const { sessions } = useDebate();
-  const [description, setDescription]   = useState<string | null>(null);
-  const [loadingDesc, setLoadingDesc]   = useState(false);
-  const [showDesc, setShowDesc]         = useState(false);
-  const [showBrainMap, setShowBrainMap] = useState(false);
+  const [description, setDescription] = useState<string | null>(null);
+  const [loadingDesc, setLoadingDesc] = useState(false);
+  const [showDesc, setShowDesc]       = useState(false);
 
   const totalSessions = sessions.length;
 
@@ -270,8 +270,7 @@ function BrainSection({ winRate }: { winRate: number | null }) {
   }
 
   return (
-    <>
-      <div className="px-4 py-3 border-b border-white/10">
+    <div className="px-4 py-3 border-b border-white/10">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <IconBrain size={14} className="text-scarlet" />
@@ -308,37 +307,22 @@ function BrainSection({ winRate }: { winRate: number | null }) {
             <IconSparkles size={12} />
             {loadingDesc ? "Analyzing…" : showDesc ? "Hide profile" : "Describe me"}
           </button>
-
-          <button
-            onClick={() => setShowBrainMap(true)}
-            title="View brain map"
-            className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded bg-white/5 hover:bg-white/10 transition-colors font-sans text-[11px] text-white/50 hover:text-white/80"
-          >
-            <IconNetwork size={13} />
-          </button>
         </div>
 
         {showDesc && description && (
           <p className="mt-2.5 font-sans text-[11px] text-white/55 leading-relaxed">{description}</p>
         )}
-      </div>
-
-      {showBrainMap && (
-        <BrainMapModal
-          onClose={() => setShowBrainMap(false)}
-          winRate={winRate}
-          totalSessions={totalSessions}
-          description={description}
-        />
-      )}
-    </>
+    </div>
   );
 }
 
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
 export default function SessionSidebar() {
   const { token, sessions, setSessions, setScreen, setSession } = useDebate();
-  const [loading, setLoading] = useState(false);
-  const [winRate, setWinRate] = useState<number | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [winRate, setWinRate]           = useState<number | null>(null);
+  const [showBrainMap, setShowBrainMap] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -372,7 +356,7 @@ export default function SessionSidebar() {
         <span className="font-display text-[18px] text-white leading-none">DebateMind</span>
       </div>
 
-      <BrainSection winRate={winRate} />
+      <BrainSection winRate={winRate} onOpenBrainMap={() => setShowBrainMap(true)} />
 
       {/* Session history */}
       <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5">
@@ -398,6 +382,36 @@ export default function SessionSidebar() {
           />
         ))}
       </div>
+
+      {/* Bottom nav */}
+      <div className="border-t border-white/10 flex-shrink-0">
+        <p className="font-sans text-[9px] font-semibold uppercase tracking-widest text-white/25 px-4 pt-3 pb-1">
+          Platform
+        </p>
+        <button
+          onClick={() => setShowBrainMap(true)}
+          className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-white/5 transition-colors text-left"
+        >
+          <IconNetwork size={14} className="text-white/35" />
+          <span className="font-sans text-[12px] text-white/55">Knowledge Graph</span>
+        </button>
+        <button
+          onClick={() => setScreen("settings")}
+          className="w-full flex items-center gap-2.5 px-4 py-2 mb-2 hover:bg-white/5 transition-colors text-left"
+        >
+          <IconSettings size={14} className="text-white/35" />
+          <span className="font-sans text-[12px] text-white/55">Settings</span>
+        </button>
+      </div>
+
+      {showBrainMap && (
+        <BrainMapModal
+          onClose={() => setShowBrainMap(false)}
+          winRate={winRate}
+          totalSessions={sessions.length}
+          description={null}
+        />
+      )}
     </aside>
   );
 }

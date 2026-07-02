@@ -23,3 +23,5 @@ class DebateState(TypedDict):
     outcome: Optional[str]
     mastery_events: list[str]
     _prev_pattern: Optional[str]  # mastery.py tracks pattern continuity across turns
+    model: Optional[str]
+    judge_model: Optional[str]

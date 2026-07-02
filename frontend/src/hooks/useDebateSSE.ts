@@ -8,6 +8,8 @@ export function useSendMessage() {
   const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage } =
     useDebate();
   const token = useDebate((s) => s.token);
+  const mainModel = useDebate((s) => s.mainModel);
+  const judgeModel = useDebate((s) => s.judgeModel);
 
   return useCallback(async (text: string) => {
     if (!sessionId || !text.trim()) return;
@@ -17,7 +19,12 @@ export function useSendMessage() {
 
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/sessions/${sessionId}/message`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(mainModel ? { "X-Model": mainModel } : {}),
+        ...(judgeModel ? { "X-Judge-Model": judgeModel } : {}),
+      },
       body: JSON.stringify({ text }),
     });
 
@@ -89,5 +96,5 @@ export function useSendMessage() {
         }
       }
     }
-  }, [sessionId, token, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage]);
+  }, [sessionId, token, mainModel, judgeModel, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage]);
 }

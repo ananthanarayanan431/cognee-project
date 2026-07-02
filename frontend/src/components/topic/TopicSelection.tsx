@@ -13,12 +13,9 @@ const DIFFICULTIES = [
   { key: "ruthless", name: "Ruthless" },
 ] as const;
 
-const POSITIONS = ["For", "Against", "Neutral"] as const;
-
 export default function TopicSelection() {
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
-  const [position, setPosition] = useState("against");
   const [selectedDomain, setSelectedDomain] = useState<Domain>("ALL");
   const [cardsByDomain, setCardsByDomain] = useState<Record<string, DebatableQuestion[]>>({});
   const [generating, setGenerating] = useState(false);
@@ -111,7 +108,7 @@ export default function TopicSelection() {
     setSubmitting(true);
     let res;
     try {
-      res = await api.startSession(t, desc, difficulty, position);
+      res = await api.startSession(t, desc, difficulty, "against");
     } catch {
       setStartError("Failed to start session — please try again.");
       setSubmitting(false);
@@ -119,7 +116,7 @@ export default function TopicSelection() {
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    setSession(res.session_id, { topic: t, description: desc, difficulty, position: position as never });
+    setSession(res.session_id, { topic: t, description: desc, difficulty, position: "against" as never });
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
@@ -212,21 +209,7 @@ export default function TopicSelection() {
               ))}
             </div>
 
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              {POSITIONS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPosition(p.toLowerCase())}
-                  className={`font-sans text-xs px-3 py-1.5 border-r border-border last:border-r-0 transition-colors ${
-                    position === p.toLowerCase() ? "bg-scarlet text-white" : "text-fog hover:text-ink"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1" />
+<div className="flex-1" />
 
             <button
               disabled

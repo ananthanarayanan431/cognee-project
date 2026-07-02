@@ -9,7 +9,7 @@ from debatemind.config import settings
 async def judge_exchange(state: DebateState) -> DebateState:
     prompt = judge_prompt(state["topic"], state["user_message"], state["opponent_response"])
     msg = await openrouter.chat.completions.create(
-        model=settings.fast_model,
+        model=state.get("judge_model") or settings.fast_model,
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_schema", "json_schema": JUDGE_RESPONSE_SCHEMA},

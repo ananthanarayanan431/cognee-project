@@ -28,7 +28,7 @@ async def generate_opponent(state: DebateState) -> DebateState:
     user_position = state.get("user_position", "")
 
     msg = await openrouter.chat.completions.create(
-        model=settings.main_model,
+        model=state.get("model") or settings.main_model,
         max_tokens=300,
         messages=[
             {

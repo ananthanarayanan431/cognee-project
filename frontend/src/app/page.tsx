@@ -13,8 +13,9 @@ const SessionEnd = dynamic(() => import("@/components/session/SessionEnd"), { ss
 const ProgressDashboard = dynamic(() => import("@/components/progress/ProgressDashboard"), { ssr: false });
 const CalibrationSession = dynamic(() => import("@/components/calibration/CalibrationSession"), { ssr: false });
 const SessionTranscript = dynamic(() => import("@/components/session/SessionTranscript"), { ssr: false });
+const SettingsPage = dynamic(() => import("@/components/settings/SettingsPage"), { ssr: false });
 
-const AUTHENTICATED_SCREENS = ["topic", "topic-detail", "debate", "end", "progress", "transcript", "calibration"] as const;
+const AUTHENTICATED_SCREENS = ["topic", "topic-detail", "debate", "end", "progress", "transcript", "calibration", "settings"] as const;
 type AuthScreen = typeof AUTHENTICATED_SCREENS[number];
 
 function isAuthScreen(s: string): s is AuthScreen {
@@ -78,7 +79,8 @@ export default function Home() {
       {screen === "end" && <SessionEnd />}
       {screen === "progress" && <ProgressDashboard />}
       {screen === "transcript" && <SessionTranscript />}
-      {!["topic", "topic-detail", "debate", "end", "progress", "transcript"].includes(screen) && <TopicSelection />}
+      {screen === "settings" && <SettingsPage />}
+      {!["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings"].includes(screen) && <TopicSelection />}
     </AuthenticatedShell>
   );
 }

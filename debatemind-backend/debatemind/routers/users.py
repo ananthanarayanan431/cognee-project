@@ -1,5 +1,6 @@
 import hashlib
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -314,3 +315,78 @@ async def reactivate_mastery(
     if not ok:
         raise HTTPException(status_code=404, detail="Pattern was never mastered")
     return SuccessResponse(data={"reactivated": True})
+
+
+_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+_models_cache: list[dict] | None = None
+
+
+def _provider_from_id(model_id: str) -> str:
+    prefix = model_id.split("/")[0].lower()
+    return {
+        "anthropic": "Anthropic",
+        "openai": "OpenAI",
+        "google": "Google",
+        "meta-llama": "Meta",
+        "deepseek": "DeepSeek",
+        "x-ai": "xAI",
+        "mistralai": "Mistral",
+        "cohere": "Cohere",
+        "qwen": "Alibaba",
+        "nvidia": "NVIDIA",
+        "microsoft": "Microsoft",
+        "01-ai": "01.AI",
+    }.get(prefix, prefix.title())
+
+
+async def _fetch_openrouter_models() -> list[dict]:
+    global _models_cache
+    if _models_cache is not None:
+        return _models_cache
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(_OPENROUTER_MODELS_URL)
+        resp.raise_for_status()
+        raw = resp.json().get("data", [])
+
+    models = []
+    for m in raw:
+        arch = m.get("architecture", {})
+        modality = arch.get("modality", "")
+        # Keep only text-in / text-out models (exclude image-gen, audio, etc.)
+        if "text" not in modality or "->text" not in modality:
+            continue
+        prompt_price = float(m.get("pricing", {}).get("prompt", 0) or 0)
+        models.append(
+            {
+                "id": m["id"],
+                "name": m.get("name", m["id"]),
+                "provider": _provider_from_id(m["id"]),
+                "context_length": m.get("context_length"),
+                "prompt_price_per_m": round(prompt_price * 1_000_000, 4),
+            }
+        )
+
+    # Sort: by provider then name
+    models.sort(key=lambda x: (x["provider"].lower(), x["name"].lower()))
+    _models_cache = models
+    return models
+
+
+@router.get(
+    "/models",
+    summary="List available opponent models",
+    description="Proxies OpenRouter /models, filtered to text-in/text-out models.",
+)
+async def list_models(_: str = Depends(current_user_id)):
+    try:
+        models = await _fetch_openrouter_models()
+    except Exception:
+        models = []
+    return SuccessResponse(
+        data={
+            "models": models,
+            "default_opponent": settings.main_model,
+            "default_judge": settings.fast_model,
+        }
+    )

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
 
 interface DebateStore {
-  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail";
+  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail" | "settings";
   topicDetailTopic: { title: string; description: string } | null;
   token: string | null;
   userId: string | null;
@@ -15,8 +15,12 @@ interface DebateStore {
   currentStage: string | null;
   sessionScores: { logic: number; evidence: number; rhetoric: number };
   sessions: SessionListItem[];
+  mainModel: string | null;
+  judgeModel: string | null;
 
   hydrate: () => void;
+  setMainModel: (model: string) => void;
+  setJudgeModel: (model: string) => void;
   setScreen: (s: DebateStore["screen"]) => void;
   setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
   setSession: (id: string, config: SessionConfig) => void;
@@ -46,6 +50,8 @@ export const useDebate = create<DebateStore>((set) => ({
   currentStage: null,
   sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
   sessions: [],
+  mainModel: null,
+  judgeModel: null,
 
   hydrate: () => {
     const token = localStorage.getItem("dm_token");
@@ -54,8 +60,18 @@ export const useDebate = create<DebateStore>((set) => ({
       token,
       userId: localStorage.getItem("dm_uid"),
       calibrationDone,
+      mainModel: localStorage.getItem("dm_model"),
+      judgeModel: localStorage.getItem("dm_judge_model"),
       screen: token ? (calibrationDone ? "topic" : "calibration") : "landing",
     });
+  },
+  setMainModel: (model) => {
+    localStorage.setItem("dm_model", model);
+    set({ mainModel: model });
+  },
+  setJudgeModel: (model) => {
+    localStorage.setItem("dm_judge_model", model);
+    set({ judgeModel: model });
   },
   setScreen: (screen) => set({ screen }),
   setAuth: (token, userId, calibrationDone) => {

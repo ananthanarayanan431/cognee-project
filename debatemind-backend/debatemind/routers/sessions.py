@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
-from debatemind.cognee import improve_fingerprint
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
@@ -147,6 +146,8 @@ async def send_message(
     body: MessageIn,
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
+    x_model: str | None = Header(None, alias="X-Model"),
+    x_judge_model: str | None = Header(None, alias="X-Judge-Model"),
 ):
     result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
     session = result.scalar_one_or_none()
@@ -168,6 +169,8 @@ async def send_message(
         user_message=body.text,
         turn_number=turn,
         consecutive_wins=_session_wins.get(session_id, 0),
+        model=x_model or None,
+        judge_model=x_judge_model or None,
         extracted_pattern=None,
         extracted_fallacy=None,
         evidence_quality=None,
@@ -299,14 +302,6 @@ async def end_session(
     )
     await db.commit()
 
-    def _log_task_exc(task: asyncio.Task) -> None:
-        if not task.cancelled() and task.exception():
-            logger.exception(
-                "improve_fingerprint failed for user %s", user_id, exc_info=task.exception()
-            )
-
-    task = asyncio.create_task(improve_fingerprint(user_id))
-    task.add_done_callback(_log_task_exc)
     _session_wins.pop(session_id, None)
     return SuccessResponse(data=EndSessionOut(status="ended"))
 

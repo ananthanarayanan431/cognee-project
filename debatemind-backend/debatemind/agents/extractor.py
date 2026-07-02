@@ -9,7 +9,7 @@ from debatemind.config import settings
 async def extract_argument(state: DebateState) -> DebateState:
     prompt = extractor_prompt(state["topic"], state["user_message"], state.get("description") or "")
     msg = await openrouter.chat.completions.create(
-        model=settings.fast_model,
+        model=state.get("judge_model") or settings.fast_model,
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_schema", "json_schema": EXTRACTOR_RESPONSE_SCHEMA},
