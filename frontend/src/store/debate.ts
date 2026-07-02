@@ -21,6 +21,7 @@ interface DebateStore {
   sessions: SessionListItem[];
   mainModel: string | null;
   judgeModel: string | null;
+  voiceMode: boolean;
 
   hydrate: (urlScreen?: string) => void;
   setMainModel: (model: string) => void;
@@ -37,6 +38,7 @@ interface DebateStore {
   setGraph: (g: GraphData) => void;
   setSessions: (sessions: SessionListItem[]) => void;
   setTopicDetail: (topic: { id?: string | null; title: string; description: string } | null) => void;
+  setVoiceMode: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -57,6 +59,7 @@ export const useDebate = create<DebateStore>((set) => ({
   sessions: [],
   mainModel: null,
   judgeModel: null,
+  voiceMode: false,
 
   hydrate: (urlScreen?: string) => {
     const token = localStorage.getItem("dm_token");
@@ -101,6 +104,7 @@ export const useDebate = create<DebateStore>((set) => ({
       sessionScores: { logic: 0, evidence: 0, rhetoric: 0 },
       thinking: false,
       currentStage: null,
+      voiceMode: false,
     }),
   addMessage: (m) => set((s) => ({ messages: [...s.messages, m] })),
   setMessages: (msgs) => set({ messages: msgs }),
@@ -128,5 +132,6 @@ export const useDebate = create<DebateStore>((set) => ({
   setGraph: (graph) => set({ graph }),
   setSessions: (sessions) => set({ sessions }),
   setTopicDetail: (topicDetailTopic) => set({ topicDetailTopic, screen: "topic-detail" }),
+  setVoiceMode: (voiceMode) => set({ voiceMode }),
   reset: () => set({ sessionId: null, sessionConfig: null, messages: [], screen: "topic" }),
 }));

@@ -141,4 +141,11 @@ export const api = {
   exportProfileUrl: () => `${BASE}/api/users/me/export`,
   getBrainGraph: () => apiFetch<{ nodes: import("@/types").GraphNode[]; edges: import("@/types").GraphEdge[] }>("/api/users/me/brain"),
   getModels: () => apiFetch<{ models: { id: string; name: string; provider: string; context_length: number | null; prompt_price_per_m: number }[]; default_opponent: string; default_judge: string }>("/api/users/models"),
+  getVoiceToken: (sessionId: string) =>
+    apiFetch<import("@/types").VoiceTokenResponse>(`/api/voice/${sessionId}/token`, { method: "POST" }),
+  executeVoiceTool: (sessionId: string, voiceSessionId: string, tool: string, args: Record<string, unknown>) =>
+    apiFetch<Record<string, unknown>>(`/api/voice/${sessionId}/tools`, {
+      method: "POST",
+      body: JSON.stringify({ voice_session_id: voiceSessionId, tool, arguments: args }),
+    }),
 };

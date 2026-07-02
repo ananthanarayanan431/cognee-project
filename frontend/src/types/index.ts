@@ -147,3 +147,11 @@ export interface DebatableQuestion {
   title: string;
   description: string;
 }
+
+export interface VoiceTokenResponse {
+  client_secret: { value: string; expires_at: number };
+  id: string;
+  model: string;
+  voice_session_id: string;
+  [key: string]: unknown;
+}

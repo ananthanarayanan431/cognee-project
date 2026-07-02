@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
+    openai_api_key: str = (
+        ""  # Required for voice agent (OpenAI Realtime API — OpenRouter does not support it)
+    )
 
 
 settings = Settings()

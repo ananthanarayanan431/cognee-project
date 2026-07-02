@@ -10,6 +10,7 @@ from debatemind.config import settings
 from debatemind.middleware import RequestIDMiddleware
 from debatemind.routers import auth, calibration, health, sessions, topics, users
 from debatemind.services.cognee_config import configure_cognee
+from debatemind.voice_agent import router as voice_router
 
 
 class _CogneeNoDataFilter(logging.Filter):
@@ -70,3 +71,4 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
 app.include_router(calibration.router, prefix="/api/calibration", tags=["calibration"])
+app.include_router(voice_router.router, prefix="/api/voice", tags=["voice"])
