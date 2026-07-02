@@ -1,3 +1,4 @@
+import {ClerkProvider} from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Inter, Spectral, JetBrains_Mono, DM_Serif_Display } from "next/font/google";
 import "./globals.css";
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${inter.variable} ${spectral.variable} ${mono.variable} ${display.variable} bg-chalk text-ink`}>
-        {children}
+        <ClerkProvider>
+          {children}
+        </ClerkProvider>
       </body>
     </html>
   );
