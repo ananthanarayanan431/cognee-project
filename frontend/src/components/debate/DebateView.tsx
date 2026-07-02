@@ -103,6 +103,14 @@ export default function DebateView() {
 
   const setSessions = useDebate((s) => s.setSessions);
 
+  // Auto-end the session when the user closes the tab / refreshes the page.
+  useEffect(() => {
+    if (!sessionId) return;
+    const handler = () => api.endSessionBeacon(sessionId);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [sessionId]);
+
   async function endSession() {
     if (sessionId) await api.endSession(sessionId);
     api.getSessions().then(setSessions).catch(() => {});
@@ -132,7 +140,12 @@ export default function DebateView() {
       {/* Nav */}
       <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
-          onClick={() => setScreen("topic")}
+          onClick={() => {
+            // End the session (fire-and-forget) then navigate back.
+            if (sessionId) api.endSession(sessionId).catch(() => {});
+            api.getSessions().then(setSessions).catch(() => {});
+            setScreen("topic");
+          }}
           className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors flex items-center gap-1.5"
         >
           ← Back

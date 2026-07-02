@@ -30,6 +30,7 @@ from debatemind.schemas.session import (
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
+from debatemind.services.title_svc import generate_session_title
 from debatemind.services.transcript_svc import format_transcript_text
 from debatemind.types import (
     NotFoundError,
@@ -83,6 +84,7 @@ async def list_sessions(
                 session_id=session.id,
                 topic_id=session.topic_id,
                 topic=session.topic,
+                title=session.title,
                 difficulty=session.difficulty,
                 status=session.status,
                 overall_score=session.overall_score,
@@ -123,6 +125,18 @@ async def start_session(
     await db.commit()
     await db.refresh(session)
     _session_wins[session.id] = 0
+
+    # Fire-and-forget: generate a short title in the background so /start stays fast.
+    async def _write_title(sid: str, topic: str, description: str) -> None:
+        title = await generate_session_title(topic, description)
+        async with AsyncSessionLocal() as title_db:
+            await title_db.execute(
+                update(DebateSession).where(DebateSession.id == sid).values(title=title)
+            )
+            await title_db.commit()
+
+    asyncio.create_task(_write_title(session.id, session.topic, session.description or ""))
+
     return SuccessResponse(
         data=SessionOut(
             session_id=session.id,

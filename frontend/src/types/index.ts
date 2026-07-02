@@ -132,6 +132,7 @@ export interface SessionListItem {
   session_id: string;
   topic_id: string | null;
   topic: string;
+  title?: string | null;
   difficulty: string;
   status: "active" | "ended";
   overall_score: number;

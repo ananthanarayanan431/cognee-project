@@ -73,7 +73,7 @@ function SessionCard({
           {session.difficulty.charAt(0).toUpperCase()}
         </span>
         <span className="flex-1 min-w-0 font-sans text-[12px] text-ink leading-tight truncate">
-          {session.topic}
+          {session.title || session.topic}
         </span>
         {session.status === "active" && (
           <span className="flex-none w-1.5 h-1.5 rounded-full bg-verdant" title="Active" />

@@ -317,6 +317,13 @@ async def generate(
             ],
         )
         raw = completion.choices[0].message.content or ""
+        # Strip markdown code fences if the model wraps the JSON
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1]
+            raw = raw.rsplit("```", 1)[0].strip()
+        if not raw:
+            raise ValueError("Empty response from model")
         parsed = json.loads(raw)
         questions = [DebatableQuestion(**q) for q in parsed["questions"]][:count]
     except Exception as exc:

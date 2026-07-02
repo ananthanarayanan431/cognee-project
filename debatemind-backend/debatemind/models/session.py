@@ -18,6 +18,7 @@ class DebateSession(Base):
     user_position: Mapped[str] = mapped_column(String, default="against")
     status: Mapped[str] = mapped_column(String, default="active")
     overall_score: Mapped[float] = mapped_column(Float, default=0.0)
+    title: Mapped[str] = mapped_column(String, nullable=True)
     source_filename: Mapped[str] = mapped_column(String, nullable=True)
     source_object_key: Mapped[str] = mapped_column(String, nullable=True)
     source_status: Mapped[str] = mapped_column(String, default="none", nullable=False)

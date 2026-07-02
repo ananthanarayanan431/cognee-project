@@ -183,33 +183,36 @@ export default function TopicSelection() {
   return (
     <div className="flex flex-col h-full min-h-0 bg-chalk">
 
-      {/* ── Floating input card ──────────────────────────────── */}
-      <div className="flex-none px-5 pt-8 pb-4">
-        <div className="bg-white border border-border rounded-2xl px-5 py-4 shadow-sm">
-          <textarea
+      {/* ── Input card ───────────────────────────────────────── */}
+      <div className="flex-none px-5 pt-5 pb-4">
+        <div className="bg-white border border-border rounded-xl px-5 py-5 shadow-sm">
+          {/* Top row: input */}
+          <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doStart(topic, ""); } }}
             placeholder="Type any topic — politics, ethics, tech, philosophy…"
-            className="w-full bg-transparent font-sans text-[15px] text-ink resize-none outline-none placeholder:text-fog leading-snug"
-            rows={2}
+            className="w-full bg-transparent font-sans text-sm text-ink outline-none placeholder:text-fog mb-4"
           />
-          <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border">
+
+          {/* Bottom row: controls + button */}
+          <div className="flex items-center gap-2">
             <select
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value as Domain)}
-              className="font-sans text-xs text-ink border border-border rounded-lg px-3 py-1.5 bg-white outline-none cursor-pointer"
+              className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-1.5 flex-none"
             >
               {DOMAINS.map(d => (
                 <option key={d} value={d}>{d === "ALL" ? "All domains" : d.charAt(0) + d.slice(1).toLowerCase()}</option>
               ))}
             </select>
 
-            <div className="flex border border-border rounded-lg overflow-hidden">
+            <div className="flex border border-border rounded-lg overflow-hidden flex-none">
               {DIFFICULTIES.map((d) => (
                 <button
                   key={d.key}
                   onClick={() => setDifficulty(d.key)}
-                  className={`font-sans text-xs px-3 py-1.5 border-r border-border last:border-r-0 transition-colors ${
+                  className={`font-sans text-[11px] px-2.5 py-1.5 border-r border-border last:border-r-0 transition-colors ${
                     difficulty === d.key ? "bg-scarlet text-white" : "text-fog hover:text-ink"
                   }`}
                 >
@@ -221,26 +224,16 @@ export default function TopicSelection() {
             <div className="flex-1" />
 
             <button
-              disabled
-              title="Coming soon"
-              className="font-sans text-xs px-3 py-1.5 border border-border rounded-lg text-fog opacity-40 cursor-not-allowed flex items-center gap-1.5"
-            >
-              <span>🎙</span>
-              <span>Voice</span>
-              <span className="text-[9px] bg-fog/15 px-1 py-0.5 rounded-full uppercase tracking-wide">Soon</span>
-            </button>
-
-            <button
               onClick={() => doStart(topic, "")}
               disabled={submitting || !topic.trim()}
-              className="font-sans text-sm font-semibold px-5 py-1.5 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-2"
+              className="font-sans text-xs font-semibold px-5 py-2 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-1.5 flex-none"
             >
               <IconPlayerPlay size={11} />
               <span>{submitting ? "Starting…" : "Start debate"}</span>
             </button>
           </div>
         </div>
-        {startError && <p className="font-sans text-xs text-scarlet mt-2 px-1">{startError}</p>}
+        {startError && <p className="font-sans text-xs text-scarlet mt-1 px-1">{startError}</p>}
       </div>
 
       {/* ── List toolbar ──────────────────────────────────────── */}

@@ -22,7 +22,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     ...init,
     headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
   });
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
     handleExpiredSession();
     throw new Error("Session expired. Please log in again.");
   }
@@ -67,6 +67,16 @@ export const api = {
     ),
   endSession: (sessionId: string) =>
     apiFetch<{ status: string }>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
+  /** Fire-and-forget end for use in beforeunload / tab-close scenarios. */
+  endSessionBeacon: (sessionId: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
+    const url = `${BASE}/api/sessions/${sessionId}/end`;
+    fetch(url, {
+      method: "POST",
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+    }).catch(() => {});
+  },
   getTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/suggest"),
   getSavedTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/saved"),
   saveQuestion: (q: import("@/types").DebatableQuestion) =>
