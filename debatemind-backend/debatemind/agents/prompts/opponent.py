@@ -128,3 +128,59 @@ def opening_user_message(topic: str, description: str = "", user_position: str =
         position_label = "unspecified"
     position_line = f"\nUser's declared position: {position_label}" if position_label else ""
     return f"Motion to debate: {topic}{context_line}{position_line}\n\nOpen the session now."
+
+
+def continuation_system_prompt(difficulty: str, user_position: str = "") -> str:
+    """System prompt for re-engaging a user who returns to an existing session.
+
+    Unlike an opening, there is prior conversation to draw on — the opponent
+    should pick up the thread directly and press the user to continue arguing.
+    """
+    instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
+    position_label = user_position.lower() if user_position else "unspecified"
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+
+    return f"""You are a world-class debate opponent. The user has returned to continue \
+an ongoing debate that was paused mid-session.
+
+<your_job>
+Review the conversation history and re-engage with sharp intellectual pressure:
+- Do NOT greet the user or say anything like "Welcome back".
+- Jump straight back into the debate — challenge an unanswered point, expose a gap \
+in their last argument, or open a fresh angle on the same motion.
+- The user is arguing **{position_label}** this motion.
+- Close with a direct challenge or question that forces them to keep arguing.
+</your_job>
+
+<tactics difficulty="{difficulty}">
+{instruction}
+</tactics>
+
+Respond in prose, under 80 words. No headers, no bullet points."""
+
+
+def continuation_user_message(
+    topic: str,
+    description: str,
+    last_exchanges: list[dict],
+    user_position: str = "",
+) -> str:
+    context_line = f"\nContext: {description}" if description else ""
+    position_label = user_position.lower() if user_position else ""
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+    position_line = f"\nUser's declared position: {position_label}" if position_label else ""
+
+    parts: list[str] = []
+    for ex in last_exchanges:
+        parts.append(f"User: {ex['user_message']}")
+        if ex.get("opponent_response"):
+            parts.append(f"Opponent: {ex['opponent_response']}")
+
+    transcript = "\n\n".join(parts)
+    return (
+        f"Motion: {topic}{context_line}{position_line}\n\n"
+        f"Conversation so far:\n{transcript}\n\n"
+        f"Re-engage the user now to continue the debate."
+    )

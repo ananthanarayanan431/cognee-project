@@ -10,7 +10,7 @@ from sqlalchemy import func as sqlfunc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from debatemind.agents.opponent import generate_opening
+from debatemind.agents.opponent import generate_continuation, generate_opening
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
 from debatemind.database import AsyncSessionLocal, get_db
@@ -322,6 +322,74 @@ async def session_opening(
             return
 
         words = opening.split()
+        for i, word in enumerate(words):
+            chunk = word + (" " if i < len(words) - 1 else "")
+            yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"
+            await asyncio.sleep(0.03)
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post(
+    "/{session_id}/continue",
+    summary="Stream opponent continuation message",
+    description=(
+        "Generate a re-engagement message for a returning user based on the last "
+        "few exchanges, streamed token-by-token (SSE). Events: token | error | [DONE]. "
+        "Nothing is persisted — continuation is ephemeral, like the opening."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Session not found"},
+    },
+)
+async def session_continue(
+    session_id: str,
+    user_id: str = Depends(current_user_id),
+    db: AsyncSession = Depends(get_db),
+    x_model: str | None = Header(None, alias="X-Model"),
+):
+    result = await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    exchanges_result = await db.execute(
+        select(Exchange)
+        .where(Exchange.session_id == session_id)
+        .order_by(Exchange.turn_number.desc())
+        .limit(3)
+    )
+    exchanges = list(reversed(exchanges_result.scalars().all()))
+    last_exchanges = [
+        {"user_message": ex.user_message, "opponent_response": ex.opponent_response}
+        for ex in exchanges
+    ]
+
+    async def event_stream():
+        try:
+            continuation = await generate_continuation(
+                topic=session.topic,
+                description=session.description or "",
+                difficulty=session.difficulty,
+                user_position=session.user_position,
+                last_exchanges=last_exchanges,
+                model=x_model or None,
+            )
+        except Exception:
+            logger.exception("continuation generation failed for session %s", session_id)
+            yield (
+                "data: "
+                + json.dumps(
+                    {"type": "error", "detail": "Something went wrong generating a continuation."}
+                )
+                + "\n\n"
+            )
+            return
+
+        words = continuation.split()
         for i, word in enumerate(words):
             chunk = word + (" " if i < len(words) - 1 else "")
             yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"

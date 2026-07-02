@@ -94,6 +94,85 @@ export function useStreamOpening() {
   }, [token, mainModel, addMessage, updateLastOpponent, setThinking, setCurrentStage]);
 }
 
+export function useStreamContinuation() {
+  const { addMessage, updateLastOpponent, setThinking, setCurrentStage } = useDebate();
+  const token = useDebate((s) => s.token);
+  const mainModel = useDebate((s) => s.mainModel);
+
+  return useCallback(async (sessionId: string) => {
+    setThinking(true);
+    setCurrentStage("opponent");
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/sessions/${sessionId}/continue`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(mainModel ? { "X-Model": mainModel } : {}),
+        },
+      }
+    );
+
+    if (res.status === 401) {
+      setThinking(false);
+      setCurrentStage(null);
+      handleExpiredSession();
+      return;
+    }
+    if (!res.ok || !res.body) {
+      setThinking(false);
+      setCurrentStage(null);
+      return;
+    }
+
+    const continuationId = uuid();
+    let opponentAdded = false;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break;
+        try {
+          const evt = JSON.parse(raw);
+          if (evt.type === "token") {
+            if (!opponentAdded) {
+              addMessage({ id: continuationId, role: "opponent", text: "" });
+              opponentAdded = true;
+              setThinking(false);
+              setCurrentStage(null);
+            }
+            const current = useDebate.getState().messages.find((m) => m.id === continuationId);
+            updateLastOpponent((current?.text ?? "") + evt.text);
+          }
+          if (evt.type === "error") {
+            setThinking(false);
+            setCurrentStage(null);
+          }
+        } catch {
+          // ignore malformed SSE events
+        }
+      }
+    }
+
+    if (!opponentAdded) {
+      setThinking(false);
+      setCurrentStage(null);
+    }
+  }, [token, mainModel, addMessage, updateLastOpponent, setThinking, setCurrentStage]);
+}
+
 export function useSendMessage() {
   const { sessionId, addMessage, updateLastOpponent, revealJudge, setThinking, setGraph, setCurrentStage } =
     useDebate();

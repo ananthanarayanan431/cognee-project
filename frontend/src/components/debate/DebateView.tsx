@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { GraphData, Message } from "@/types";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
-import { useStreamOpening } from "@/hooks/useDebateSSE";
+import { useStreamContinuation, useStreamOpening } from "@/hooks/useDebateSSE";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
 import SessionScoreBar from "./SessionScoreBar";
 
@@ -22,6 +22,7 @@ export default function DebateView() {
   const scrollRef    = useRef<HTMLDivElement>(null);
   const hydratedRef  = useRef<string | null>(null);
   const streamOpening = useStreamOpening();
+  const streamContinuation = useStreamContinuation();
 
   // Hydrate chat history and graph when resuming an existing session;
   // stream an AI-generated opening for fresh sessions.
@@ -74,6 +75,9 @@ export default function DebateView() {
               },
             });
           }
+
+          // Re-engage the user: opponent picks up from where the debate left off.
+          streamContinuation(sessionId);
         } else if (
           transcript.exchanges.length === 0 &&
           currentMessages.length === 0 &&
@@ -89,7 +93,7 @@ export default function DebateView() {
         setGraph(graphResult.value as unknown as GraphData);
       }
     });
-  }, [sessionId, setMessages, setGraph, streamOpening]);
+  }, [sessionId, setMessages, setGraph, streamOpening, streamContinuation]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -106,6 +110,22 @@ export default function DebateView() {
   }
 
   const lastMsg = messages[messages.length - 1];
+
+  const difficultyColors: Record<string, string> = {
+    balanced: "bg-blue-50 text-blue-700 border-blue-200",
+    targeted: "bg-amber-50 text-amber-700 border-amber-200",
+    ruthless: "bg-red-50 text-red-700 border-red-200",
+  };
+  const positionColors: Record<string, string> = {
+    for: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    against: "bg-scarlet/10 text-scarlet border-scarlet/20",
+    neutral: "bg-fog/10 text-fog border-fog/20",
+  };
+  const positionLabel: Record<string, string> = {
+    for: "Arguing For",
+    against: "Arguing Against",
+    neutral: "Neutral",
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -153,6 +173,38 @@ export default function DebateView() {
             ref={scrollRef}
             className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-3.5"
           >
+            {/* Session greeting card */}
+            {sessionConfig && (
+              <div className="bg-white rounded-2xl border border-border px-5 py-4 mb-1">
+                <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-fog mb-2">
+                  Motion
+                </p>
+                <p className="font-sans text-sm font-semibold text-ink leading-snug mb-3">
+                  {sessionConfig.topic}
+                </p>
+                {sessionConfig.description && (
+                  <p className="font-sans text-[11px] text-fog leading-relaxed mb-3">
+                    {sessionConfig.description}
+                  </p>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`font-sans text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                      positionColors[sessionConfig.position] ?? "bg-fog/10 text-fog border-fog/20"
+                    }`}
+                  >
+                    {positionLabel[sessionConfig.position] ?? sessionConfig.position}
+                  </span>
+                  <span
+                    className={`font-sans text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                      difficultyColors[sessionConfig.difficulty] ?? "bg-fog/10 text-fog border-fog/20"
+                    }`}
+                  >
+                    {sessionConfig.difficulty}
+                  </span>
+                </div>
+              </div>
+            )}
             {messages.map((m) => (
               <MessageBubble
                 key={m.id}
