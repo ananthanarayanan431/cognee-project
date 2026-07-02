@@ -26,12 +26,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.cognee import (
     forget_pattern,
     improve_fingerprint,
+    recall_topic_weaknesses,
+    recall_weaknesses,
     remember_argument,
     remember_session_summary,
 )
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
+from debatemind.services.mastery_svc import get_active_mastered_patterns
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +103,41 @@ TOOL_DEFINITIONS: list[dict] = [
             "elapsed seconds, status, and how many observations have been saved so far."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "type": "function",
+        "name": "get_knowledge_context",
+        "description": (
+            "Query this user's long-term knowledge graph (Cognee) for weakness patterns "
+            "beyond what was preloaded at session start. Call this when: the debate "
+            "shifts to a sub-topic or angle not covered by your initial context; the "
+            "user directly asks about their history or trends ('what have I struggled "
+            "with before', 'how am I doing on this topic over time'); or the user's "
+            "position or framing pivots mid-session and you want fresh topic-specific "
+            "context. Results are for sharpening your strategy only — never read them "
+            "aloud verbatim."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": (
+                        "The specific sub-topic, angle, or motion phrasing to search "
+                        "for. Defaults to the session's original motion if omitted."
+                    ),
+                },
+                "include_generic": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether to also include cross-topic weakness patterns from "
+                        "the user's other debates (default true). Set false for a "
+                        "topic-only query."
+                    ),
+                },
+            },
+            "required": [],
+        },
     },
     {
         "type": "function",
@@ -230,6 +268,7 @@ async def execute_tool(
         "get_exchange_history": _get_exchange_history,
         "get_recent_exchanges": _get_recent_exchanges,
         "get_voice_session_info": _get_voice_session_info,
+        "get_knowledge_context": _get_knowledge_context,
         "save_debate_observation": _save_debate_observation,
         "save_session_metadata": _save_session_metadata,
         "end_voice_session": _end_voice_session,
@@ -385,6 +424,44 @@ async def _get_voice_session_info(
         "started_at": started.isoformat() if started else None,
         "elapsed_seconds": elapsed,
         "observations_saved": note_count,
+    }
+
+
+async def _get_knowledge_context(
+    db: AsyncSession, args: dict, _vs_id: str, debate_session_id: str, user_id: str
+) -> dict:
+    session_row = await db.execute(
+        select(DebateSession).where(DebateSession.id == debate_session_id)
+    )
+    session = session_row.scalar_one_or_none()
+    topic = args.get("topic") or (session.topic if session else "")
+    include_generic = args.get("include_generic", True)
+
+    excluded = await get_active_mastered_patterns(db, user_id)
+
+    tasks = [recall_topic_weaknesses(user_id, topic, exclude_patterns=excluded)] if topic else []
+    if include_generic:
+        tasks.append(recall_weaknesses(user_id, exclude_patterns=excluded))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
+
+    seen: set[str] = set()
+    patterns: list[str] = []
+    for items in results:
+        if isinstance(items, Exception):
+            continue
+        for item in items:
+            text = item.get("text", "")
+            if text and text not in seen:
+                seen.add(text)
+                patterns.append(text)
+
+    patterns = patterns[:10]
+    return {
+        "topic_queried": topic,
+        "patterns": patterns,
+        "count": len(patterns),
+        "note": "Internal strategy context only — never read this aloud.",
     }
 
 

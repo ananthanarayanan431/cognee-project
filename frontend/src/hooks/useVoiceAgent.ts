@@ -174,6 +174,38 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const vsId = voiceSessionIdRef.current;
       if (!vsId) return;
 
+      // Disable barge-in the instant we know the session is ending, before
+      // awaiting the tool round-trip below — otherwise continued input audio
+      // (background noise, the user talking again) keeps clearing the AI's
+      // closing response via interrupt_response, it never reaches
+      // "output_audio_buffer.stopped", and hangup falls back to the 15s timer
+      // instead of ending right after the closing line. Values mirror the
+      // turn_detection block in voice_agent/session.py except the two flipped
+      // flags: this is the session's last response, so let it play out and
+      // don't spawn any more from further detected speech.
+      if (toolName === "end_voice_session" && dcRef.current?.readyState === "open") {
+        dcRef.current.send(
+          JSON.stringify({
+            type: "session.update",
+            session: {
+              type: "realtime",
+              audio: {
+                input: {
+                  turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.5,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 800,
+                    create_response: false,
+                    interrupt_response: false,
+                  },
+                },
+              },
+            },
+          })
+        );
+      }
+
       let result: Record<string, unknown>;
       try {
         result = await api.executeVoiceTool(sessionIdRef.current, vsId, toolName, args);
