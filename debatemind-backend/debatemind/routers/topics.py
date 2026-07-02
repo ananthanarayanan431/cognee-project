@@ -256,6 +256,22 @@ async def save_question(
     user_id: str = Depends(current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    duplicate = await db.execute(
+        select(UserQuestion).where(
+            UserQuestion.user_id == user_id,
+            UserQuestion.question_id == body.id,
+        )
+    )
+    existing = duplicate.scalar_one_or_none()
+    if existing is not None:
+        return SuccessResponse(
+            data=DebatableQuestion(
+                id=existing.question_id,
+                domain=existing.domain,
+                title=existing.title,
+                description=existing.description,
+            )
+        )
     existing_count_row = await db.execute(
         select(func.count()).where(UserQuestion.user_id == user_id)
     )
@@ -264,14 +280,6 @@ async def save_question(
             status_code=400,
             detail=f"You have reached the limit of {_MAX_USER_QUESTIONS} saved questions.",
         )
-    duplicate = await db.execute(
-        select(UserQuestion).where(
-            UserQuestion.user_id == user_id,
-            UserQuestion.question_id == body.id,
-        )
-    )
-    if duplicate.scalar_one_or_none() is not None:
-        return SuccessResponse(data=body)
     db.add(
         UserQuestion(
             user_id=user_id,
@@ -310,7 +318,7 @@ async def generate(
         )
         raw = completion.choices[0].message.content or ""
         parsed = json.loads(raw)
-        questions = [DebatableQuestion(**q) for q in parsed["questions"]]
+        questions = [DebatableQuestion(**q) for q in parsed["questions"]][:count]
     except Exception as exc:
         _logger.error("Topic generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="Topic generation failed. Please try again.")

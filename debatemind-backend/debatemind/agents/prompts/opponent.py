@@ -73,5 +73,8 @@ def opponent_user_message(
     user_position: str = "",
 ) -> str:
     context_line = f"\n\nContext: {description}" if description else ""
-    position_line = f"\nUser's declared position: {user_position}" if user_position else ""
+    position_label = user_position.lower() if user_position else ""
+    if position_label == "assign_randomly":
+        position_label = "unspecified"
+    position_line = f"\nUser's declared position: {position_label}" if position_label else ""
     return f"Topic: {topic}{context_line}{position_line}\n\nUser argues: {user_argument}"

@@ -134,7 +134,7 @@ async def start_session(
     summary="Send debate message",
     description=(
         "Submit a user argument and receive a streamed opponent response with "
-        "judge scores (SSE). Events: token | judge | graph | [DONE]."
+        "judge scores (SSE). Events: stage | token | judge | graph | [DONE]."
     ),
     responses={
         401: {"model": UnauthorizedError, "description": "Invalid or missing token"},

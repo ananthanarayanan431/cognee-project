@@ -57,7 +57,9 @@ export default function Home() {
 
   // Handle browser back / forward
   const handlePopState = useCallback((e: PopStateEvent) => {
-    const s = (e.state as { screen?: string } | null)?.screen ?? "";
+    const stateScreen = (e.state as { screen?: string } | null)?.screen ?? "";
+    const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? "";
+    const s = stateScreen || urlScreen;
     setScreen(isAuthScreen(s) ? s : "topic");
   }, [setScreen]);
 

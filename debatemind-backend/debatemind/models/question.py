@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
@@ -15,4 +16,6 @@ class UserQuestion(Base):
     domain: Mapped[str] = mapped_column(String)
     title: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

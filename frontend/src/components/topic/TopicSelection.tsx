@@ -104,11 +104,13 @@ export default function TopicSelection() {
   }
 
   async function doStart(t: string, desc: string) {
+    const trimmed = t.trim();
+    if (!trimmed) return;
     setStartError("");
     setSubmitting(true);
     let res;
     try {
-      res = await api.startSession(t, desc, difficulty, "against");
+      res = await api.startSession(trimmed, desc, difficulty, "against");
     } catch {
       setStartError("Failed to start session — please try again.");
       setSubmitting(false);
@@ -116,7 +118,7 @@ export default function TopicSelection() {
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    setSession(res.session_id, { topic: t, description: desc, difficulty, position: "against" as never });
+    setSession(res.session_id, { topic: trimmed, description: desc, difficulty, position: "against" as never });
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
@@ -223,7 +225,7 @@ export default function TopicSelection() {
 
             <button
               onClick={() => doStart(topic, "")}
-              disabled={submitting || !topic}
+              disabled={submitting || !topic.trim()}
               className="font-sans text-sm font-semibold px-5 py-1.5 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-2"
             >
               <span className="text-[10px]">▶</span>

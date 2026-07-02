@@ -16,6 +16,7 @@ async def build_graph(user_id: str, topic: str) -> GraphOut:
             select(Exchange.detected_pattern, Exchange.outcome)
             .join(DebateSession, Exchange.session_id == DebateSession.id)
             .where(DebateSession.user_id == user_id)
+            .where(DebateSession.topic == topic)
             .where(Exchange.detected_pattern.is_not(None))
             .order_by(Exchange.created_at.desc())
         )

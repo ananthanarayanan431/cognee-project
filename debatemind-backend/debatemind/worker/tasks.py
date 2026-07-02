@@ -1,11 +1,12 @@
 import asyncio
+import logging
 
 from celery.signals import worker_init
 
 from debatemind.config import settings
 from debatemind.worker.celery_app import celery_app  # noqa: F401 — ensures tasks are registered
 
-logger = __import__("logging").getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @worker_init.connect
