@@ -51,10 +51,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  clerkExchange: (clerkToken: string) =>
-    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/clerk-exchange", {
+  exchangeToken: (authToken: string) =>
+    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/sso-exchange", {
       method: "POST",
-      body: JSON.stringify({ clerk_token: clerkToken }),
+      body: JSON.stringify({ token: authToken }),
     }),
   startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
     apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(

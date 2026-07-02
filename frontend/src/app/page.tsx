@@ -49,14 +49,14 @@ export default function Home() {
     hydrate(urlScreen);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Exchange Clerk session token for a backend token when Clerk is signed in but no local token exists
+  // Exchange SSO session token for a backend token once the user is signed in
   useEffect(() => {
     if (!isLoaded || !isSignedIn || token) return;
-    getToken().then(async (clerkToken) => {
-      if (!clerkToken) return;
+    getToken().then(async (authToken) => {
+      if (!authToken) return;
       try {
         const { api } = await import("@/lib/api");
-        const res = await api.clerkExchange(clerkToken);
+        const res = await api.exchangeToken(authToken);
         setAuth(res.access_token, res.user_id, res.calibration_done);
       } catch {
         // Exchange failed — user will see landing page and can retry

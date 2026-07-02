@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 
 from debatemind.config import settings
 
-_clerk_jwks_cache: dict | None = None
+_jwks_cache: dict | None = None
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -34,17 +34,17 @@ def decode_token(token: str) -> str:
     return user_id
 
 
-async def verify_clerk_jwt(token: str) -> dict:
-    global _clerk_jwks_cache
-    if not _clerk_jwks_cache:
+async def verify_sso_jwt(token: str) -> dict:
+    global _jwks_cache
+    if not _jwks_cache:
         async with httpx.AsyncClient() as client:
-            r = await client.get(settings.clerk_jwks_url)
+            r = await client.get(settings.auth_jwks_url)
             r.raise_for_status()
-            _clerk_jwks_cache = r.json()
+            _jwks_cache = r.json()
     header = jwt.get_unverified_header(token)
     kid = header.get("kid")
-    key = next((k for k in _clerk_jwks_cache["keys"] if k.get("kid") == kid), None)
+    key = next((k for k in _jwks_cache["keys"] if k.get("kid") == kid), None)
     if not key:
-        _clerk_jwks_cache = None  # Bust cache in case keys rotated
+        _jwks_cache = None  # bust cache in case keys rotated
         raise JWTError("Key not found in JWKS")
     return jwt.decode(token, key, algorithms=["RS256"], options={"verify_aud": False})

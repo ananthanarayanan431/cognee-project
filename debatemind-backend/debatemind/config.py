@@ -1,8 +1,9 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", populate_by_name=True)
 
     database_url: str
     secret_key: str
@@ -24,8 +25,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
-    clerk_secret_key: str = ""
-    clerk_jwks_url: str = ""
+    auth_secret_key: str = Field("", validation_alias="clerk_secret_key")
+    auth_jwks_url: str = Field("", validation_alias="clerk_jwks_url")
 
 
 settings = Settings()

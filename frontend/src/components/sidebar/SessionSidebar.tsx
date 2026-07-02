@@ -15,7 +15,7 @@ import {
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
-import { useClerk } from "@clerk/nextjs";
+import { useClerk as useAuthProvider } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, SessionListItem } from "@/types";
@@ -306,7 +306,7 @@ function BrainSection({ winRate, onOpenBrainMap }: { winRate: number | null; onO
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export default function SessionSidebar() {
-  const { signOut } = useClerk();
+  const { signOut } = useAuthProvider();
   const { token, sessions, setSessions, setScreen, setSession } = useDebate();
 
   async function handleSignOut() {

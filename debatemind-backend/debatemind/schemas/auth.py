@@ -18,5 +18,5 @@ class TokenOut(BaseModel):
     calibration_done: bool = False
 
 
-class ClerkExchangeIn(BaseModel):
-    clerk_token: str
+class SSOExchangeIn(BaseModel):
+    token: str
