@@ -134,6 +134,7 @@ export interface SessionListItem {
   topic: string;
   title?: string | null;
   difficulty: string;
+  position: "for" | "against" | "neutral";
   status: "active" | "ended";
   overall_score: number;
   exchanges: number;

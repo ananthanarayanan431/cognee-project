@@ -61,8 +61,10 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="DebateMind API", lifespan=lifespan)
 
 app.add_middleware(RequestIDMiddleware)
-app.add_middleware(SecurityHeadersMiddleware, enable_hsts=settings.enable_hsts)
 app.add_middleware(RateLimitMiddleware, per_minute=settings.rate_limit_per_minute)
+# Added after RateLimitMiddleware so it wraps it (Starlette's last-added
+# middleware is outermost) — a 429 short-circuit still gets security headers.
+app.add_middleware(SecurityHeadersMiddleware, enable_hsts=settings.enable_hsts)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

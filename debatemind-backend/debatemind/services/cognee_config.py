@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 # OpenAI-compatible adapter) so Cognee's internal LLM calls share the same
 # gateway/key as the debate agents instead of calling Anthropic directly.
 LLM_MODEL = "openai/gpt-4.1-mini"
-EMBEDDING_MODEL = "openai/text-embedding-3-large"
+# Bare model name (no provider prefix): this goes straight to api.openai.com
+# via OPENAI_BASE_URL below, not through OpenRouter's "vendor/model" scheme.
+EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072
 # Embeddings MUST hit OpenAI directly, not OpenRouter: OpenRouter is a
 # chat-completions gateway and does not expose an /embeddings endpoint, so

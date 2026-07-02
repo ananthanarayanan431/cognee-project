@@ -25,8 +25,13 @@ TOTAL = len(CALIBRATION_TOPICS)
 
 logger = logging.getLogger(__name__)
 
+# Keeps a strong reference to fire-and-forget tasks so the event loop's
+# weak-referenced task set doesn't GC them mid-flight.
+_background_tasks: set[asyncio.Task] = set()
+
 
 def _log_remember_exc(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
     if not task.cancelled() and task.exception():
         logger.error(
             "remember_argument (calibration) background task failed", exc_info=task.exception()
@@ -105,6 +110,7 @@ async def answer(
             reasoning=state.get("extracted_reasoning", "") or "",
         )
     )
+    _background_tasks.add(remember_task)
     remember_task.add_done_callback(_log_remember_exc)
 
     new_idx = calibration_svc.advance(user_id)

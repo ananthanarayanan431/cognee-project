@@ -54,13 +54,22 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   // Accumulates AI transcript deltas so we can persist the full utterance on done.
   const aiDeltaRef = useRef<string>("");
+  // Set once `end_voice_session` fires; hang up once the AI's closing remarks
+  // finish playing (or after a timeout, in case that event never arrives).
+  const endingRef = useRef(false);
+  const endingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep debateSessionId in a ref so the data-channel handler never goes stale.
   const sessionIdRef = useRef(debateSessionId);
   sessionIdRef.current = debateSessionId;
 
   // Hydrate transcript + summary from DB when the component mounts (resuming a past session).
   useEffect(() => {
+    let live = true;
+    setSummary(null);
+    setTranscript([]);
+
     api.getVoiceSummary(debateSessionId).then((data: VoiceSessionSummary) => {
+      if (!live) return;
       if (!data.has_voice_session) return;
 
       setSummary({
@@ -83,6 +92,10 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
         );
       }
     }).catch(() => { /* No past session — start fresh */ });
+
+    return () => {
+      live = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debateSessionId]);
 
@@ -123,7 +136,8 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     }
 
     // ── AI speech transcript (streaming delta) ────────────────────────────────
-    if (type === "response.audio_transcript.delta") {
+    // GA Realtime renamed this from "response.audio_transcript.delta" (beta).
+    if (type === "response.output_audio_transcript.delta") {
       const delta = (msg.delta as string) ?? "";
       if (delta) {
         aiDeltaRef.current += delta;
@@ -138,7 +152,8 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     }
 
     // ── AI speech transcript (complete utterance) — persist to DB ─────────────
-    if (type === "response.audio_transcript.done") {
+    // GA Realtime renamed this from "response.audio_transcript.done" (beta).
+    if (type === "response.output_audio_transcript.done") {
       const text = ((msg.transcript as string) ?? aiDeltaRef.current).trim();
       aiDeltaRef.current = "";
       const vsId = voiceSessionIdRef.current;
@@ -211,9 +226,35 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           concessions: prev?.concessions ?? [],
           position_flips: prev?.position_flips ?? [],
         }));
+
+        // Hang up once the AI's closing remarks finish playing (see the
+        // "output_audio_buffer.stopped" handler below). Fall back to a fixed
+        // delay in case that event never arrives, so the call never hangs open.
+        endingRef.current = true;
+        if (endingTimeoutRef.current) clearTimeout(endingTimeoutRef.current);
+        endingTimeoutRef.current = setTimeout(() => {
+          if (endingRef.current) {
+            endingRef.current = false;
+            cleanup();
+            setStatus("ended");
+          }
+        }, 15000);
       }
     }
-  }, []);
+
+    // ── AI finished speaking — if this was the end-of-session response, hang up ──
+    // WebRTC-only event (undocumented but widely relied on) signalling the
+    // assistant's audio output has fully drained on the client side.
+    if (type === "output_audio_buffer.stopped" && endingRef.current) {
+      endingRef.current = false;
+      if (endingTimeoutRef.current) {
+        clearTimeout(endingTimeoutRef.current);
+        endingTimeoutRef.current = null;
+      }
+      cleanup();
+      setStatus("ended");
+    }
+  }, [cleanup]);
 
   const connect = useCallback(async () => {
     if (status === "connecting" || status === "connected") return;
@@ -222,6 +263,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setTranscript([]);
     setSummary(null);
     aiDeltaRef.current = "";
+    endingRef.current = false;
+    if (endingTimeoutRef.current) {
+      clearTimeout(endingTimeoutRef.current);
+      endingTimeoutRef.current = null;
+    }
 
     try {
       // 1. Mic access
@@ -254,6 +300,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
       dc.onmessage = handleMessage;
+      // server_vad only auto-triggers a response after hearing the user speak;
+      // nudge the AI to open the conversation as soon as the channel is ready.
+      dc.onopen = () => dc.send(JSON.stringify({ type: "response.create" }));
 
       // 7. SDP offer
       const offer = await pc.createOffer();
@@ -288,9 +337,25 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   }, [status, debateSessionId, handleMessage, cleanup]);
 
   const disconnect = useCallback(() => {
+    // If the call was live and the AI hasn't already finalized it, tell the
+    // backend so duration/summary get persisted instead of leaving the voice
+    // session open server-side.
+    if (status === "connected" && !endingRef.current) {
+      const vsId = voiceSessionIdRef.current;
+      if (vsId) {
+        api.executeVoiceTool(sessionIdRef.current, vsId, "end_voice_session", {}).catch(() => {
+          /* best-effort — local cleanup still proceeds below */
+        });
+      }
+    }
+    endingRef.current = false;
+    if (endingTimeoutRef.current) {
+      clearTimeout(endingTimeoutRef.current);
+      endingTimeoutRef.current = null;
+    }
     cleanup();
     setStatus("ended");
-  }, [cleanup]);
+  }, [status, cleanup]);
 
   return { status, transcript, summary, connect, disconnect, error };
 }

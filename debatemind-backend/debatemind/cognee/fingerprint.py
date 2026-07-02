@@ -312,7 +312,9 @@ async def recall_weaknesses(user_id: str, exclude_patterns: set[str] | None = No
     # Hard isolation: discard any chunk not tagged with this user's id.
     # Cognee's search() post-filter is ineffective (no retriever emits "document_id"),
     # so we enforce ownership here via the "User: <id>" marker in every stored record.
-    owned = [{"text": t} for r in results if user_marker in (t := result_text(r))]
+    # Anchored with the trailing newline (records always start "User: <id>\n") so one
+    # user's id can't match as a prefix of another user's longer id.
+    owned = [{"text": t} for r in results if f"{user_marker}\n" in (t := result_text(r))]
     # Drop mastered patterns so the opponent stops targeting what the user has beaten.
     items = filter_out_patterns(owned, exclude_patterns)[:10]
     logger.info(
@@ -327,8 +329,17 @@ async def recall_weaknesses(user_id: str, exclude_patterns: set[str] | None = No
             "results_owned": len(owned),
             "results_filtered": len(items),
             "excluded_patterns": sorted(exclude_patterns) if exclude_patterns else [],
-            "results_preview": [preview(it["text"], 120) for it in items[:3]],
             "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+    # Recalled user content is only surfaced at debug level, never info+.
+    logger.debug(
+        "cognee.search ok preview",
+        extra={
+            "event": "cognee.search.ok.preview",
+            "operation": "recall_weaknesses",
+            "user_id": user_id,
+            "results_preview": [preview(it["text"], 120) for it in items[:3]],
         },
     )
     return items
@@ -400,7 +411,7 @@ async def recall_topic_weaknesses(
         )
         return []
 
-    owned = [{"text": t} for r in results if user_marker in (t := result_text(r))]
+    owned = [{"text": t} for r in results if f"{user_marker}\n" in (t := result_text(r))]
     items = filter_out_patterns(owned, exclude_patterns)[:5]
     logger.info(
         "cognee.search ok",

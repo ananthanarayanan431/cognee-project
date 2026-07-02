@@ -30,9 +30,14 @@ async def generate_opponent(state: DebateState) -> DebateState:
         _weakness_cache[user_id] = await recall_weaknesses(user_id)
 
     # Exclude patterns the user has already mastered so the opponent stops
-    # exploiting beaten weaknesses (the behavioural payoff of forget()).
-    async with AsyncSessionLocal() as db:
-        mastered = await get_active_mastered_patterns(db, user_id)
+    # exploiting beaten weaknesses (the behavioural payoff of forget()). This
+    # DB read is best-effort — a transient failure shouldn't abort the turn,
+    # it just means mastered patterns aren't filtered out this time.
+    try:
+        async with AsyncSessionLocal() as db:
+            mastered = await get_active_mastered_patterns(db, user_id)
+    except Exception:
+        mastered = set()
     state["weakness_context"] = filter_out_patterns(_weakness_cache[user_id], mastered)
 
     weakness_text = (

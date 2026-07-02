@@ -66,7 +66,7 @@ export default function TopicDetail() {
       topic: session.topic,
       description: "",
       difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
-      position: "against",
+      position: session.position,
     }, false);
   }
 

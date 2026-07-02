@@ -95,6 +95,14 @@ async def get_brain_graph(
     )
     mastered_patterns: set[str] = set(mastered_result.scalars().all())
 
+    # All of the user's topics, independent of whether they have any detected
+    # patterns yet — otherwise a topic with no patterns never gets a node.
+    topic_rows = (
+        await db.execute(
+            select(DebateSession.topic).where(DebateSession.user_id == user_id).distinct()
+        )
+    ).all()
+
     # Single grouped query over (topic, pattern) — previously this ran one query
     # per topic (N+1); now it's one round-trip regardless of topic count.
     rows = (
@@ -119,19 +127,21 @@ async def get_brain_graph(
 
     nodes: list[GraphNode] = [GraphNode(id="brain", label="Brain", type="root", weight=1.0)]
     edges: list[GraphEdge] = []
-    seen_topics: set[str] = set()
     patterns_per_topic: dict[str, int] = {}
+    topic_ids: dict[str, str] = {}
+
+    for (topic,) in topic_rows:
+        topic_id = "t_" + hashlib.md5(topic.encode()).hexdigest()[:8]
+        topic_ids[topic] = topic_id
+        nodes.append(GraphNode(id=topic_id, label=topic, type="topic", weight=0.9))
+        edges.append(GraphEdge(source="brain", target=topic_id, weight=0.8))
 
     for row in rows:
         topic = row.topic
         pattern = row.detected_pattern
         if not pattern:
             continue
-        topic_id = "t_" + hashlib.md5(topic.encode()).hexdigest()[:8]
-        if topic not in seen_topics:
-            seen_topics.add(topic)
-            nodes.append(GraphNode(id=topic_id, label=topic, type="topic", weight=0.9))
-            edges.append(GraphEdge(source="brain", target=topic_id, weight=0.8))
+        topic_id = topic_ids[topic]
         # Cap at 6 patterns per topic (preserves the previous limit).
         if patterns_per_topic.get(topic, 0) >= 6:
             continue

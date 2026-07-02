@@ -161,6 +161,7 @@ async def list_sessions(
                 topic=session.topic,
                 title=session.title,
                 difficulty=session.difficulty,
+                position=session.user_position,
                 status=session.status,
                 overall_score=session.overall_score,
                 exchanges=cnt or 0,

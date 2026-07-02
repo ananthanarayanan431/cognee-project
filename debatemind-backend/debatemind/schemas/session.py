@@ -82,6 +82,7 @@ class SessionListItemOut(BaseModel):
     topic: str
     title: Optional[str] = None
     difficulty: str
+    position: str
     status: str
     overall_score: float
     exchanges: int

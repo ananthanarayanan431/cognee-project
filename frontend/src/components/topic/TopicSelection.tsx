@@ -128,7 +128,7 @@ export default function TopicSelection() {
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
     setSession(res.session_id, { topic_id: res.topic_id, topic: trimmed, description: desc, difficulty, position: "against" });
-    if (voice) setVoiceMode(true);
+    setVoiceMode(voice);
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
