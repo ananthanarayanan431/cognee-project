@@ -18,7 +18,7 @@ interface DebateStore {
   mainModel: string | null;
   judgeModel: string | null;
 
-  hydrate: () => void;
+  hydrate: (urlScreen?: string) => void;
   setMainModel: (model: string) => void;
   setJudgeModel: (model: string) => void;
   setScreen: (s: DebateStore["screen"]) => void;
@@ -53,16 +53,23 @@ export const useDebate = create<DebateStore>((set) => ({
   mainModel: null,
   judgeModel: null,
 
-  hydrate: () => {
+  hydrate: (urlScreen?: string) => {
     const token = localStorage.getItem("dm_token");
     const calibrationDone = localStorage.getItem("dm_calibration") === "1";
+    const AUTH_SCREENS = ["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings"];
+    let screen: DebateStore["screen"] = token
+      ? calibrationDone ? "topic" : "calibration"
+      : "landing";
+    if (token && calibrationDone && urlScreen && AUTH_SCREENS.includes(urlScreen)) {
+      screen = urlScreen as DebateStore["screen"];
+    }
     set({
       token,
       userId: localStorage.getItem("dm_uid"),
       calibrationDone,
       mainModel: localStorage.getItem("dm_model"),
       judgeModel: localStorage.getItem("dm_judge_model"),
-      screen: token ? (calibrationDone ? "topic" : "calibration") : "landing",
+      screen,
     });
   },
   setMainModel: (model) => {

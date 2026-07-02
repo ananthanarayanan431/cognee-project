@@ -41,22 +41,36 @@ export default function Home() {
   const hydrate = useDebate((s) => s.hydrate);
   const setScreen = useDebate((s) => s.setScreen);
 
-  useEffect(() => { hydrate(); }, []);
+  // Pass the current URL screen param into hydrate so refreshing restores the right screen
+  useEffect(() => {
+    const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? undefined;
+    hydrate(urlScreen);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Push URL when screen changes so the browser URL bar and history stack stay in sync
+  // Sync URL when screen changes.
+  // "topic" is the home screen — it lives at "/" (no param).
+  // Every other authenticated screen gets "/?screen=<name>".
   useEffect(() => {
     if (!token) return;
-    const current = new URLSearchParams(window.location.search).get("screen");
-    if (current === screen) return;
-    if (current === null) {
-      window.history.replaceState({ screen }, "", `/?screen=${screen}`);
+    const param = new URLSearchParams(window.location.search).get("screen");
+    if (screen === "topic") {
+      // Already at home URL — nothing to do
+      if (param === null) return;
+      window.history.pushState({ screen: "topic" }, "", "/");
     } else {
-      window.history.pushState({ screen }, "", `/?screen=${screen}`);
+      if (param === screen) return;
+      if (param === null) {
+        // First navigation away from home — replace so back goes to "/"
+        window.history.replaceState({ screen }, "", `/?screen=${screen}`);
+      } else {
+        window.history.pushState({ screen }, "", `/?screen=${screen}`);
+      }
     }
   }, [screen, token]);
 
   // Handle browser back / forward
   const handlePopState = useCallback((e: PopStateEvent) => {
+    // Prefer history state; fall back to URL param; fall back to "topic" (home)
     const stateScreen = (e.state as { screen?: string } | null)?.screen ?? "";
     const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? "";
     const s = stateScreen || urlScreen;

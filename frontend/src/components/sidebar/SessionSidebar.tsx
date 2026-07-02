@@ -351,11 +351,15 @@ export default function SessionSidebar() {
 
   return (
     <aside className="w-[260px] min-w-[220px] bg-carbon border-r border-white/10 flex flex-col text-white overflow-hidden">
-      {/* Logo */}
+      {/* Logo — navigates to home (topic selection, URL: /) */}
       <div className="px-4 py-3.5 border-b border-white/10 flex items-center gap-2">
         <button
-          onClick={() => setScreen("topic")}
+          onClick={() => {
+            setScreen("topic");
+            window.history.pushState({ screen: "topic" }, "", "/");
+          }}
           className="font-display text-[18px] text-white leading-none hover:text-white/80 transition-colors text-left"
+          title="Home"
         >
           DebateMind
         </button>
