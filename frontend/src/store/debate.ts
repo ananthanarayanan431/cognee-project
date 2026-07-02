@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
+import { resolveInitialScreen, type Screen } from "@/lib/screens";
 
 interface DebateStore {
-  screen: "landing" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail" | "settings";
+  screen: Screen;
   topicDetailTopic: { title: string; description: string } | null;
   token: string | null;
   userId: string | null;
@@ -56,20 +57,13 @@ export const useDebate = create<DebateStore>((set) => ({
   hydrate: (urlScreen?: string) => {
     const token = localStorage.getItem("dm_token");
     const calibrationDone = localStorage.getItem("dm_calibration") === "1";
-    const AUTH_SCREENS = ["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings"];
-    let screen: DebateStore["screen"] = token
-      ? calibrationDone ? "topic" : "calibration"
-      : "landing";
-    if (token && calibrationDone && urlScreen && AUTH_SCREENS.includes(urlScreen)) {
-      screen = urlScreen as DebateStore["screen"];
-    }
     set({
       token,
       userId: localStorage.getItem("dm_uid"),
       calibrationDone,
       mainModel: localStorage.getItem("dm_model"),
       judgeModel: localStorage.getItem("dm_judge_model"),
-      screen,
+      screen: resolveInitialScreen(urlScreen, { token, calibrationDone }),
     });
   },
   setMainModel: (model) => {

@@ -2,6 +2,7 @@
 import { useEffect, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
+import { screenToPath, resolveNavScreen } from "@/lib/screens";
 import LandingPage from "@/components/auth/LandingPage";
 import TopicSelection from "@/components/topic/TopicSelection";
 import TopicDetail from "@/components/topic/TopicDetail";
@@ -14,13 +15,6 @@ const ProgressDashboard = dynamic(() => import("@/components/progress/ProgressDa
 const CalibrationSession = dynamic(() => import("@/components/calibration/CalibrationSession"), { ssr: false });
 const SessionTranscript = dynamic(() => import("@/components/session/SessionTranscript"), { ssr: false });
 const SettingsPage = dynamic(() => import("@/components/settings/SettingsPage"), { ssr: false });
-
-const AUTHENTICATED_SCREENS = ["topic", "topic-detail", "debate", "end", "progress", "transcript", "calibration", "settings"] as const;
-type AuthScreen = typeof AUTHENTICATED_SCREENS[number];
-
-function isAuthScreen(s: string): s is AuthScreen {
-  return (AUTHENTICATED_SCREENS as readonly string[]).includes(s);
-}
 
 function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   return (
@@ -64,34 +58,25 @@ export default function Home() {
     });
   }, [isLoaded, isSignedIn, token, getToken, setAuth]);
 
-  // Sync URL when screen changes.
-  // "topic" is the home screen — it lives at "/" (no param).
-  // Every other authenticated screen gets "/?screen=<name>".
+  // Mirror the active screen into the URL. "calibration" is an auth-gated
+  // interstitial with no addressable URL, so it is skipped. Every other screen
+  // maps to a path via screenToPath ("topic" → "/", else "/?screen=<name>").
+  // A push only happens when the URL actually differs, so popstate-driven screen
+  // changes (which already updated the URL) never create a duplicate entry.
   useEffect(() => {
-    if (!token) return;
-    const param = new URLSearchParams(window.location.search).get("screen");
-    if (screen === "topic") {
-      // Already at home URL — nothing to do
-      if (param === null) return;
-      window.history.pushState({ screen: "topic" }, "", "/");
-    } else {
-      if (param === screen) return;
-      if (param === null) {
-        // First navigation away from home — replace so back goes to "/"
-        window.history.replaceState({ screen }, "", `/?screen=${screen}`);
-      } else {
-        window.history.pushState({ screen }, "", `/?screen=${screen}`);
-      }
-    }
+    if (!token || screen === "calibration") return;
+    const target = screenToPath(screen);
+    const current = window.location.pathname + window.location.search;
+    if (current === target) return;
+    window.history.pushState({ screen }, "", target);
   }, [screen, token]);
 
-  // Handle browser back / forward
+  // Handle browser back / forward. Prefer the history entry's stored screen,
+  // fall back to the URL param, then to the landing page (bare "/").
   const handlePopState = useCallback((e: PopStateEvent) => {
-    // Prefer history state; fall back to URL param; fall back to "topic" (home)
     const stateScreen = (e.state as { screen?: string } | null)?.screen ?? "";
     const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? "";
-    const s = stateScreen || urlScreen;
-    setScreen(isAuthScreen(s) ? s : "topic");
+    setScreen(resolveNavScreen(stateScreen || urlScreen || "landing"));
   }, [setScreen]);
 
   useEffect(() => {
