@@ -213,19 +213,15 @@ export default function TopicSelection() {
               ))}
             </select>
 
-            <div className="flex border border-border rounded-lg overflow-hidden flex-none">
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value as "balanced" | "targeted" | "ruthless")}
+              className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-1.5 flex-none"
+            >
               {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.key}
-                  onClick={() => setDifficulty(d.key)}
-                  className={`font-sans text-[11px] px-2.5 py-1.5 border-r border-border last:border-r-0 transition-colors ${
-                    difficulty === d.key ? "bg-scarlet text-white" : "text-fog hover:text-ink"
-                  }`}
-                >
-                  {d.name}
-                </button>
+                <option key={d.key} value={d.key}>{d.name}</option>
               ))}
-            </div>
+            </select>
 
             <div className="flex-1" />
 
