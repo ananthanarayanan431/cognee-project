@@ -195,14 +195,14 @@ function ObservationCard({
   label,
   count,
   items,
-  emptyText,
   accentClass,
 }: {
   icon: ReactNode;
   label: string;
   count: number;
   items: string[];
-  emptyText: string;
+  // Accepted for call-site compatibility; the card has no empty-state render.
+  emptyText?: string;
   accentClass: string;
 }) {
   const [expanded, setExpanded] = useState(false);

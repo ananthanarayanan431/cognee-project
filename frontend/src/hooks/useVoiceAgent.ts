@@ -30,9 +30,11 @@ interface UseVoiceAgentReturn {
   error: string | null;
 }
 
-const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime";
-// Must match the model the backend mints the session with (GA Realtime).
-const MODEL = "gpt-realtime";
+// GA Realtime WebRTC SDP-exchange endpoint. The old beta endpoint
+// (/v1/realtime?model=...) is disabled and returns beta_api_shape_disabled.
+// In GA the model is bound to the ephemeral key from /client_secrets, so it is
+// NOT passed as a query param (adding ?model= to /calls yields an empty 400).
+const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
 
 let _idCounter = 0;
 function nextId() {
@@ -257,8 +259,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // 8. POST offer to OpenAI Realtime
-      const sdpResp = await fetch(`${OPENAI_REALTIME_URL}?model=${MODEL}`, {
+      // 8. POST offer to OpenAI Realtime (GA /calls endpoint; model is bound to
+      // the ephemeral key server-side, so no ?model= query param).
+      const sdpResp = await fetch(OPENAI_REALTIME_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${ephemeralKey}`,
