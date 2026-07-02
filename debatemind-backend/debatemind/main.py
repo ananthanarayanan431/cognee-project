@@ -23,19 +23,46 @@ class _CogneeNoDataFilter(logging.Filter):
 
 
 def setup_logging() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Most modules (cognee/fingerprint.py, routers, agents, voice_agent, worker) log
+    # via plain `logging.getLogger(__name__).info(msg, extra={...})`, not
+    # `structlog.get_logger()`. A bare `basicConfig(format="%(message)s")` handler
+    # renders only the message and silently drops every `extra` field — including
+    # the results_raw/results_owned/elapsed_ms fields cognee's search/add/cognify
+    # logging relies on to show whether memory recall actually found anything.
+    # Route stdlib records through the same structlog processor chain so `extra`
+    # fields make it into the rendered output for both logger types.
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        # ExtraAdder pulls `extra={...}` kwargs off the stdlib LogRecord into the
+        # event dict — without it, ProcessorFormatter only keeps `record.getMessage()`
+        # and every extra field (results_raw, elapsed_ms, ...) is silently dropped.
+        foreign_pre_chain=[*shared_processors, structlog.stdlib.ExtraAdder()],
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.JSONRenderer(),
+        ],
+    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    root_logger = logging.getLogger()
+    root_logger.handlers = [handler]
+    root_logger.setLevel(logging.INFO)
+
     logging.getLogger("cognee.shared.logging_utils").addFilter(_CogneeNoDataFilter())
     structlog.configure(
         processors=[
-            structlog.contextvars.merge_contextvars,
+            *shared_processors,
             structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
