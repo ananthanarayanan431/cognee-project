@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.agents.opponent import generate_continuation, generate_opening
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
+from debatemind.cognee import improve_fingerprint, remember_session_summary
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
@@ -44,6 +45,67 @@ router = APIRouter()
 _session_wins: dict[str, int] = {}
 
 logger = logging.getLogger(__name__)
+
+
+async def _write_chat_session_summary(user_id: str, session_id: str) -> None:
+    """Read completed session exchanges and write a summary to the Cognee fingerprint.
+
+    Gives the AI cross-session topic-level context: win rate on this topic,
+    average thinking-style scores, and which patterns were weak this session.
+    Runs as a background task so end_session stays fast.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            session_row = (
+                await db.execute(select(DebateSession).where(DebateSession.id == session_id))
+            ).scalar_one_or_none()
+            if not session_row:
+                return
+            exchanges = (
+                (await db.execute(select(Exchange).where(Exchange.session_id == session_id)))
+                .scalars()
+                .all()
+            )
+
+        if not exchanges:
+            return
+
+        total = len(exchanges)
+        won = sum(1 for e in exchanges if e.outcome == "Won")
+        win_rate = won / total
+
+        logics = [e.judge_logic for e in exchanges if e.judge_logic is not None]
+        evidences = [e.judge_evidence for e in exchanges if e.judge_evidence is not None]
+        rhetorics = [e.judge_rhetoric for e in exchanges if e.judge_rhetoric is not None]
+        avg_logic = sum(logics) / len(logics) if logics else 0.0
+        avg_evidence = sum(evidences) / len(evidences) if evidences else 0.0
+        avg_rhetoric = sum(rhetorics) / len(rhetorics) if rhetorics else 0.0
+
+        from collections import Counter
+
+        weak_counts = Counter(
+            e.detected_pattern for e in exchanges if e.detected_pattern and e.outcome != "Won"
+        )
+        weak_patterns = [p for p, _ in weak_counts.most_common(3)]
+
+        await remember_session_summary(
+            user_id=user_id,
+            session_id=session_id,
+            topic=session_row.topic,
+            mode="chat",
+            difficulty=session_row.difficulty,
+            rounds_played=total,
+            win_rate=win_rate,
+            avg_logic=avg_logic,
+            avg_evidence=avg_evidence,
+            avg_rhetoric=avg_rhetoric,
+            weak_patterns=weak_patterns,
+        )
+    except Exception:
+        logger.exception(
+            "remember_session_summary failed for user %s session %s", user_id, session_id
+        )
+
 
 # User-meaningful pipeline nodes, in execution order. remember/prune are
 # internal bookkeeping (memory-graph writes, mastery pruning) with no
@@ -445,6 +507,21 @@ async def end_session(
     await db.commit()
 
     _session_wins.pop(session_id, None)
+
+    # Write session-level performance summary to Cognee so future sessions on
+    # the same topic get topic-aware weakness context, not just exchange-level patterns.
+    asyncio.create_task(_write_chat_session_summary(user_id, session_id))
+
+    # Re-index the user's Cognee fingerprint now that all session exchanges are written.
+    def _log_improve_exc(task: asyncio.Task) -> None:
+        if not task.cancelled() and task.exception():
+            logger.exception(
+                "improve_fingerprint failed for user %s", user_id, exc_info=task.exception()
+            )
+
+    improve_task = asyncio.create_task(improve_fingerprint(user_id))
+    improve_task.add_done_callback(_log_improve_exc)
+
     return SuccessResponse(data=EndSessionOut(status="ended"))
 
 

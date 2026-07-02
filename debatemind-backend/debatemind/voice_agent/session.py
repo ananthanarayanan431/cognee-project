@@ -13,12 +13,13 @@ WebRTC + ephemeral-key pattern (recommended by OpenAI for browser clients):
      backend executes it, and the browser relays the result back via data-channel.
 """
 
+import asyncio
 import hashlib
 import logging
 
 import httpx
 
-from debatemind.cognee import recall_weaknesses
+from debatemind.cognee import recall_topic_weaknesses, recall_weaknesses
 from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
 from debatemind.models.session import DebateSession
@@ -52,15 +53,27 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
       - client_secret.value  → ephemeral Bearer token for WebRTC
       - voice_session_id     → passed to POST /api/voice/{sid}/tools
     """
-    # Fetch this user's known weakness patterns from Cognee memory so the voice
-    # opponent can personalise its attack strategy from the very first turn.
+    # Fetch weakness patterns from Cognee: both generic (cross-topic) and
+    # topic-specific (session summaries + exchanges on this exact topic).
+    # Merge and deduplicate so the AI gets the richest possible context.
     try:
-        weakness_items = await recall_weaknesses(user_id)
-        cognee_weaknesses = [w.get("text", "") for w in weakness_items if w.get("text")]
-    except Exception:
-        logger.warning(
-            "Cognee recall_weaknesses failed for user %s — starting without memory", user_id
+        generic_items, topic_items = await asyncio.gather(
+            recall_weaknesses(user_id),
+            recall_topic_weaknesses(user_id, session.topic),
+            return_exceptions=True,
         )
+        seen: set[str] = set()
+        cognee_weaknesses: list[str] = []
+        for items in (topic_items, generic_items):  # topic context first — more specific
+            if isinstance(items, Exception):
+                continue
+            for w in items:
+                text = w.get("text", "")
+                if text and text not in seen:
+                    seen.add(text)
+                    cognee_weaknesses.append(text)
+    except Exception:
+        logger.warning("Cognee recall failed for user %s — starting without memory", user_id)
         cognee_weaknesses = []
 
     system_prompt = build_voice_system_prompt(

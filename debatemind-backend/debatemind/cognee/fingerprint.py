@@ -4,11 +4,13 @@ Tracks each user's argumentation patterns, fallacies, and mastery state in the
 cognee knowledge graph so the opponent and progress views can adapt over time.
 
 Operations:
-  remember_argument      — write a new argument record into the fingerprint
-  recall_weaknesses      — read the top weakness/fallacy patterns for a user
-  improve_fingerprint    — re-index the fingerprint after a batch of writes
-  forget_pattern         — soft-delete: mark a pattern as MASTERED
-  reactivate_pattern_fact — un-soft-delete: mark a pattern as REACTIVATED
+  remember_argument        — write a new argument record into the fingerprint
+  remember_session_summary — write a session-level performance summary
+  recall_weaknesses        — read top weakness/fallacy patterns (generic)
+  recall_topic_weaknesses  — read weakness patterns for a specific topic
+  improve_fingerprint      — re-index the fingerprint after a batch of writes
+  forget_pattern           — soft-delete: mark a pattern as MASTERED
+  reactivate_pattern_fact  — un-soft-delete: mark a pattern as REACTIVATED
 """
 
 import asyncio
@@ -105,6 +107,85 @@ async def remember_argument(
     )
 
 
+async def remember_session_summary(
+    user_id: str,
+    session_id: str,
+    topic: str,
+    mode: str,
+    difficulty: str,
+    rounds_played: int,
+    win_rate: float,
+    avg_logic: float,
+    avg_evidence: float,
+    avg_rhetoric: float,
+    weak_patterns: list[str],
+    coaching_note: str = "",
+) -> None:
+    """Write a session-level performance summary to the Cognee fingerprint.
+
+    This gives the AI opponent cross-session topic-level context — e.g. "user
+    wins 30% on AI regulation debates, weak on EvidenceBased reasoning there".
+    """
+    patterns_str = ", ".join(weak_patterns) if weak_patterns else "none"
+    text = (
+        f"User: {user_id}\n"
+        f"Session: {session_id}\n"
+        f"Topic: {topic}\n"
+        f"Mode: {mode}\n"
+        f"Difficulty: {difficulty}\n"
+        f"RoundsPlayed: {rounds_played}\n"
+        f"WinRate: {win_rate:.2f}\n"
+        f"ThinkingStyle: Logic={avg_logic:.1f} Evidence={avg_evidence:.1f} "
+        f"Rhetoric={avg_rhetoric:.1f}\n"
+        f"WeakPatternsThisSession: {patterns_str}\n"
+        f"Outcome: {'positive' if win_rate >= 0.5 else 'needs improvement'}\n"
+    )
+    if coaching_note:
+        text += f"CoachingNote: {coaching_note}\n"
+
+    dataset = fingerprint_dataset(user_id)
+
+    logger.info(
+        "cognee.add start",
+        extra={
+            "event": "cognee.add.start",
+            "operation": "remember_session_summary",
+            "dataset": dataset,
+            "user_id": user_id,
+            "session_id": session_id,
+            "mode": mode,
+            "topic": topic,
+            "win_rate": win_rate,
+            "content_length": len(text),
+        },
+    )
+    t0 = time.monotonic()
+    await asyncio.wait_for(cognee.add(text, dataset_name=dataset), timeout=ADD_TIMEOUT)
+    logger.info(
+        "cognee.add ok",
+        extra={
+            "event": "cognee.add.ok",
+            "operation": "remember_session_summary",
+            "dataset": dataset,
+            "user_id": user_id,
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+
+    t0 = time.monotonic()
+    await asyncio.wait_for(cognee.cognify(datasets=dataset), timeout=COGNIFY_TIMEOUT)
+    logger.info(
+        "cognee.cognify ok",
+        extra={
+            "event": "cognee.cognify.ok",
+            "operation": "remember_session_summary",
+            "dataset": dataset,
+            "user_id": user_id,
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+
+
 async def recall_weaknesses(user_id: str) -> list[dict]:
     dataset = fingerprint_dataset(user_id)
     # Semantic query targets weakness-related chunks; user-ownership filter below
@@ -191,6 +272,87 @@ async def recall_weaknesses(user_id: str) -> list[dict]:
             "results_raw": len(results),
             "results_filtered": len(items),
             "results_preview": [preview(it["text"], 120) for it in items[:3]],
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+    return items
+
+
+async def recall_topic_weaknesses(user_id: str, topic: str) -> list[dict]:
+    """Semantic search scoped to a specific debate topic.
+
+    Finds session-summary and argument records where the user struggled on
+    this exact topic — gives the voice/chat opponent topic-aware context from
+    the very first turn instead of relying only on generic weakness patterns.
+    """
+    dataset = fingerprint_dataset(user_id)
+    query = f"topic {topic} weak poor outcome lost needs improvement"
+    user_marker = f"User: {user_id}"
+
+    logger.info(
+        "cognee.search start",
+        extra={
+            "event": "cognee.search.start",
+            "operation": "recall_topic_weaknesses",
+            "dataset": dataset,
+            "user_id": user_id,
+            "topic": topic,
+            "query_type": "CHUNKS",
+            "query": query,
+            "top_k": 15,
+        },
+    )
+    t0 = time.monotonic()
+    try:
+        results = await asyncio.wait_for(
+            cognee.search(
+                query_text=query,
+                query_type=SearchType.CHUNKS,
+                datasets=[dataset],
+                top_k=15,
+            ),
+            timeout=SEARCH_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "cognee.search timeout",
+            extra={
+                "event": "cognee.search.timeout",
+                "operation": "recall_topic_weaknesses",
+                "dataset": dataset,
+                "user_id": user_id,
+                "topic": topic,
+                "elapsed_ms": elapsed_ms(t0),
+            },
+        )
+        return []
+    except Exception as e:
+        if type(e).__name__ == "NoDataError":
+            return []
+        logger.exception(
+            "cognee.search error",
+            extra={
+                "event": "cognee.search.error",
+                "operation": "recall_topic_weaknesses",
+                "dataset": dataset,
+                "user_id": user_id,
+                "topic": topic,
+                "elapsed_ms": elapsed_ms(t0),
+            },
+        )
+        return []
+
+    items = [{"text": t} for r in results if user_marker in (t := result_text(r))][:5]
+    logger.info(
+        "cognee.search ok",
+        extra={
+            "event": "cognee.search.ok",
+            "operation": "recall_topic_weaknesses",
+            "dataset": dataset,
+            "user_id": user_id,
+            "topic": topic,
+            "results_raw": len(results),
+            "results_filtered": len(items),
             "elapsed_ms": elapsed_ms(t0),
         },
     )

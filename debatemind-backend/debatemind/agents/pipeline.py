@@ -22,14 +22,27 @@ def _log_remember_exc(task: asyncio.Task) -> None:
 
 
 async def _remember_node(state: DebateState) -> DebateState:
+    logic = state.get("judge_logic") or 0.0
+    evidence = state.get("judge_evidence") or 0.0
+    rhetoric = state.get("judge_rhetoric") or 0.0
+    # Embed judge scores in the claim text so Cognee can semantically match on
+    # thinking-style dimensions (e.g. "low evidence high rhetoric") when recalling.
+    enriched_claim = (
+        f"{state['user_message']} "
+        f"[Scores — Logic:{logic:.1f} Evidence:{evidence:.1f} Rhetoric:{rhetoric:.1f}]"
+    )
+    # Prefer the judge's fallacy detection (post-response) over the extractor's
+    # (pre-response); fall back to extractor if judge found nothing.
+    fallacy = state.get("judge_fallacy") or state.get("extracted_fallacy")
+
     task = asyncio.create_task(
         remember_argument(
             user_id=state["user_id"],
             session_id=state["session_id"],
             topic=state["topic"],
-            claim_text=state["user_message"],
+            claim_text=enriched_claim,
             pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-            fallacy=state.get("extracted_fallacy"),
+            fallacy=fallacy,
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome=state.get("outcome", "Neutral"),
         )

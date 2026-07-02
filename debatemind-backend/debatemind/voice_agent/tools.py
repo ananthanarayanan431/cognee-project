@@ -23,7 +23,12 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from debatemind.cognee import remember_argument
+from debatemind.cognee import (
+    forget_pattern,
+    improve_fingerprint,
+    remember_argument,
+    remember_session_summary,
+)
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
@@ -193,11 +198,20 @@ _COGNEE_NOTE_MAP: dict[str, tuple[str, str, str]] = {
     "strong_argument": ("StrongArgument", "Strong", "Won"),
 }
 
+# Mirrors the MASTERY_THRESHOLD in agents/mastery.py — 3 strong arguments in a
+# single voice session signals the user has mastered that pattern in live debate.
+_VOICE_MASTERY_THRESHOLD = 3
+
+# In-memory strong-argument counter per voice session, keyed by voice_session_id.
+# Same lifecycle risk as _session_wins in sessions.py (resets on restart),
+# which is acceptable since sessions are short-lived.
+_voice_strong_arg_counts: dict[str, int] = {}
+
 
 def _log_cognee_exc(task: asyncio.Task) -> None:
     if not task.cancelled() and task.exception():
         logger.exception(
-            "remember_argument background task failed (voice)",
+            "cognee background task failed (voice)",
             exc_info=task.exception(),
         )
 
@@ -415,6 +429,33 @@ async def _save_debate_observation(
         )
         task.add_done_callback(_log_cognee_exc)
 
+        # Mirror chat mastery: when the user lands enough strong arguments in a
+        # single voice session, mark that pattern as mastered in both Cognee and
+        # MasteryLog SQL — same as pipeline's _mastery_prune_node + record_mastery_events.
+        if note_type == "strong_argument":
+            count = _voice_strong_arg_counts.get(voice_session_id, 0) + 1
+            _voice_strong_arg_counts[voice_session_id] = count
+            if count >= _VOICE_MASTERY_THRESHOLD:
+                _voice_strong_arg_counts[voice_session_id] = 0
+                # 1. Cognee: mark pattern as mastered in the knowledge graph
+                prune_task = asyncio.create_task(forget_pattern(user_id, pattern_type))
+                prune_task.add_done_callback(_log_cognee_exc)
+                # 2. SQL: write MasteryLog row so brain graph, reactivate API,
+                #    and get_session_context tool all see the mastery
+                db.add(
+                    MasteryLog(
+                        user_id=user_id,
+                        pattern_type=pattern_type,
+                        rounds_to_mastery=_VOICE_MASTERY_THRESHOLD,
+                    )
+                )
+                await db.commit()
+                logger.info(
+                    "voice mastery threshold reached: user=%s pattern=%s",
+                    user_id,
+                    pattern_type,
+                )
+
     return {"saved": True, "note_id": note.id, "note_type": note_type}
 
 
@@ -446,7 +487,7 @@ async def _save_session_metadata(
 
 
 async def _end_voice_session(
-    db: AsyncSession, args: dict, voice_session_id: str, _ds_id: str, _user_id: str
+    db: AsyncSession, args: dict, voice_session_id: str, debate_session_id: str, user_id: str
 ) -> dict:
     closing_summary = args.get("closing_summary", "")
 
@@ -473,7 +514,55 @@ async def _end_voice_session(
     )
     note_count = note_count_row.scalar() or 0
 
+    # Load observations to compute voice session summary stats for Cognee.
+    notes_row = await db.execute(
+        select(VoiceSessionNote).where(VoiceSessionNote.voice_session_id == voice_session_id)
+    )
+    notes = notes_row.scalars().all()
+
+    # Load debate session for topic + difficulty.
+    session_row = await db.execute(
+        select(DebateSession).where(DebateSession.id == debate_session_id)
+    )
+    debate_session = session_row.scalar_one_or_none()
+
     await db.commit()
+
+    # Clean up the in-memory mastery counter for this session.
+    _voice_strong_arg_counts.pop(voice_session_id, None)
+
+    # Write voice session summary + coaching note to Cognee so future sessions
+    # on the same topic can recall voice-mode performance and coaching insights.
+    if debate_session:
+        strong = sum(1 for n in notes if n.note_type == "strong_argument")
+        fallacies = sum(1 for n in notes if n.note_type == "fallacy")
+        total_scored = strong + fallacies
+        voice_win_rate = (strong / total_scored) if total_scored else 0.5
+        weak_patterns = [n.content[:80] for n in notes if n.note_type in ("fallacy", "concession")][
+            :3
+        ]
+
+        summary_task = asyncio.create_task(
+            remember_session_summary(
+                user_id=user_id,
+                session_id=debate_session_id,
+                topic=debate_session.topic,
+                mode="voice",
+                difficulty=debate_session.difficulty,
+                rounds_played=note_count,
+                win_rate=voice_win_rate,
+                avg_logic=0.0,
+                avg_evidence=0.0,
+                avg_rhetoric=0.0,
+                weak_patterns=weak_patterns,
+                coaching_note=closing_summary,
+            )
+        )
+        summary_task.add_done_callback(_log_cognee_exc)
+
+    # Re-index the fingerprint after all voice observations and summary are written.
+    improve_task = asyncio.create_task(improve_fingerprint(user_id))
+    improve_task.add_done_callback(_log_cognee_exc)
 
     return {
         "ended": True,
