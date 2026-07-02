@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from debatemind.config import settings
+
+_clerk_jwks_cache: dict | None = None
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -29,3 +32,19 @@ def decode_token(token: str) -> str:
     if user_id is None:
         raise JWTError("Invalid token")
     return user_id
+
+
+async def verify_clerk_jwt(token: str) -> dict:
+    global _clerk_jwks_cache
+    if not _clerk_jwks_cache:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(settings.clerk_jwks_url)
+            r.raise_for_status()
+            _clerk_jwks_cache = r.json()
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    key = next((k for k in _clerk_jwks_cache["keys"] if k.get("kid") == kid), None)
+    if not key:
+        _clerk_jwks_cache = None  # Bust cache in case keys rotated
+        raise JWTError("Key not found in JWKS")
+    return jwt.decode(token, key, algorithms=["RS256"], options={"verify_aud": False})

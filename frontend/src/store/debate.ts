@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
 
 interface DebateStore {
-  screen: "landing" | "auth" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail" | "settings";
+  screen: "landing" | "topic" | "calibration" | "debate" | "end" | "transcript" | "progress" | "topic-detail" | "settings";
   topicDetailTopic: { title: string; description: string } | null;
   token: string | null;
   userId: string | null;

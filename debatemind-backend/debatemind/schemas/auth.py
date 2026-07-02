@@ -16,3 +16,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     user_id: str
     calibration_done: bool = False
+
+
+class ClerkExchangeIn(BaseModel):
+    clerk_token: str

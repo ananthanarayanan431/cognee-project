@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useCallback } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import LandingPage from "@/components/auth/LandingPage";
-import AuthModal from "@/components/auth/AuthModal";
 import TopicSelection from "@/components/topic/TopicSelection";
 import TopicDetail from "@/components/topic/TopicDetail";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
@@ -36,16 +36,33 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function Home() {
+  const { isSignedIn, isLoaded, getToken } = useAuth();
   const screen = useDebate((s) => s.screen);
   const token = useDebate((s) => s.token);
   const hydrate = useDebate((s) => s.hydrate);
   const setScreen = useDebate((s) => s.setScreen);
+  const setAuth = useDebate((s) => s.setAuth);
 
   // Pass the current URL screen param into hydrate so refreshing restores the right screen
   useEffect(() => {
     const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? undefined;
     hydrate(urlScreen);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Exchange Clerk session token for a backend token when Clerk is signed in but no local token exists
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || token) return;
+    getToken().then(async (clerkToken) => {
+      if (!clerkToken) return;
+      try {
+        const { api } = await import("@/lib/api");
+        const res = await api.clerkExchange(clerkToken);
+        setAuth(res.access_token, res.user_id, res.calibration_done);
+      } catch {
+        // Exchange failed — user will see landing page and can retry
+      }
+    });
+  }, [isLoaded, isSignedIn, token, getToken, setAuth]);
 
   // Sync URL when screen changes.
   // "topic" is the home screen — it lives at "/" (no param).
@@ -83,7 +100,7 @@ export default function Home() {
   }, [handlePopState]);
 
   if (!token) {
-    return screen === "auth" ? <AuthModal /> : <LandingPage />;
+    return <LandingPage />;
   }
   if (screen === "calibration") return <CalibrationSession />;
 

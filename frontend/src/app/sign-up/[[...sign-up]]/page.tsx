@@ -1,9 +1,15 @@
 import { SignUp } from "@clerk/nextjs";
 
+const noClerkBranding = {
+  elements: {
+    footer: { display: "none" },
+  },
+};
+
 export default function SignUpPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <SignUp />
+      <SignUp appearance={noClerkBranding} />
     </div>
   );
 }

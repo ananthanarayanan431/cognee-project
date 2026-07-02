@@ -8,12 +8,14 @@ import {
   IconChevronRight,
   IconDownload,
   IconHistory,
+  IconLogout,
   IconNetwork,
   IconPlayerPlay,
   IconSettings,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
+import { useClerk } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, SessionListItem } from "@/types";
@@ -304,7 +306,16 @@ function BrainSection({ winRate, onOpenBrainMap }: { winRate: number | null; onO
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export default function SessionSidebar() {
+  const { signOut } = useClerk();
   const { token, sessions, setSessions, setScreen, setSession } = useDebate();
+
+  async function handleSignOut() {
+    localStorage.removeItem("dm_token");
+    localStorage.removeItem("dm_uid");
+    localStorage.removeItem("dm_calibration");
+    useDebate.setState({ token: null, userId: null, screen: "landing" });
+    await signOut({ redirectUrl: "/" });
+  }
   const [loading, setLoading]           = useState(false);
   const [winRate, setWinRate]           = useState<number | null>(null);
   const [showBrainMap, setShowBrainMap] = useState(false);
@@ -391,10 +402,17 @@ export default function SessionSidebar() {
         </button>
         <button
           onClick={() => setScreen("settings")}
-          className="w-full flex items-center gap-2.5 px-4 py-2 mb-2 hover:bg-fog/5 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-fog/5 transition-colors text-left"
         >
           <IconSettings size={14} className="text-fog/50" />
           <span className="font-sans text-[12px] text-fog">Settings</span>
+        </button>
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-2.5 px-4 py-2 mb-2 hover:bg-fog/5 transition-colors text-left"
+        >
+          <IconLogout size={14} className="text-fog/50" />
+          <span className="font-sans text-[12px] text-fog">Sign out</span>
         </button>
       </div>
 

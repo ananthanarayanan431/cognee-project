@@ -7,7 +7,8 @@ export function handleExpiredSession() {
   localStorage.removeItem("dm_token");
   localStorage.removeItem("dm_uid");
   localStorage.removeItem("dm_calibration");
-  useDebate.setState({ token: null, userId: null, screen: "auth" });
+  useDebate.setState({ token: null, userId: null, screen: "landing" });
+  if (typeof window !== "undefined") window.location.href = "/sign-in";
 }
 
 function authHeader(): Record<string, string> {
@@ -49,6 +50,11 @@ export const api = {
     apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    }),
+  clerkExchange: (clerkToken: string) =>
+    apiFetch<{ access_token: string; user_id: string; calibration_done: boolean }>("/api/auth/clerk-exchange", {
+      method: "POST",
+      body: JSON.stringify({ clerk_token: clerkToken }),
     }),
   startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
     apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(
