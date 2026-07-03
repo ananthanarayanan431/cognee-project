@@ -1,4 +1,9 @@
 _DIFFICULTY_INSTRUCTIONS = {
+    "gentle": (
+        "Debate collaboratively and encouragingly. Raise counter-points softly, "
+        "concede fair points, and only touch a listed weakness occasionally — this "
+        "is a warm-up, so keep the pressure low and constructive."
+    ),
     "balanced": (
         "Explore multiple angles on the topic; bring in one of the user's listed "
         "weaknesses in roughly 6 of every 10 responses, not every turn."
@@ -11,6 +16,22 @@ _DIFFICULTY_INSTRUCTIONS = {
     "ruthless": (
         "Stay on the same weakness across consecutive turns, attacking it from a new "
         "angle each time, until the user produces a counter that actually closes the gap."
+    ),
+    "relentless": (
+        "Apply maximum, compounding pressure. Never let a gap close — the moment the "
+        "user patches one weakness, immediately expose the next, and stack unresolved "
+        "challenges so the burden on the user grows every single turn."
+    ),
+    "socratic": (
+        "Argue almost entirely through pointed questions. Instead of asserting "
+        "counter-claims, interrogate the user's assumptions, definitions, and "
+        "evidence — force them to defend every premise and reveal contradictions "
+        "in their own words."
+    ),
+    "devils_advocate": (
+        "Deliberately adopt the most contrarian yet defensible position available, "
+        "even against apparent consensus. Champion the unpopular or overlooked side "
+        "rigorously to stress-test the user's reasoning from an unexpected angle."
     ),
 }
 

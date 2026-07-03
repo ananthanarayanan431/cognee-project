@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { useVoiceAgent, VoiceSummary, TranscriptLine } from "@/hooks/useVoiceAgent";
 import { SessionConfig } from "@/types";
+import { debateModeName } from "@/lib/debateModes";
 
 interface Props {
   sessionId: string;
@@ -42,9 +43,13 @@ function SummaryPanel({ summary, sessionConfig, elapsedSeconds }: {
     neutral: "Neutral",
   };
   const difficultyColors: Record<string, string> = {
+    gentle: "text-emerald-600",
     balanced: "text-blue-600",
     targeted: "text-amber-600",
     ruthless: "text-red-600",
+    relentless: "text-purple-600",
+    socratic: "text-indigo-600",
+    devils_advocate: "text-fuchsia-600",
   };
 
   const duration = summary?.duration_seconds != null
@@ -81,8 +86,8 @@ function SummaryPanel({ summary, sessionConfig, elapsedSeconds }: {
             </div>
             <div>
               <p className="font-sans text-[10px] text-fog mb-0.5">Difficulty</p>
-              <p className={`font-sans text-xs font-medium capitalize ${difficultyColors[sessionConfig.difficulty] ?? "text-ink"}`}>
-                {sessionConfig.difficulty}
+              <p className={`font-sans text-xs font-medium ${difficultyColors[sessionConfig.difficulty] ?? "text-ink"}`}>
+                {debateModeName(sessionConfig.difficulty)}
               </p>
             </div>
             <div>

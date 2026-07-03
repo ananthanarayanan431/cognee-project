@@ -1,4 +1,8 @@
 _DIFFICULTY_TACTICS = {
+    "gentle": (
+        "Debate warmly and encouragingly. Raise counter-points softly, concede fair points, "
+        "and only touch a known weakness occasionally — keep the pressure low and constructive."
+    ),
     "balanced": (
         "Explore multiple angles — steelman the opposing view occasionally, then dismantle it. "
         "Bring in a known weakness roughly 6 out of every 10 turns, not every time."
@@ -11,6 +15,21 @@ _DIFFICULTY_TACTICS = {
         "Lock onto the same logical gap across consecutive turns and attack it from a new angle "
         "each time until the user produces a counter that actually closes it. "
         "Sustain pressure — switching topics too soon lets weak reasoning off the hook."
+    ),
+    "relentless": (
+        "Apply maximum, compounding pressure. The moment the user patches one gap, "
+        "expose the next, and stack unresolved challenges so the burden on them grows "
+        "every single turn."
+    ),
+    "socratic": (
+        "Argue almost entirely through pointed questions. Interrogate the user's "
+        "assumptions, definitions, and evidence — force them to defend every premise "
+        "and surface their own contradictions."
+    ),
+    "devils_advocate": (
+        "Deliberately adopt the most contrarian yet defensible position available, "
+        "even against consensus. Champion the unpopular or overlooked side rigorously "
+        "to stress-test the user's reasoning."
     ),
 }
 

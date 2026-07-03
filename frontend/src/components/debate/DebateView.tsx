@@ -4,6 +4,7 @@ import { IconChartLine, IconHistory, IconMessages, IconPhone } from "@tabler/ico
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, Message } from "@/types";
+import { debateModeName } from "@/lib/debateModes";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import { useStreamContinuation, useStreamOpening } from "@/hooks/useDebateSSE";
@@ -121,9 +122,13 @@ export default function DebateView() {
   const lastMsg = messages[messages.length - 1];
 
   const difficultyColors: Record<string, string> = {
+    gentle: "bg-emerald-50 text-emerald-700 border-emerald-200",
     balanced: "bg-blue-50 text-blue-700 border-blue-200",
     targeted: "bg-amber-50 text-amber-700 border-amber-200",
     ruthless: "bg-red-50 text-red-700 border-red-200",
+    relentless: "bg-purple-50 text-purple-700 border-purple-200",
+    socratic: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    devils_advocate: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   };
   const positionColors: Record<string, string> = {
     for: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -155,7 +160,7 @@ export default function DebateView() {
           {sessionConfig?.topic?.slice(0, 30)}{" "}
           {sessionConfig && (
             <>
-              · <span className="text-scarlet capitalize">{sessionConfig.difficulty}</span>
+              · <span className="text-scarlet">{debateModeName(sessionConfig.difficulty)}</span>
             </>
           )}
         </span>
@@ -244,7 +249,7 @@ export default function DebateView() {
                       difficultyColors[sessionConfig.difficulty] ?? "bg-fog/10 text-fog border-fog/20"
                     }`}
                   >
-                    {sessionConfig.difficulty}
+                    {debateModeName(sessionConfig.difficulty)}
                   </span>
                 </div>
               </div>
