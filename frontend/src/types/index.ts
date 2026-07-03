@@ -33,6 +33,24 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+export interface KnowledgeGraphNode {
+  id: string;
+  label: string;
+  type: string;
+  props: Record<string, unknown>;
+}
+
+export interface KnowledgeGraphEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface KnowledgeGraphData {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
 export interface SessionConfig {
   topic_id?: string | null;
   topic: string;

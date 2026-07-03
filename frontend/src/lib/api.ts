@@ -140,6 +140,9 @@ export const api = {
   describeUser: () => apiFetch<{ description: string }>("/api/users/me/describe"),
   exportProfileUrl: () => `${BASE}/api/users/me/export`,
   getBrainGraph: () => apiFetch<{ nodes: import("@/types").GraphNode[]; edges: import("@/types").GraphEdge[] }>("/api/users/me/brain"),
+  getKnowledgeGraph: () => apiFetch<import("@/types").KnowledgeGraphData>("/api/users/me/knowledge-graph"),
+  forgetFact: (nodeId: string) =>
+    apiFetch<{ node_id: string; status: string }>(`/api/users/me/facts/${nodeId}`, { method: "DELETE" }),
   getModels: () => apiFetch<{ models: { id: string; name: string; provider: string; context_length: number | null; prompt_price_per_m: number }[]; default_opponent: string; default_judge: string }>("/api/users/models"),
   getVoiceToken: (sessionId: string) =>
     apiFetch<import("@/types").VoiceTokenResponse>(`/api/voice/${sessionId}/token`, { method: "POST" }),
