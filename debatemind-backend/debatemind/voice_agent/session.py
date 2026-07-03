@@ -19,7 +19,14 @@ import logging
 
 import httpx
 
-from debatemind.cognee import recall_topic_weaknesses, recall_weaknesses
+from debatemind.cognee import (
+    cognitive_profile_text,
+    filter_profile_patterns,
+    recall_cognitive_profile,
+    recall_topic_weaknesses,
+    recall_user_facts,
+    recall_weaknesses,
+)
 from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
 from debatemind.models.session import DebateSession
@@ -58,19 +65,25 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
       - client_secret.value  → ephemeral Bearer token for WebRTC
       - voice_session_id     → passed to POST /api/voice/{sid}/tools
     """
-    # Fetch weakness patterns from Cognee: both generic (cross-topic) and
-    # topic-specific (session summaries + exchanges on this exact topic).
-    # Merge and deduplicate so the AI gets the richest possible context.
+    # Fetch the user's full cross-session memory from Cognee — the same context
+    # the chat opponent injects every turn (opponent.py): weakness patterns
+    # (generic + topic-specific), personal facts, and the graph-derived
+    # cognitive profile. Each recall degrades independently to "no memory"
+    # rather than blocking the session.
+    cognee_weaknesses: list[str] = []
+    personal_facts: list[str] = []
+    profile_line = ""
     try:
         async with AsyncSessionLocal() as db:
             excluded = await get_active_mastered_patterns(db, user_id)
-        generic_items, topic_items = await asyncio.gather(
+        generic_items, topic_items, fact_items, profile = await asyncio.gather(
             recall_weaknesses(user_id, exclude_patterns=excluded),
             recall_topic_weaknesses(user_id, session.topic, exclude_patterns=excluded),
+            recall_user_facts(user_id, session.topic),
+            recall_cognitive_profile(user_id),
             return_exceptions=True,
         )
         seen: set[str] = set()
-        cognee_weaknesses: list[str] = []
         for items in (topic_items, generic_items):  # topic context first — more specific
             if isinstance(items, Exception):
                 continue
@@ -79,9 +92,12 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
                 if text and text not in seen:
                     seen.add(text)
                     cognee_weaknesses.append(text)
+        if not isinstance(fact_items, Exception):
+            personal_facts = [f["text"] for f in fact_items if f.get("text")]
+        if not isinstance(profile, Exception):
+            profile_line = cognitive_profile_text(filter_profile_patterns(profile, excluded))
     except Exception:
         logger.warning("Cognee recall failed for user %s — starting without memory", user_id)
-        cognee_weaknesses = []
 
     system_prompt = build_voice_system_prompt(
         topic=session.topic,
@@ -89,6 +105,8 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
         difficulty=session.difficulty,
         user_position=session.user_position,
         cognee_weaknesses=cognee_weaknesses,
+        personal_facts=personal_facts,
+        cognitive_profile=profile_line,
     )
 
     # GA Realtime session schema: audio config is nested under audio.input /

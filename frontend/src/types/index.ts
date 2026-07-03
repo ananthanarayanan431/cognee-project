@@ -1,3 +1,5 @@
+import type { DebateMode } from "@/lib/debateModes";
+
 export interface Message {
   id: string;
   role: "user" | "opponent";
@@ -55,7 +57,7 @@ export interface SessionConfig {
   topic_id?: string | null;
   topic: string;
   description: string;
-  difficulty: "balanced" | "targeted" | "ruthless";
+  difficulty: DebateMode;
   position: "for" | "against" | "neutral";
 }
 

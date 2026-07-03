@@ -71,6 +71,8 @@ class ArgumentRecord(DataPoint):
     claim_text: str
     pattern_type: str
     fallacy: str | None = None
+    reasoning_approach: str | None = None  # ontology ReasoningApproach individual
+    cognitive_bias: str | None = None  # ontology CognitiveBias individual
     evidence_quality: str
     outcome: str
     reasoning: str = ""

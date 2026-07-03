@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Message, GraphData, SessionConfig, SessionListItem } from "@/types";
 import { resolveInitialScreen, type Screen } from "@/lib/screens";
+import { DEFAULT_DEBATE_MODE, isDebateMode, type DebateMode } from "@/lib/debateModes";
 
 interface DebateStore {
   screen: Screen;
@@ -21,11 +22,13 @@ interface DebateStore {
   sessions: SessionListItem[];
   mainModel: string | null;
   judgeModel: string | null;
+  debateMode: DebateMode;
   voiceMode: boolean;
 
   hydrate: (urlScreen?: string) => void;
   setMainModel: (model: string) => void;
   setJudgeModel: (model: string) => void;
+  setDebateMode: (mode: DebateMode) => void;
   setScreen: (s: DebateStore["screen"]) => void;
   setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
   setSession: (id: string, config: SessionConfig, fresh?: boolean) => void;
@@ -59,6 +62,7 @@ export const useDebate = create<DebateStore>((set) => ({
   sessions: [],
   mainModel: null,
   judgeModel: null,
+  debateMode: DEFAULT_DEBATE_MODE,
   voiceMode: false,
 
   hydrate: (urlScreen?: string) => {
@@ -70,6 +74,10 @@ export const useDebate = create<DebateStore>((set) => ({
       calibrationDone,
       mainModel: localStorage.getItem("dm_model"),
       judgeModel: localStorage.getItem("dm_judge_model"),
+      debateMode: (() => {
+        const m = localStorage.getItem("dm_mode");
+        return isDebateMode(m) ? m : DEFAULT_DEBATE_MODE;
+      })(),
       screen: resolveInitialScreen(urlScreen, { token, calibrationDone }),
     });
   },
@@ -80,6 +88,10 @@ export const useDebate = create<DebateStore>((set) => ({
   setJudgeModel: (model) => {
     localStorage.setItem("dm_judge_model", model);
     set({ judgeModel: model });
+  },
+  setDebateMode: (mode) => {
+    localStorage.setItem("dm_mode", mode);
+    set({ debateMode: mode });
   },
   setScreen: (screen) => set({ screen }),
   setAuth: (token, userId, calibrationDone) => {

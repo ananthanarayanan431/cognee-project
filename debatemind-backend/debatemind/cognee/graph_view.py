@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 _LABEL_FIELDS = ("summary", "name", "fact_text", "claim_text", "user_id")
 _TYPED_TYPES = {"UserProfile", "Topic", "ArgumentRecord", "SessionSummary", "PersonalFact"}
+# Node types cognee's prose pipeline (add() -> cognify()) writes. Historically
+# these carried NO user_id property, so the ownership filter below matched none
+# of them and the panel rendered empty even after many sessions. They are
+# rendered as themselves (not folded to a generic "Node") so the explorer can
+# color the LLM-derived entity web distinctly from the typed anchors.
+_COGNIFY_TYPES = {"Entity", "EntityType", "DocumentChunk", "TextDocument", "TextSummary"}
+_RENDERED_TYPES = _TYPED_TYPES | _COGNIFY_TYPES
 
 
 def _node_props(entry: Any) -> tuple[str, dict]:
@@ -42,12 +49,39 @@ def _edge_parts(entry: Any) -> tuple[str, str, str]:
     return "", "", ""
 
 
+def _truncate(text: str) -> str:
+    text = text.strip()
+    return text if len(text) <= 60 else text[:57] + "…"
+
+
+def _chunk_label(text: str) -> str:
+    """A readable label for a prose DocumentChunk/TextSummary.
+
+    The prose fingerprint.py writes starts with a "User:/Session:" header a
+    human never wants to see — surface the Topic line instead, falling back to
+    the first line that isn't part of that machine header."""
+    topic = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Topic:"):
+            topic = stripped[len("Topic:") :].strip()
+            break
+        if stripped and not stripped.startswith(("User:", "Session:")):
+            topic = topic or stripped
+    return _truncate(topic) if topic else "Debate excerpt"
+
+
 def _label(node_type: str, props: dict) -> str:
+    if node_type in {"DocumentChunk", "TextSummary"}:
+        text = props.get("text")
+        if text:
+            return _chunk_label(str(text))
+    if node_type == "TextDocument":
+        return "Debate transcript"
     for field in _LABEL_FIELDS:
         val = props.get(field)
         if val:
-            text = str(val)
-            return text if len(text) <= 60 else text[:57] + "…"
+            return _truncate(str(val))
     return node_type
 
 
@@ -55,10 +89,31 @@ def _safe_props(props: dict) -> dict:
     return {k: v for k, v in props.items() if k != "embedding"}
 
 
+def _owns(props: dict, user_id: str, marker: str) -> bool:
+    """Whether this node anchors the given user.
+
+    Two independent anchors, because cognee stores the same user's data in two
+    disconnected subgraphs (see debatemind/cognee/schema.py):
+      1. typed add_data_points() nodes carry an explicit `user_id` property;
+      2. cognify's prose nodes (DocumentChunk) carry no property at all — the
+         user id lives only inside the chunk text as a "User: {uid}" line
+         (fingerprint.py writes every record with that header).
+    Seeding off only (1) is what left the panel empty for users whose sessions
+    produced prose but no typed nodes.
+    """
+    if props.get("user_id") == user_id:
+        return True
+    if props.get("type") == "DocumentChunk" and marker in str(props.get("text", "")):
+        return True
+    return False
+
+
 async def user_graph_view(user_id: str, limit: int = 400) -> dict:
-    """{nodes, edges} for this user: owned typed nodes, plus any node one edge
-    hop away from one of them (covers cognify-derived generic entities, which
-    carry no `user_id` property of their own)."""
+    """{nodes, edges} for this user: their owned nodes (typed nodes by `user_id`
+    property, plus cognify DocumentChunks whose text bears the "User: {uid}"
+    marker), plus any node one edge hop away from one of them — which pulls in
+    the cognify-derived entity web (entities, types, transcripts) that carries
+    no ownership property of its own but is linked to the owned chunks."""
     from cognee.infrastructure.databases.graph import get_graph_engine
 
     try:
@@ -73,8 +128,12 @@ async def user_graph_view(user_id: str, limit: int = 400) -> dict:
         nid, props = _node_props(entry)
         all_nodes[nid] = props
 
-    owned_ids = {nid for nid, props in all_nodes.items() if props.get("user_id") == user_id}
+    marker = f"User: {user_id}"
+    owned_ids = {nid for nid, props in all_nodes.items() if _owns(props, user_id, marker)}
 
+    # Expand only outward from owned seeds (never from the neighbours), so shared
+    # cognify hubs — a common EntityType, an entity named "none" — can be shown
+    # but can't bridge back into another user's chunks. Keeps isolation intact.
     edges = [_edge_parts(e) for e in raw_edges]
     adjacent_ids: set[str] = set()
     for src, tgt, _lbl in edges:
@@ -93,7 +152,7 @@ async def user_graph_view(user_id: str, limit: int = 400) -> dict:
             {
                 "id": nid,
                 "label": _label(node_type, props),
-                "type": node_type if node_type in _TYPED_TYPES else "Node",
+                "type": node_type if node_type in _RENDERED_TYPES else "Node",
                 "props": _safe_props(props),
             }
         )

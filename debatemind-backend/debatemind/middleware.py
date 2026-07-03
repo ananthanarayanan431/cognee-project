@@ -52,6 +52,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.per_minute = per_minute
         self.window = 60.0
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._last_sweep = time.monotonic()
+
+    def _sweep_idle_hosts(self, now: float) -> None:
+        """Drop hosts whose whole window has lapsed.
+
+        The per-host deques self-trim on each request, but a host that stops
+        sending requests keeps its (empty) deque forever — one dict entry per
+        distinct client IP for the life of the process. One sweep per window
+        keeps the dict proportional to *currently active* clients.
+        """
+        if now - self._last_sweep < self.window:
+            return
+        self._last_sweep = now
+        cutoff = now - self.window
+        stale = [host for host, dq in self._hits.items() if not dq or dq[-1] < cutoff]
+        for host in stale:
+            del self._hits[host]
 
     async def dispatch(self, request: Request, call_next):
         client = request.client
@@ -67,6 +84,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         now = time.monotonic()
+        self._sweep_idle_hosts(now)
         hits = self._hits[host]
         cutoff = now - self.window
         while hits and hits[0] < cutoff:

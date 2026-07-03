@@ -7,10 +7,12 @@ import {
   IconGavel,
   IconRobot,
   IconSearch,
+  IconSwords,
   IconX,
 } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
+import { DEBATE_MODES, type DebateMode } from "@/lib/debateModes";
 
 type ModelMeta = {
   id: string;
@@ -265,8 +267,39 @@ function RoleCard({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// ── Debate mode selector ────────────────────────────────────────────────────
+
+function DebateModeCard({
+  mode,
+  selected,
+  onSelect,
+}: {
+  mode: (typeof DEBATE_MODES)[number];
+  selected: boolean;
+  onSelect: (m: DebateMode) => void;
+}) {
+  return (
+    <button
+      onClick={() => onSelect(mode.key)}
+      className={`flex flex-col items-start gap-1 px-4 py-3 rounded-xl border text-left transition-colors ${
+        selected
+          ? "bg-scarlet/[0.06] border-scarlet/40"
+          : "bg-fog/[0.03] border-border hover:border-fog/40 hover:bg-fog/5"
+      }`}
+    >
+      <div className="flex items-center justify-between w-full gap-2">
+        <span className={`font-sans text-[13px] font-semibold ${selected ? "text-scarlet" : "text-ink"}`}>
+          {mode.name}
+        </span>
+        {selected && <IconCheck size={14} className="text-scarlet flex-shrink-0" />}
+      </div>
+      <span className="font-sans text-[11px] text-fog leading-relaxed">{mode.blurb}</span>
+    </button>
+  );
+}
+
 export default function SettingsPage() {
-  const { setScreen, mainModel, setMainModel, judgeModel, setJudgeModel } = useDebate();
+  const { setScreen, mainModel, setMainModel, judgeModel, setJudgeModel, debateMode, setDebateMode } = useDebate();
   const [models, setModels]         = useState<ModelMeta[]>([]);
   const [defaultOpponent, setDefOpp] = useState("");
   const [defaultJudge, setDefJudge]  = useState("");
@@ -302,6 +335,31 @@ export default function SettingsPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-8">
+
+          <section>
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <IconSwords size={14} className="text-fog" />
+                <p className="font-sans text-[11px] font-semibold uppercase tracking-widest text-fog/60">
+                  Debate Mode
+                </p>
+              </div>
+              <p className="font-sans text-[13px] text-fog leading-relaxed">
+                Sets how your opponent argues. Applies to every new session — you can still override it per session on the topic screen.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {DEBATE_MODES.map((mode) => (
+                <DebateModeCard
+                  key={mode.key}
+                  mode={mode}
+                  selected={debateMode === mode.key}
+                  onSelect={setDebateMode}
+                />
+              ))}
+            </div>
+          </section>
 
           <section>
             <div className="mb-4">

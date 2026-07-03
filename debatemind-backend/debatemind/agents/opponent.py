@@ -10,7 +10,13 @@ from debatemind.agents.prompts.opponent import (
     opponent_user_message,
 )
 from debatemind.agents.state import DebateState
-from debatemind.cognee import recall_user_facts, recall_weaknesses
+from debatemind.cognee import (
+    cognitive_profile_text,
+    filter_profile_patterns,
+    recall_cognitive_profile,
+    recall_user_facts,
+    recall_weaknesses,
+)
 from debatemind.cognee._base import filter_out_patterns
 from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
@@ -25,6 +31,13 @@ from debatemind.services.mastery_svc import get_active_mastered_patterns
 # background remember_argument() write completes (see pipeline.py).
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
 
+# Same shape as _weakness_cache: the raw (unfiltered) graph-aware cognitive
+# profile — recurring fallacies, biases, reasoning style, weak domains. Cached
+# raw so mastered-pattern exclusion is re-applied per turn (below), same as the
+# weakness cache. Invalidated alongside it, since a new argument write reshapes
+# the profile too.
+_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
+
 # Same shape as _weakness_cache, but for personal facts (name, likes, etc.)
 # recalled via recall_user_facts(). Kept separate since it's invalidated
 # independently, by remember_personal_fact() writes rather than argument writes.
@@ -37,8 +50,10 @@ def invalidate_weakness_cache(user_id: str) -> None:
     Called after a new argument is written to the knowledge graph so a fallacy
     or weak pattern surfaced this session is available to the opponent on the
     very next turn, instead of waiting up to an hour for the TTL to lapse.
+    Also drops the cognitive profile, which the same write changes.
     """
     _weakness_cache.pop(user_id, None)
+    _profile_cache.pop(user_id, None)
 
 
 def invalidate_facts_cache(user_id: str) -> None:
@@ -72,6 +87,16 @@ async def generate_opponent(state: DebateState) -> DebateState:
         or "No prior weaknesses recorded — probe broadly."
     )
 
+    # Graph-aware cognitive profile: the typed signal (recurring fallacies,
+    # biases, reasoning style, weak domains) cognify built but the prose
+    # summaries above drop. Cached raw, mastered patterns filtered per turn.
+    # Cross-topic trait (not scoped to this debate's topic), so the user-keyed
+    # cache is correct and the fingerprint reflects the whole of their history.
+    if user_id not in _profile_cache:
+        _profile_cache[user_id] = await recall_cognitive_profile(user_id)
+    profile = filter_profile_patterns(_profile_cache[user_id], mastered)
+    profile_text = cognitive_profile_text(profile)
+
     if user_id not in _facts_cache:
         _facts_cache[user_id] = await recall_user_facts(user_id, state["topic"])
     state["personal_fact_context"] = _facts_cache[user_id]
@@ -93,6 +118,7 @@ async def generate_opponent(state: DebateState) -> DebateState:
                     difficulty,
                     user_position,
                     personal_facts_text=personal_facts_text,
+                    cognitive_profile_text=profile_text,
                 ),
             },
             {

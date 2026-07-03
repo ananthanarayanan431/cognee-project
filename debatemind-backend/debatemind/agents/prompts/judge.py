@@ -26,8 +26,10 @@ JUDGE_RESPONSE_SCHEMA = {
 def judge_prompt(topic: str, user_argument: str, opponent_argument: str) -> str:
     return f"""You are an impartial debate judge. Score the user's argument
 against the opponent's on this exchange. Judge only the substance of what
-was written — a longer or more confident-sounding answer is not a better
-one.
+was written — a longer, more assertive, or more confident-sounding answer is
+not a better one, and neither is whichever argument happens to appear first.
+Hold both sides to the identical standard, and do not let your own opinion of
+the topic tilt the scores.
 
 <rubric>
 logic (does the reasoning chain actually hold together):
@@ -52,6 +54,12 @@ rhetoric (persuasive craft, independent of logic/evidence):
 <topic>{topic}</topic>
 <user_argument>{user_argument}</user_argument>
 <opponent_argument>{opponent_argument}</opponent_argument>
+
+Score each dimension independently: a strong score on one must not inflate the
+others, and a single flaw should not drag down an otherwise sound dimension.
+Reward the argument that directly engages the opponent's strongest point, and
+penalize one that scores well on its own terms while sidestepping what it
+actually needed to answer.
 
 Score both sides against the rubric above, then decide outcome: sum each
 side's logic+evidence+rhetoric; "Won" if the user's total exceeds the

@@ -84,10 +84,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(q),
     }),
-  generateTopics: (domain: string, count: number) =>
+  generateTopics: (domain: string, count: number, focus = "") =>
     apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/generate", {
       method: "POST",
-      body: JSON.stringify({ domain, count }),
+      body: JSON.stringify({ domain, count, focus }),
     }),
   deleteSavedTopic: (questionId: string) =>
     apiFetch<null>(`/api/topics/saved/${encodeURIComponent(questionId)}`, { method: "DELETE" }),

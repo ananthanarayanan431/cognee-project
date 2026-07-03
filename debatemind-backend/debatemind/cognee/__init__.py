@@ -13,7 +13,14 @@ from debatemind.cognee.fingerprint import (
     remember_session_summary,
 )
 from debatemind.cognee.forget import forget_pattern, forget_personal_fact
-from debatemind.cognee.recall import recall_topic_weaknesses, recall_user_facts, recall_weaknesses
+from debatemind.cognee.recall import (
+    cognitive_profile_text,
+    filter_profile_patterns,
+    recall_cognitive_profile,
+    recall_topic_weaknesses,
+    recall_user_facts,
+    recall_weaknesses,
+)
 
 __all__ = [
     "remember_argument",
@@ -22,6 +29,9 @@ __all__ = [
     "recall_weaknesses",
     "recall_topic_weaknesses",
     "recall_user_facts",
+    "recall_cognitive_profile",
+    "filter_profile_patterns",
+    "cognitive_profile_text",
     "improve_fingerprint",
     "forget_pattern",
     "forget_personal_fact",

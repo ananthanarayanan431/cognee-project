@@ -235,13 +235,21 @@ async def delete_saved(
 _logger = logging.getLogger(__name__)
 
 _GENERATE_SYSTEM = (
-    "You are a debate-question writer. Return ONLY valid JSON with a single key "
+    "You are a debate-question writer. Every question must be genuinely two-sided — "
+    "a motion that informed, reasonable people actually disagree on, with a credible "
+    "case on each side. Frame each title neutrally: state the contested claim without "
+    "loading it or presupposing the answer. Keep the set diverse — each question must "
+    "open a distinct angle or value tension, not a reworded near-duplicate of another. "
+    "Avoid the obvious, the already-settled, and the purely factual (anything with a "
+    "correct answer is not debatable).\n\n"
+    "Return ONLY valid JSON with a single key "
     '"questions" whose value is an array of debate question objects. '
     "Each object must have exactly these keys: "
     '"id" (kebab-case slug derived from the title), '
     '"domain" (the domain string passed in), '
-    '"title" (a concise debatable statement), '
-    '"description" (3-5 sentences explaining the stakes, main angles, and why it is contested). '
+    '"title" (a concise, neutrally-framed debatable statement), '
+    '"description" (3-5 sentences laying out the strongest case on BOTH sides and '
+    "why the question stays unresolved). "
     "Do not include any text outside the JSON."
 )
 
@@ -303,9 +311,18 @@ async def generate(
     user_id: str = Depends(current_user_id),
 ):
     count = min(body.count, 10)
+    focus = body.focus.strip()
+    focus_line = (
+        f' Center every question tightly on this sector/theme: "{focus}". Each one must be '
+        "recognizably about that theme — explored from a different angle, not a generic "
+        "question that merely name-drops it. Still tag each with the given domain."
+        if focus
+        else ""
+    )
     user_prompt = (
-        f"Generate {count} original, debatable questions for the domain: {body.domain}. "
-        "Each question should be thought-provoking, contestable, and distinct from the others."
+        f"Generate {count} original, debatable questions for the domain: "
+        f"{body.domain}.{focus_line} Each question should be thought-provoking, "
+        "contestable, and distinct from the others."
     )
     try:
         completion = await openrouter.chat.completions.create(

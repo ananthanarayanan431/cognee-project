@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import delete as sqldelete
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.agents.opponent import generate_continuation, generate_opening
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
+from debatemind.cognee.session_fingerprint import session_scoped_fingerprint
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
@@ -28,8 +30,8 @@ from debatemind.schemas.session import (
     TranscriptExchange,
     TranscriptOut,
 )
-from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
+from debatemind.services.session_score_svc import score_session_background
 from debatemind.services.summary_svc import get_session_summary
 from debatemind.services.title_svc import generate_session_title
 from debatemind.services.transcript_svc import format_transcript_text
@@ -43,7 +45,11 @@ from debatemind.worker.tasks import finalize_session_fingerprint_task
 router = APIRouter()
 
 # In-memory consecutive-wins counter per session (resets on server restart).
-_session_wins: dict[str, int] = {}
+# Bounded TTLCache rather than a plain dict: the entry is popped when a session
+# ends or is deleted, but sessions the user simply abandons would otherwise
+# accumulate one counter each forever. A day-long TTL comfortably outlives any
+# real debate session.
+_session_wins: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +89,15 @@ async def list_sessions(
         .order_by(DebateSession.started_at.desc())
     )
     rows = result.all()
+
+    # Self-heal: ended sessions with exchanges but no persisted score (sessions
+    # ended before session-level scoring existed, or whose scoring task died)
+    # get judged in the background; the score shows up on the next list fetch.
+    # score_session_background de-duplicates in-flight sessions itself.
+    for session, cnt, _ in rows:
+        if session.status == "ended" and session.overall_score <= 0 and (cnt or 0) > 0:
+            asyncio.create_task(score_session_background(user_id, session.id))
+
     return SuccessResponse(
         data=[
             SessionListItemOut(
@@ -305,10 +320,12 @@ async def send_message(
             return
 
         try:
-            graph = await build_graph(user_id, session.topic)
+            graph = await session_scoped_fingerprint(user_id, session_id, session.topic)
             yield f"data: {json.dumps({'type': 'graph', 'data': graph.model_dump()})}\n\n"
         except Exception:
-            logger.exception("build_graph failed for session %s turn %s", session_id, turn)
+            logger.exception(
+                "session_scoped_fingerprint failed for session %s turn %s", session_id, turn
+            )
 
         yield "data: [DONE]\n\n"
 
@@ -458,6 +475,14 @@ async def end_session(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Idempotent: the frontend POSTs /end from three paths — the "End session"
+    # button, the "← Back" nav, and the beforeunload beacon — so one session can
+    # reach here more than once. Finalize exactly once; a repeat call must not
+    # re-dispatch the summary write + cognify re-index, which would duplicate the
+    # session-summary node and burn a redundant (expensive) cognify pass.
+    if session.status == "ended":
+        return SuccessResponse(data=EndSessionOut(status="ended"))
+
     await db.execute(
         update(DebateSession)
         .where(DebateSession.id == session_id)
@@ -466,6 +491,12 @@ async def end_session(
     await db.commit()
 
     _session_wins.pop(session_id, None)
+
+    # Session-level LLM judge: score the full transcript and persist
+    # overall_score, so the session list stops showing "—". Fire-and-forget
+    # (same pattern as the /start title write) so /end stays fast — it is also
+    # called from the beforeunload beacon.
+    asyncio.create_task(score_session_background(user_id, session_id))
 
     # Finalize the fingerprint in one ordered Celery task: write the session
     # summary first, THEN re-index. A single task (rather than two independent
@@ -533,7 +564,9 @@ async def get_graph(
     session = result.scalar_one_or_none()
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404)
-    return SuccessResponse(data=await build_graph(user_id, session.topic))
+    return SuccessResponse(
+        data=await session_scoped_fingerprint(user_id, session_id, session.topic)
+    )
 
 
 @router.get(

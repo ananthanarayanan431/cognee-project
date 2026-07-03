@@ -105,6 +105,25 @@ def test_reasoning_and_bias_individuals_present():
         assert name in names
 
 
+def _individuals_of(onto, class_name: str) -> set[str]:
+    cls = getattr(onto, class_name)
+    return {i.name for i in onto.individuals() if cls in i.is_a}
+
+
+def test_base_vocab_sets_stay_in_sync_with_ontology_individuals():
+    """recall.py classifies cognify's neighbour entities against the vocab sets
+    in cognee._base. Those sets are hand-mirrored from this .owl; this guards
+    the mirror — if an individual is renamed/removed here without updating
+    _base, the graph-aware cognitive profile would silently stop classifying
+    it. Subset (not equality): the .owl may type an individual under several
+    classes (e.g. StrawMan is both ArgumentPattern and Fallacy)."""
+    onto = _load()
+    assert _base.FALLACIES <= _individuals_of(onto, "Fallacy")
+    assert _base.REASONING_APPROACHES <= _individuals_of(onto, "ReasoningApproach")
+    assert _base.COGNITIVE_BIASES <= _individuals_of(onto, "CognitiveBias")
+    assert _base.EVIDENCE_TYPES <= _individuals_of(onto, "EvidenceType")
+
+
 def test_knowledge_domain_is_an_open_root_with_no_hardcoded_subjects():
     """Generic, test-oriented app: KnowledgeDomain must stay an OPEN root with
     NO committed subject-area subclasses. Concrete domains ("skills") are created

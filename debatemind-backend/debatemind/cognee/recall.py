@@ -15,9 +15,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import Counter
 from typing import Any, Callable
 
-from debatemind.cognee._base import SEARCH_TIMEOUT, elapsed_ms, filter_out_patterns, preview
+from debatemind.cognee._base import (
+    SEARCH_TIMEOUT,
+    classify_entity,
+    elapsed_ms,
+    filter_out_patterns,
+    preview,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +45,58 @@ def _node_props(entry: Any) -> tuple[str, dict]:
     return str(nid), dict(props or {})
 
 
-async def owned_nodes(node_type: str, user_id: str) -> dict[str, dict]:
-    """All graph nodes of `node_type` owned by `user_id`, keyed by node id."""
+def _edge_parts(entry: Any) -> tuple[str, str]:
+    """Normalize a get_graph_data() edge entry to (source_id, target_id).
+
+    Matches graph_view.py's (src, tgt, label) convention; we only need the
+    endpoints here to walk one hop out from an owned record.
+    """
+    if isinstance(entry, tuple):
+        src = str(entry[0]) if len(entry) > 0 else ""
+        tgt = str(entry[1]) if len(entry) > 1 else ""
+        return src, tgt
+    if isinstance(entry, dict):
+        return str(entry.get("source", "")), str(entry.get("target", ""))
+    return "", ""
+
+
+async def _load_graph() -> tuple[dict[str, dict], list[tuple[str, str]]]:
+    """The whole graph once: ({node_id: props}, [(src, tgt), ...]).
+
+    A single get_graph_data() call feeds both ownership filtering and the
+    one-hop neighbour walk, so a recall never loads the graph twice. Returns
+    empty structures (never raises) so a storage hiccup degrades recall to
+    "no memory" instead of aborting the debate turn.
+    """
     from cognee.infrastructure.databases.graph import get_graph_engine
 
     try:
         engine = await get_graph_engine()
-        nodes, _edges = await engine.get_graph_data()
+        raw_nodes, raw_edges = await engine.get_graph_data()
     except Exception:
-        logger.exception("get_graph_data failed while loading %s for user %s", node_type, user_id)
-        return {}
+        logger.exception("get_graph_data failed")
+        return {}, []
 
-    owned: dict[str, dict] = {}
-    for entry in nodes:
+    nodes_by_id: dict[str, dict] = {}
+    for entry in raw_nodes:
         nid, props = _node_props(entry)
-        if props.get("type") == node_type and props.get("user_id") == user_id:
-            owned[nid] = props
-    return owned
+        nodes_by_id[nid] = props
+    edges = [_edge_parts(e) for e in raw_edges]
+    return nodes_by_id, edges
+
+
+def _owned(nodes_by_id: dict[str, dict], node_type: str, user_id: str) -> dict[str, dict]:
+    return {
+        nid: props
+        for nid, props in nodes_by_id.items()
+        if props.get("type") == node_type and props.get("user_id") == user_id
+    }
+
+
+async def owned_nodes(node_type: str, user_id: str) -> dict[str, dict]:
+    """All graph nodes of `node_type` owned by `user_id`, keyed by node id."""
+    nodes_by_id, _edges = await _load_graph()
+    return _owned(nodes_by_id, node_type, user_id)
 
 
 async def _vector_rank(collection: str, query: str, limit: int) -> list[str]:
@@ -203,3 +245,187 @@ async def recall_user_facts(user_id: str, topic: str = "") -> list[dict]:
         },
     )
     return items
+
+
+# --------------------------------------------------------------------------
+# Cognitive profile — the graph-aware layer. recall_weaknesses() above returns
+# the prose summaries; this aggregates the *typed* signal across all of a
+# user's records. Two sources, same user_id ownership filter as the rest of
+# this module:
+#
+#   Layer 1 (structured fields on the owned ArgumentRecord: fallacy, outcome,
+#     topic_name) — always available. This is what powers recurring_fallacies
+#     and weak_domains today.
+#
+#   Layer 2 (the chunk bridge): the ontology entities cognify() extracts
+#     (CognitiveBias, ReasoningApproach, EvidenceType, extra fallacies) live in
+#     a SEPARATE subgraph from the typed ArgumentRecord nodes — the record's
+#     only edges are its typed Topic/UserProfile links, so a walk straight out
+#     of the record reaches nothing. cognify's entities ARE reachable through
+#     the DocumentChunk that carries the argument's prose, and that prose embeds
+#     the "User: {id}" marker remember_argument() writes. So Layer 2 attributes
+#     an entity to a user only by reaching it THROUGH one of that user's own
+#     chunks (_chunk_entity_signal) — never by matching a globally-shared entity
+#     node directly. This supplements Layer 1 with anything cognify inferred
+#     that the structured fields didn't already capture.
+
+
+def _neighbour_ids(edges: list[tuple[str, str]], anchor_ids: set[str]) -> dict[str, set[str]]:
+    """One-hop undirected adjacency, keyed by each anchor node's id."""
+    adj: dict[str, set[str]] = {nid: set() for nid in anchor_ids}
+    for src, tgt in edges:
+        if src in anchor_ids and tgt:
+            adj[src].add(tgt)
+        if tgt in anchor_ids and src:
+            adj[tgt].add(src)
+    return adj
+
+
+def _chunk_entity_signal(
+    user_id: str, nodes_by_id: dict[str, dict], edges: list[tuple[str, str]]
+) -> dict[str, set[str]]:
+    """Cognify entities reachable through THIS user's own DocumentChunks.
+
+    Returns {category: {canonical_name, ...}} for the vocabulary categories.
+    Isolation: entity nodes are global (two users who both commit StrawMan share
+    one node), so an entity is attributed to this user only when it is one hop
+    from a chunk whose prose carries `User: {user_id}` — the marker
+    remember_argument() writes. Matching an entity node directly would leak.
+    """
+    marker = f"User: {user_id}"
+    chunk_ids = {
+        nid
+        for nid, p in nodes_by_id.items()
+        if p.get("type") == "DocumentChunk" and marker in (p.get("text") or "")
+    }
+    if not chunk_ids:
+        return {}
+    adj = _neighbour_ids(edges, chunk_ids)
+    signal: dict[str, set[str]] = {}
+    for cid in chunk_ids:
+        for neighbour_id in adj.get(cid, ()):
+            hit = classify_entity((nodes_by_id.get(neighbour_id) or {}).get("name"))
+            if hit:
+                signal.setdefault(hit[0], set()).add(hit[1])
+    return signal
+
+
+async def recall_cognitive_profile(user_id: str, topic: str = "") -> dict:
+    """Aggregate typed cognitive signal across this user's ArgumentRecords.
+
+    Layer 1 reads the structured fields the extractor writes onto each record
+    (fallacy, reasoning_approach, cognitive_bias, topic_name), weighted toward
+    Lost outcomes. Layer 2 (_chunk_entity_signal) supplements it with anything
+    extra cognify inferred, reached through the user's own chunks. Returns raw
+    counts-derived lists; mastered-pattern exclusion is applied by the caller
+    via filter_profile_patterns() so the result stays cacheable and mastery
+    takes effect on the very next turn (like recall_weaknesses() in opponent.py).
+
+    `topic` narrows the Layer-1 records; the Layer-2 bridge stays user-global
+    since biases/reasoning are cross-topic traits, not topic-specific.
+    """
+    t0 = time.monotonic()
+    nodes_by_id, edges = await _load_graph()
+    owned = _owned(nodes_by_id, "ArgumentRecord", user_id)
+    if topic:
+        normalized_topic = topic.strip().lower()
+        owned = {
+            nid: props
+            for nid, props in owned.items()
+            if (props.get("topic_name") or "").strip().lower() == normalized_topic
+        }
+
+    fallacies: Counter = Counter()
+    reasoning: Counter = Counter()
+    biases: Counter = Counter()
+    weak_domains: Counter = Counter()
+
+    # Layer 1 — structured fields on the owned record (reliable, outcome-weighted).
+    _field_counters = (
+        ("fallacy", "fallacy", fallacies),
+        ("reasoning_approach", "reasoning", reasoning),
+        ("cognitive_bias", "bias", biases),
+    )
+    for props in owned.values():
+        lost = props.get("outcome") == "Lost"
+        weight = 2 if lost else 1
+        for field, category, counter in _field_counters:
+            hit = classify_entity(props.get(field))
+            if hit and hit[0] == category:
+                counter[hit[1]] += weight
+        if lost:
+            domain = (props.get("topic_name") or "").strip()
+            if domain:
+                weak_domains[domain] += 1
+
+    # Layer 2 — cognify entities via this user's own chunks, supplementing Layer 1.
+    bridge = _chunk_entity_signal(user_id, nodes_by_id, edges) if owned else {}
+
+    def _merge(counter: Counter, category: str, k: int) -> list[str]:
+        names = [name for name, _ in counter.most_common(k)]
+        for extra in sorted(bridge.get(category, ())):
+            if extra not in names and len(names) < k:
+                names.append(extra)
+        return names
+
+    profile = {
+        "record_count": len(owned),
+        "recurring_fallacies": _merge(fallacies, "fallacy", 4),
+        "cognitive_biases": _merge(biases, "bias", 3),
+        "reasoning_approaches": _merge(reasoning, "reasoning", 3),
+        "evidence_types": _merge(Counter(), "evidence_type", 3),
+        "weak_domains": [name for name, _ in weak_domains.most_common(3)],
+    }
+    logger.info(
+        "cognee.recall_cognitive_profile ok",
+        extra={
+            "event": "cognee.recall_cognitive_profile.ok",
+            "user_id": user_id,
+            "topic": topic,
+            "owned": len(owned),
+            "fallacies": profile["recurring_fallacies"],
+            "biases": profile["cognitive_biases"],
+            "reasoning": profile["reasoning_approaches"],
+            "elapsed_ms": elapsed_ms(t0),
+        },
+    )
+    return profile
+
+
+def filter_profile_patterns(profile: dict, exclude_patterns: set[str] | None) -> dict:
+    """Drop mastered patterns from a profile's recurring_fallacies list.
+
+    Only fallacies are pattern-typed (StrawMan, AdHominem…); biases, reasoning,
+    and domains are never mastered away, so they pass through untouched. Returns
+    a shallow copy — the cached raw profile is never mutated.
+    """
+    if not exclude_patterns:
+        return profile
+    return {
+        **profile,
+        "recurring_fallacies": [
+            f for f in profile.get("recurring_fallacies", []) if f not in exclude_patterns
+        ],
+    }
+
+
+def cognitive_profile_text(profile: dict) -> str:
+    """One compact line of the profile for a system prompt, or "" if empty.
+
+    Returning "" lets the consumer omit the whole prompt block for a user with
+    no recorded history, rather than injecting an empty scaffold.
+    """
+    if not profile or not profile.get("record_count"):
+        return ""
+    parts: list[str] = []
+    if profile.get("recurring_fallacies"):
+        parts.append("recurring fallacies: " + ", ".join(profile["recurring_fallacies"]))
+    if profile.get("cognitive_biases"):
+        parts.append("cognitive biases: " + ", ".join(profile["cognitive_biases"]))
+    if profile.get("reasoning_approaches"):
+        parts.append("leans on reasoning: " + ", ".join(profile["reasoning_approaches"]))
+    if profile.get("evidence_types"):
+        parts.append("typical evidence: " + ", ".join(profile["evidence_types"]))
+    if profile.get("weak_domains"):
+        parts.append("weakest on topics: " + ", ".join(profile["weak_domains"]))
+    return "; ".join(parts)

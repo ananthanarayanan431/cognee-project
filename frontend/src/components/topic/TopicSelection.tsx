@@ -13,19 +13,15 @@ import {
 import { api } from "@/lib/api";
 import { useDebate } from "@/store/debate";
 import type { DebatableQuestion } from "@/types";
+import { DEBATE_MODES, type DebateMode } from "@/lib/debateModes";
 
 const DOMAINS = ["ALL", "POLICY", "TECHNOLOGY", "SOCIETY", "LIFE"] as const;
 type Domain = (typeof DOMAINS)[number];
 
-const DIFFICULTIES = [
-  { key: "balanced", name: "Balanced" },
-  { key: "targeted", name: "Targeted" },
-  { key: "ruthless", name: "Ruthless" },
-] as const;
-
 export default function TopicSelection() {
+  const { debateMode } = useDebate();
   const [topic, setTopic] = useState("");
-  const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
+  const [difficulty, setDifficulty] = useState<DebateMode>(debateMode);
   const [selectedDomain, setSelectedDomain] = useState<Domain>("ALL");
   const [cardsByDomain, setCardsByDomain] = useState<Record<string, DebatableQuestion[]>>({});
   const [generating, setGenerating] = useState(false);
@@ -38,8 +34,12 @@ export default function TopicSelection() {
   const [newOpen, setNewOpen] = useState(true);
   const [newQuestions, setNewQuestions] = useState<DebatableQuestion[]>([]);
   const [generateDomain, setGenerateDomain] = useState<Exclude<Domain, "ALL">>("POLICY");
+  const [generateFocus, setGenerateFocus] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const { setSession, setSessions, setTopicDetail, sessions, setVoiceMode } = useDebate();
+
+  // Keep the picker in sync with the global default chosen in Settings.
+  useEffect(() => { setDifficulty(debateMode); }, [debateMode]);
 
   const storeCountByTopic = useMemo(() => {
     const map: Record<string, number> = {};
@@ -144,7 +144,7 @@ export default function TopicSelection() {
   async function generateMore() {
     setGenerating(true);
     try {
-      const generated = await api.generateTopics(generateDomain, 10);
+      const generated = await api.generateTopics(generateDomain, 10, generateFocus.trim());
       const existingIds = new Set([
         ...Object.values(cardsByDomain).flat().map(q => q.id),
         ...newQuestions.map(q => q.id),
@@ -215,10 +215,10 @@ export default function TopicSelection() {
 
             <select
               value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as "balanced" | "targeted" | "ruthless")}
+              onChange={(e) => setDifficulty(e.target.value as DebateMode)}
               className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-1.5 flex-none"
             >
-              {DIFFICULTIES.map((d) => (
+              {DEBATE_MODES.map((d) => (
                 <option key={d.key} value={d.key}>{d.name}</option>
               ))}
             </select>
@@ -258,7 +258,7 @@ export default function TopicSelection() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1 flex-none">
+        <div className="flex items-center flex-none">
           <select
             value={generateDomain}
             onChange={(e) => setGenerateDomain(e.target.value as Exclude<Domain, "ALL">)}
@@ -269,6 +269,15 @@ export default function TopicSelection() {
               <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>
             ))}
           </select>
+          <input
+            value={generateFocus}
+            onChange={(e) => setGenerateFocus(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !generating) { e.preventDefault(); generateMore(); } }}
+            disabled={generating}
+            placeholder="Focus theme (optional)"
+            title="Steer generation toward a specific sector or theme, e.g. healthcare AI"
+            className="font-sans text-xs text-ink border-y border-dashed border-fog/30 px-2.5 py-1 bg-white outline-none w-40 placeholder:text-fog/50 disabled:opacity-50 focus:border-scarlet/40 transition-all"
+          />
           <button
             onClick={generateMore}
             disabled={generating}

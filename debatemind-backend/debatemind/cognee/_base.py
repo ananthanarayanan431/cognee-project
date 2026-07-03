@@ -1,5 +1,6 @@
 """Shared constants, dataset-name builders, and log helpers for every cognee module."""
 
+import re
 import time
 from pathlib import Path
 
@@ -41,6 +42,90 @@ def result_text(r) -> str:
     if isinstance(r, dict):
         return r.get("text", str(r))
     return getattr(r, "text", str(r))
+
+
+# --------------------------------------------------------------------------
+# Ontology vocabulary — the controlled entity names cognify() links argument
+# records to (see ontology/debate_domain.owl). recall.py walks one graph hop
+# out from each owned ArgumentRecord and classifies neighbour entities against
+# these sets to surface the cognitive signal (biases, reasoning style, evidence
+# type) that lives ONLY in the LLM-derived graph, not on the record's own
+# fields. Kept in sync with the .owl by tests/test_ontology.py — edit both.
+FALLACIES: frozenset[str] = frozenset(
+    {
+        "AppealToAuthority",
+        "StrawMan",
+        "AdHominem",
+        "SlipperySlope",
+        "FalseEquivalence",
+        "EmotionalAppeal",
+        "HastyGeneralization",
+        "FalseDichotomy",
+        "CircularReasoning",
+        "RedHerring",
+        "Whataboutism",
+    }
+)
+REASONING_APPROACHES: frozenset[str] = frozenset(
+    {
+        "Deductive",
+        "Inductive",
+        "Abductive",
+        "Analogical",
+        "Causal",
+        "Probabilistic",
+        "FirstPrinciples",
+    }
+)
+COGNITIVE_BIASES: frozenset[str] = frozenset(
+    {
+        "ConfirmationBias",
+        "AnchoringBias",
+        "AvailabilityBias",
+        "MotivatedReasoning",
+        "Overconfidence",
+    }
+)
+EVIDENCE_TYPES: frozenset[str] = frozenset(
+    {
+        "Empirical",
+        "Statistical",
+        "Anecdotal",
+        "Testimonial",
+        "Logical",
+        "Historical",
+    }
+)
+
+
+def _normalize_entity(name: str) -> str:
+    """Fold cognify's fuzzy label ('Straw Man', 'straw-man') to a match key."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+# normalized entity name -> (category, canonical_name)
+_ENTITY_LOOKUP: dict[str, tuple[str, str]] = {
+    _normalize_entity(name): (category, name)
+    for category, names in (
+        ("fallacy", FALLACIES),
+        ("reasoning", REASONING_APPROACHES),
+        ("bias", COGNITIVE_BIASES),
+        ("evidence_type", EVIDENCE_TYPES),
+    )
+    for name in names
+}
+
+
+def classify_entity(name: str | None) -> tuple[str, str] | None:
+    """Classify a cognify-derived neighbour name into (category, canonical_name).
+
+    Returns None for names that aren't part of the cognitive vocabulary (topic
+    entities, the user's own typed nodes, free text) — those are ignored by the
+    cognitive-profile aggregation rather than misfiled.
+    """
+    if not name:
+        return None
+    return _ENTITY_LOOKUP.get(_normalize_entity(name))
 
 
 def filter_out_patterns(items: list[dict], patterns: set[str] | None) -> list[dict]:

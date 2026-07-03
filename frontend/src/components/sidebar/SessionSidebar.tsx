@@ -19,13 +19,18 @@ import { useClerk as useAuthProvider } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, KnowledgeGraphData, SessionListItem } from "@/types";
+import type { DebateMode } from "@/lib/debateModes";
 import BrainGraph from "@/components/graph/BrainGraph";
 import KnowledgeGraphView from "@/components/graph/KnowledgeGraphView";
 
 const DIFFICULTY_COLOR: Record<string, string> = {
+  gentle: "bg-emerald-50 text-emerald-600 border border-emerald-100",
   balanced: "bg-blue-50 text-blue-600 border border-blue-100",
   targeted: "bg-amber-50 text-amber-700 border border-amber-100",
   ruthless: "bg-scarlet/10 text-scarlet border border-scarlet/20",
+  relentless: "bg-purple-50 text-purple-700 border border-purple-100",
+  socratic: "bg-indigo-50 text-indigo-600 border border-indigo-100",
+  devils_advocate: "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-100",
 };
 
 function formatDate(iso: string) {
@@ -152,14 +157,28 @@ function BrainMapModal({
   onClose,
   winRate,
   totalSessions,
-  description,
 }: {
   onClose: () => void;
   winRate: number | null;
   totalSessions: number;
-  description: string | null;
 }) {
   const [tab, setTab] = useState<"brain" | "knowledge">("brain");
+
+  // The modal is fullscreen, so the sidebar's "Describe me" button is hidden
+  // behind it — the modal owns its own profile generation.
+  const [description, setDescription] = useState<string | null>(null);
+  const [loadingDesc, setLoadingDesc] = useState(false);
+
+  async function handleDescribe() {
+    if (loadingDesc) return;
+    setLoadingDesc(true);
+    try {
+      const data = await api.describeUser();
+      setDescription(data.description);
+    } finally {
+      setLoadingDesc(false);
+    }
+  }
 
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -237,7 +256,7 @@ function BrainMapModal({
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 relative overflow-hidden bg-[#0d0d0d]">
+        <div className="w-[70%] flex-shrink-0 relative overflow-hidden bg-[#0d0d0d]">
           {tab === "brain" && (
             <>
               {loading && (
@@ -286,21 +305,29 @@ function BrainMapModal({
           )}
         </div>
 
-        <div className="w-1/2 border-l border-border flex flex-col overflow-y-auto flex-shrink-0">
+        <div className="flex-1 min-w-0 border-l border-border flex flex-col overflow-y-auto">
           <div className="flex border-b border-border">
-            <div className="flex-1 px-8 py-6 text-center border-r border-border">
-              <p className="font-mono text-[40px] font-bold text-ink leading-none">{totalSessions}</p>
-              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Sessions</p>
+            <div className="flex-1 px-6 py-5 text-center border-r border-border">
+              <p className="font-mono text-[28px] font-bold text-ink leading-none">{totalSessions}</p>
+              <p className="font-sans text-[10px] text-fog uppercase tracking-widest mt-2">Sessions</p>
             </div>
-            <div className="flex-1 px-8 py-6 text-center">
-              <p className="font-mono text-[40px] font-bold text-ink leading-none">
+            <div className="flex-1 px-6 py-5 text-center">
+              <p className="font-mono text-[28px] font-bold text-ink leading-none">
                 {winRate !== null ? `${winRate}%` : "—"}
               </p>
-              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Win Rate</p>
+              <p className="font-sans text-[10px] text-fog uppercase tracking-widest mt-2">Win Rate</p>
             </div>
           </div>
 
-          <div className="flex-1 p-8">
+          <div className="flex-1 p-8 flex flex-col">
+            <button
+              onClick={handleDescribe}
+              disabled={loadingDesc}
+              className="self-start mb-6 flex items-center gap-2 px-4 py-2 rounded-lg bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[13px] text-scarlet disabled:opacity-50"
+            >
+              <IconSparkles size={15} />
+              {loadingDesc ? "Analyzing…" : description ? "Regenerate profile" : "Describe me"}
+            </button>
             {description ? (
               <div className="prose prose-sm max-w-none
                 prose-headings:font-sans prose-headings:font-semibold prose-headings:text-ink
@@ -313,10 +340,10 @@ function BrainMapModal({
                 <ReactMarkdown>{description}</ReactMarkdown>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-3 h-full text-center">
+              <div className="flex flex-col items-center justify-center gap-3 flex-1 text-center">
                 <IconSparkles size={24} className="text-fog/30" />
                 <p className="font-sans text-[14px] text-fog leading-relaxed max-w-[260px]">
-                  Use &ldquo;Describe me&rdquo; in the sidebar to generate your debate profile.
+                  Click &ldquo;Describe me&rdquo; above to generate your debate profile.
                 </p>
               </div>
             )}
@@ -331,26 +358,8 @@ function BrainMapModal({
 
 function BrainSection({ winRate }: { winRate: number | null }) {
   const { sessions } = useDebate();
-  const [description, setDescription] = useState<string | null>(null);
-  const [loadingDesc, setLoadingDesc] = useState(false);
-  const [showDesc, setShowDesc]       = useState(false);
 
   const totalSessions = sessions.length;
-
-  async function handleDescribe() {
-    if (description) {
-      setShowDesc((v) => !v);
-      return;
-    }
-    setLoadingDesc(true);
-    try {
-      const data = await api.describeUser();
-      setDescription(data.description);
-      setShowDesc(true);
-    } finally {
-      setLoadingDesc(false);
-    }
-  }
 
   function handleExport() {
     const url = api.exportProfileUrl();
@@ -396,21 +405,6 @@ function BrainSection({ winRate }: { winRate: number | null }) {
           <p className="font-sans text-[9px] text-fog uppercase tracking-wide mt-0.5">Win rate</p>
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleDescribe}
-          disabled={loadingDesc}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[11px] text-scarlet disabled:opacity-50"
-        >
-          <IconSparkles size={12} />
-          {loadingDesc ? "Analyzing…" : showDesc ? "Hide profile" : "Describe me"}
-        </button>
-      </div>
-
-      {showDesc && description && (
-        <p className="mt-2.5 font-sans text-[11px] text-fog leading-relaxed">{description}</p>
-      )}
     </div>
   );
 }
@@ -450,7 +444,7 @@ export default function SessionSidebar() {
         topic_id: session.topic_id,
         topic: session.topic,
         description: "",
-        difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
+        difficulty: session.difficulty as DebateMode,
         position: "against",
       },
       false, // reopening an existing session — do not stream a fresh opening
@@ -595,7 +589,6 @@ export default function SessionSidebar() {
           onClose={() => setShowBrainMap(false)}
           winRate={winRate}
           totalSessions={sessions.length}
-          description={null}
         />
       )}
     </aside>

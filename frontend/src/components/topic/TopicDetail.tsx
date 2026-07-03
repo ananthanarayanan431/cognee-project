@@ -1,21 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import type { SessionListItem } from "@/types";
-
-const DIFFICULTIES = [
-  { key: "balanced", name: "Balanced" },
-  { key: "targeted", name: "Targeted" },
-  { key: "ruthless", name: "Ruthless" },
-] as const;
+import { DEBATE_MODES, type DebateMode } from "@/lib/debateModes";
 
 const POSITIONS = ["For", "Against", "Neutral"] as const;
 
 const DIFFICULTY_BADGE: Record<string, string> = {
+  gentle: "bg-emerald-50 text-emerald-600 border-emerald-200",
   balanced: "bg-blue-50 text-blue-600 border-blue-200",
   targeted: "bg-amber-50 text-amber-700 border-amber-200",
   ruthless: "bg-scarlet/10 text-scarlet border-scarlet/20",
+  relentless: "bg-purple-50 text-purple-700 border-purple-200",
+  socratic: "bg-indigo-50 text-indigo-600 border-indigo-200",
+  devils_advocate: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
 };
 
 function formatDate(iso: string) {
@@ -27,9 +26,12 @@ function formatTime(iso: string) {
 }
 
 export default function TopicDetail() {
-  const { topicDetailTopic, sessions, setScreen, setSession, setSessions } = useDebate();
-  const [difficulty, setDifficulty] = useState<"balanced" | "targeted" | "ruthless">("targeted");
+  const { topicDetailTopic, sessions, setScreen, setSession, setSessions, debateMode } = useDebate();
+  const [difficulty, setDifficulty] = useState<DebateMode>(debateMode);
   const [position, setPosition] = useState("against");
+
+  // Default to the global mode from Settings; still overridable per session.
+  useEffect(() => { setDifficulty(debateMode); }, [debateMode]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
 
@@ -65,7 +67,7 @@ export default function TopicDetail() {
       topic_id: session.topic_id,
       topic: session.topic,
       description: "",
-      difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
+      difficulty: session.difficulty as DebateMode,
       position: session.position,
     }, false);
   }
@@ -100,19 +102,16 @@ export default function TopicDetail() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap pt-3 border-t border-border">
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.key}
-                  onClick={() => setDifficulty(d.key)}
-                  className={`font-sans text-xs px-3 py-1.5 border-r border-border last:border-r-0 transition-colors ${
-                    difficulty === d.key ? "bg-scarlet text-white" : "text-fog hover:text-ink"
-                  }`}
-                >
-                  {d.name}
-                </button>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value as DebateMode)}
+              className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-2 flex-none"
+              title="Debate mode"
+            >
+              {DEBATE_MODES.map((d) => (
+                <option key={d.key} value={d.key}>{d.name}</option>
               ))}
-            </div>
+            </select>
 
             <div className="flex border border-border rounded-lg overflow-hidden">
               {POSITIONS.map((p) => (

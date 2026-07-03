@@ -43,19 +43,27 @@ def _argument_summary(
     evidence_quality: str,
     outcome: str,
     reasoning: str,
+    reasoning_approach: str | None = None,
+    cognitive_bias: str | None = None,
 ) -> str:
     """A natural-language sentence describing the argument.
 
     The terse `key: value` markers alone give cognify's LLM extractor little to
     work with; a prose sentence that names the topic, pattern, evidence, and
     fallacy lets it link the argument to a KnowledgeDomain and type it against
-    the ontology (ReasoningApproach / EvidenceType / Fallacy). The reasoning
-    sentence, when present, is the richest signal for those wider node types.
+    the ontology (ReasoningApproach / EvidenceType / Fallacy). Naming the
+    reasoning approach and cognitive bias explicitly (when the extractor found
+    them) is what lets cognify create the corresponding ontology entity nodes —
+    the read-side bridge in recall.py then attributes them back to this user.
+    The reasoning sentence, when present, is the richest signal for those types.
     """
     fallacy_clause = f" and committed the {fallacy} fallacy" if fallacy else ""
+    approach_clause = f" using {reasoning_approach} reasoning" if reasoning_approach else ""
+    bias_clause = f", exhibiting {cognitive_bias}" if cognitive_bias else ""
     summary = (
-        f'In a debate about "{topic}", the user made a {pattern_type} argument '
-        f"with {evidence_quality} evidence{fallacy_clause}; the outcome was {outcome}."
+        f'In a debate about "{topic}", the user made a {pattern_type} argument'
+        f"{approach_clause} with {evidence_quality} evidence{fallacy_clause}{bias_clause}; "
+        f"the outcome was {outcome}."
     )
     if reasoning:
         summary += f" Reasoning: {reasoning}"
@@ -72,6 +80,8 @@ async def remember_argument(
     evidence_quality: str,
     outcome: str,
     reasoning: str = "",
+    reasoning_approach: str | None = None,
+    cognitive_bias: str | None = None,
 ) -> None:
     text = (
         f"User: {user_id}\n"
@@ -80,12 +90,23 @@ async def remember_argument(
         f"Claim: {claim_text}\n"
         f"ArgumentPattern: {pattern_type}\n"
         f"Fallacy: {fallacy or 'None'}\n"
+        f"ReasoningApproach: {reasoning_approach or 'None'}\n"
+        f"CognitiveBias: {cognitive_bias or 'None'}\n"
         f"Evidence: {evidence_quality}\n"
         f"Outcome: {outcome}\n"
     )
     if reasoning:
         text += f"Reasoning: {reasoning}\n"
-    summary = _argument_summary(topic, pattern_type, fallacy, evidence_quality, outcome, reasoning)
+    summary = _argument_summary(
+        topic,
+        pattern_type,
+        fallacy,
+        evidence_quality,
+        outcome,
+        reasoning,
+        reasoning_approach,
+        cognitive_bias,
+    )
     text += "Summary: " + summary + "\n"
     dataset = fingerprint_dataset(user_id)
 
@@ -156,6 +177,8 @@ async def remember_argument(
             claim_text=claim_text,
             pattern_type=pattern_type,
             fallacy=fallacy,
+            reasoning_approach=reasoning_approach,
+            cognitive_bias=cognitive_bias,
             evidence_quality=evidence_quality,
             outcome=outcome,
             reasoning=reasoning,

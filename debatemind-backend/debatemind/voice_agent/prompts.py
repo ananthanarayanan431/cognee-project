@@ -1,4 +1,8 @@
 _DIFFICULTY_TACTICS = {
+    "gentle": (
+        "Debate warmly and encouragingly. Raise counter-points softly, concede fair points, "
+        "and only touch a known weakness occasionally — keep the pressure low and constructive."
+    ),
     "balanced": (
         "Explore multiple angles — steelman the opposing view occasionally, then dismantle it. "
         "Bring in a known weakness roughly 6 out of every 10 turns, not every time."
@@ -12,6 +16,21 @@ _DIFFICULTY_TACTICS = {
         "each time until the user produces a counter that actually closes it. "
         "Sustain pressure — switching topics too soon lets weak reasoning off the hook."
     ),
+    "relentless": (
+        "Apply maximum, compounding pressure. The moment the user patches one gap, "
+        "expose the next, and stack unresolved challenges so the burden on them grows "
+        "every single turn."
+    ),
+    "socratic": (
+        "Argue almost entirely through pointed questions. Interrogate the user's "
+        "assumptions, definitions, and evidence — force them to defend every premise "
+        "and surface their own contradictions."
+    ),
+    "devils_advocate": (
+        "Deliberately adopt the most contrarian yet defensible position available, "
+        "even against consensus. Champion the unpopular or overlooked side rigorously "
+        "to stress-test the user's reasoning."
+    ),
 }
 
 
@@ -21,6 +40,8 @@ def build_voice_system_prompt(
     difficulty: str,
     user_position: str,
     cognee_weaknesses: list[str] | None = None,
+    personal_facts: list[str] | None = None,
+    cognitive_profile: str = "",
 ) -> str:
     tactics = _DIFFICULTY_TACTICS.get(difficulty, _DIFFICULTY_TACTICS["targeted"])
 
@@ -37,6 +58,23 @@ def build_voice_system_prompt(
             cognee_section = (
                 f"\n\n**Known weakness patterns from this user's history** "
                 f"(use these to sharpen your attack strategy — do NOT read them aloud):\n{patterns}"
+            )
+
+    profile_section = ""
+    if cognitive_profile:
+        profile_section = (
+            f"\n\n**Cognitive profile across this user's entire debate history** "
+            f"(strategy fuel only — never read it aloud): {cognitive_profile}"
+        )
+
+    facts_section = ""
+    if personal_facts:
+        facts = "\n".join(f"- {f.strip()}" for f in personal_facts[:5] if f.strip())
+        if facts:
+            facts_section = (
+                f"\n\n**Personal context the user shared in past sessions** "
+                f"(weave into your arguments naturally when relevant — "
+                f"never recite as a list):\n{facts}"
             )
 
     if position_label != "unspecified":
@@ -57,7 +95,7 @@ def build_voice_system_prompt(
 Your purpose is to make the user a better debater by challenging every weak argument, \
 naming every logical flaw, and never letting sloppy reasoning go unchallenged.
 
-**Motion**: {topic}{context_line}{cognee_section}
+**Motion**: {topic}{context_line}{cognee_section}{profile_section}{facts_section}
 
 **User's position**: {position_label}
 {position_rule}
@@ -73,7 +111,8 @@ Real speech only — as if you are physically standing across the podium.
 2. Maximum 60 words per response. Voice debates are fast. Brevity is dominance. \
 If you have more to say, pick the sharpest point and save the rest.
 
-3. Lead every response with your strongest counter. Never recap what the user said — \
+3. Lead every response with your strongest counter, aimed at the argument the user \
+actually made — never a weaker, easier version of it. Never recap what the user said — \
 they know what they said.
 
 4. Name logical fallacies the instant you catch them: \
