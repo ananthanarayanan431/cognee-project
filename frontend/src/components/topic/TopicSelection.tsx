@@ -4,6 +4,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconMessageCircle,
+  IconPhone,
   IconPlayerPlay,
   IconSearch,
   IconStar,
@@ -36,8 +37,9 @@ export default function TopicSelection() {
   const [allOpen, setAllOpen] = useState(true);
   const [newOpen, setNewOpen] = useState(true);
   const [newQuestions, setNewQuestions] = useState<DebatableQuestion[]>([]);
+  const [generateDomain, setGenerateDomain] = useState<Exclude<Domain, "ALL">>("POLICY");
   const [savingId, setSavingId] = useState<string | null>(null);
-  const { setSession, setSessions, setTopicDetail, sessions } = useDebate();
+  const { setSession, setSessions, setTopicDetail, sessions, setVoiceMode } = useDebate();
 
   const storeCountByTopic = useMemo(() => {
     const map: Record<string, number> = {};
@@ -104,20 +106,20 @@ export default function TopicSelection() {
   function selectTopic(card: DebatableQuestion) {
     const count = sessionCountByTopic[card.title.toLowerCase()] ?? 0;
     if (count === 0) {
-      doStart(card.title, card.description);
+      doStart(card.title, card.description, card.id);
     } else {
-      setTopicDetail({ title: card.title, description: card.description });
+      setTopicDetail({ id: card.id, title: card.title, description: card.description });
     }
   }
 
-  async function doStart(t: string, desc: string) {
+  async function doStart(t: string, desc: string, topicId?: string | null, voice = false) {
     const trimmed = t.trim();
     if (!trimmed) return;
     setStartError("");
     setSubmitting(true);
     let res;
     try {
-      res = await api.startSession(trimmed, desc, difficulty, "against");
+      res = await api.startSession(trimmed, desc, difficulty, "against", topicId);
     } catch {
       setStartError("Failed to start session — please try again.");
       setSubmitting(false);
@@ -125,19 +127,24 @@ export default function TopicSelection() {
     }
     setSubmitting(false);
     api.getSessions().then(setSessions).catch(() => {});
-    setSession(res.session_id, { topic: trimmed, description: desc, difficulty, position: "against" as never });
+    setSession(res.session_id, { topic_id: res.topic_id, topic: trimmed, description: desc, difficulty, position: "against" });
+    setVoiceMode(voice);
   }
 
   function startWithCard(card: DebatableQuestion, e: React.MouseEvent) {
     e.stopPropagation();
-    doStart(card.title, card.description);
+    doStart(card.title, card.description, card.id);
+  }
+
+  function startWithVoiceCard(card: DebatableQuestion, e: React.MouseEvent) {
+    e.stopPropagation();
+    doStart(card.title, card.description, card.id, true);
   }
 
   async function generateMore() {
-    const domain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
     setGenerating(true);
     try {
-      const generated = await api.generateTopics(domain, 5);
+      const generated = await api.generateTopics(generateDomain, 10);
       const existingIds = new Set([
         ...Object.values(cardsByDomain).flat().map(q => q.id),
         ...newQuestions.map(q => q.id),
@@ -178,69 +185,66 @@ export default function TopicSelection() {
 
   const favoriteTopics = filtered.filter(q => favorites.has(q.id));
   const regularTopics = filtered.filter(q => !favorites.has(q.id));
-  const generateDomain = selectedDomain === "ALL" ? "POLICY" : selectedDomain;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-chalk">
 
-      {/* ── Floating input card ──────────────────────────────── */}
+      {/* ── Input card ───────────────────────────────────────── */}
       <div className="flex-none px-5 pt-5 pb-4">
-        <div className="bg-white border border-border rounded-2xl px-5 py-4 shadow-sm">
-          <textarea
+        <div className="bg-white border border-border rounded-xl px-5 py-5 shadow-sm">
+          {/* Top row: input */}
+          <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doStart(topic, ""); } }}
             placeholder="Type any topic — politics, ethics, tech, philosophy…"
-            className="w-full bg-transparent font-sans text-[15px] text-ink resize-none outline-none placeholder:text-fog leading-snug"
-            rows={2}
+            className="w-full bg-transparent font-sans text-sm text-ink outline-none placeholder:text-fog mb-4"
           />
-          <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border">
+
+          {/* Bottom row: controls + button */}
+          <div className="flex items-center gap-2">
             <select
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value as Domain)}
-              className="font-sans text-xs text-ink border border-border rounded-lg px-3 py-1.5 bg-white outline-none cursor-pointer"
+              className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-1.5 flex-none"
             >
               {DOMAINS.map(d => (
                 <option key={d} value={d}>{d === "ALL" ? "All domains" : d.charAt(0) + d.slice(1).toLowerCase()}</option>
               ))}
             </select>
 
-            <div className="flex border border-border rounded-lg overflow-hidden">
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value as "balanced" | "targeted" | "ruthless")}
+              className="font-sans text-xs text-fog border border-border rounded-lg bg-transparent outline-none cursor-pointer px-2.5 py-1.5 flex-none"
+            >
               {DIFFICULTIES.map((d) => (
-                <button
-                  key={d.key}
-                  onClick={() => setDifficulty(d.key)}
-                  className={`font-sans text-xs px-3 py-1.5 border-r border-border last:border-r-0 transition-colors ${
-                    difficulty === d.key ? "bg-scarlet text-white" : "text-fog hover:text-ink"
-                  }`}
-                >
-                  {d.name}
-                </button>
+                <option key={d.key} value={d.key}>{d.name}</option>
               ))}
-            </div>
+            </select>
 
             <div className="flex-1" />
 
             <button
-              disabled
-              title="Coming soon"
-              className="font-sans text-xs px-3 py-1.5 border border-border rounded-lg text-fog opacity-40 cursor-not-allowed flex items-center gap-1.5"
+              onClick={() => doStart(topic, "", undefined, true)}
+              disabled={submitting || !topic.trim()}
+              title="Start voice call debate"
+              className="w-8 h-8 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors flex-none"
             >
-              <span>🎙</span>
-              <span>Voice</span>
-              <span className="text-[9px] bg-fog/15 px-1 py-0.5 rounded-full uppercase tracking-wide">Soon</span>
+              <IconPhone size={13} />
             </button>
 
             <button
               onClick={() => doStart(topic, "")}
               disabled={submitting || !topic.trim()}
-              className="font-sans text-sm font-semibold px-5 py-1.5 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-2"
+              className="font-sans text-xs font-semibold px-5 py-2 bg-scarlet text-white rounded-lg disabled:opacity-40 transition-opacity flex items-center gap-1.5 flex-none"
             >
               <IconPlayerPlay size={11} />
               <span>{submitting ? "Starting…" : "Start debate"}</span>
             </button>
           </div>
         </div>
-        {startError && <p className="font-sans text-xs text-scarlet mt-2 px-1">{startError}</p>}
+        {startError && <p className="font-sans text-xs text-scarlet mt-1 px-1">{startError}</p>}
       </div>
 
       {/* ── List toolbar ──────────────────────────────────────── */}
@@ -254,13 +258,30 @@ export default function TopicSelection() {
 
         <div className="flex-1" />
 
-        <button
-          onClick={generateMore}
-          disabled={generating}
-          className="font-sans text-xs text-fog border border-dashed border-fog/30 rounded-full px-3 py-1 disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all flex-none"
-        >
-          {generating ? "Generating…" : `+ Generate ${generateDomain.toLowerCase()}`}
-        </button>
+        <div className="flex items-center gap-1 flex-none">
+          <select
+            value={generateDomain}
+            onChange={(e) => setGenerateDomain(e.target.value as Exclude<Domain, "ALL">)}
+            disabled={generating}
+            className="font-sans text-xs text-fog border border-dashed border-fog/30 rounded-l-full px-2.5 py-1 bg-white outline-none cursor-pointer disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all"
+          >
+            {DOMAINS.filter(d => d !== "ALL").map(d => (
+              <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>
+            ))}
+          </select>
+          <button
+            onClick={generateMore}
+            disabled={generating}
+            className="font-sans text-xs text-fog border border-dashed border-fog/30 border-l-0 rounded-r-full px-3 py-1 disabled:opacity-50 hover:border-scarlet/40 hover:text-scarlet transition-all flex items-center gap-1.5"
+          >
+            {generating ? (
+              <>
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin flex-none" />
+                Generating…
+              </>
+            ) : "+ Generate"}
+          </button>
+        </div>
 
         {/* Search */}
         <div className="relative flex-none">
@@ -308,6 +329,7 @@ export default function TopicSelection() {
                     onAdd={() => addNewQuestion(card)}
                     onDismiss={() => dismissNewQuestion(card.id)}
                     onStart={(e) => startWithCard(card, e)}
+                    onVoiceStart={(e) => startWithVoiceCard(card, e)}
                     submitting={submitting}
                   />
                 ))}
@@ -336,6 +358,7 @@ export default function TopicSelection() {
                     onSelect={() => selectTopic(card)}
                     onToggleFav={(e) => toggleFavorite(card.id, e)}
                     onStart={(e) => startWithCard(card, e)}
+                    onVoiceStart={(e) => startWithVoiceCard(card, e)}
                     submitting={submitting}
                   />
                 ))}
@@ -374,6 +397,7 @@ export default function TopicSelection() {
                       onSelect={() => selectTopic(card)}
                       onToggleFav={(e) => toggleFavorite(card.id, e)}
                       onStart={(e) => startWithCard(card, e)}
+                      onVoiceStart={(e) => startWithVoiceCard(card, e)}
                       submitting={submitting}
                     />
                   ))}
@@ -427,6 +451,7 @@ function TopicRow({
   onSelect,
   onToggleFav,
   onStart,
+  onVoiceStart,
   submitting,
 }: {
   card: DebatableQuestion;
@@ -435,6 +460,7 @@ function TopicRow({
   onSelect: () => void;
   onToggleFav: (e: React.MouseEvent) => void;
   onStart: (e: React.MouseEvent) => void;
+  onVoiceStart: (e: React.MouseEvent) => void;
   submitting: boolean;
 }) {
   return (
@@ -449,7 +475,7 @@ function TopicRow({
       <div className="flex items-center gap-2 flex-none">
         <span className="flex items-center gap-1 font-sans text-[10px] text-fog bg-fog/8 border border-border rounded-full px-2.5 py-1 whitespace-nowrap">
           <IconMessageCircle size={10} className="text-fog/60" />
-          {sessionCount} {sessionCount === 1 ? "session" : "sessions"}
+          {sessionCount} {sessionCount === 1 ? "log" : "logs"}
         </span>
         <span className="font-sans text-[9px] font-semibold text-fog/60 border border-border rounded-full px-2 py-1 uppercase tracking-wide">
           {card.domain}
@@ -467,9 +493,18 @@ function TopicRow({
         <button
           onClick={onStart}
           disabled={submitting}
+          title="Chat debate"
+          className="w-7 h-7 rounded-full bg-ink text-white flex items-center justify-center disabled:opacity-40 hover:bg-ink/80 transition-colors"
+        >
+          <IconMessageCircle size={12} />
+        </button>
+        <button
+          onClick={onVoiceStart}
+          disabled={submitting}
+          title="Voice call debate"
           className="w-7 h-7 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors"
         >
-          <IconPlayerPlay size={11} />
+          <IconPhone size={12} />
         </button>
       </div>
     </div>
@@ -484,6 +519,7 @@ function NewTopicRow({
   onAdd,
   onDismiss,
   onStart,
+  onVoiceStart,
   submitting,
 }: {
   card: DebatableQuestion;
@@ -493,6 +529,7 @@ function NewTopicRow({
   onAdd: () => void;
   onDismiss: () => void;
   onStart: (e: React.MouseEvent) => void;
+  onVoiceStart: (e: React.MouseEvent) => void;
   submitting: boolean;
 }) {
   return (
@@ -528,9 +565,18 @@ function NewTopicRow({
         <button
           onClick={onStart}
           disabled={submitting}
+          title="Chat debate"
+          className="w-7 h-7 rounded-full bg-ink text-white flex items-center justify-center disabled:opacity-40 hover:bg-ink/80 transition-colors"
+        >
+          <IconMessageCircle size={12} />
+        </button>
+        <button
+          onClick={onVoiceStart}
+          disabled={submitting}
+          title="Voice call debate"
           className="w-7 h-7 rounded-full bg-scarlet text-white flex items-center justify-center disabled:opacity-40 hover:bg-scarlet/80 transition-colors"
         >
-          <IconPlayerPlay size={11} />
+          <IconPhone size={12} />
         </button>
       </div>
     </div>

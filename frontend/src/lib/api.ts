@@ -1,4 +1,4 @@
-import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem } from "@/types";
+import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem, VoiceSessionSummary, TranscriptLineSaved } from "@/types";
 import { useDebate } from "@/store/debate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
@@ -22,7 +22,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     ...init,
     headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
   });
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
     handleExpiredSession();
     throw new Error("Session expired. Please log in again.");
   }
@@ -57,16 +57,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ clerk_token: authToken }),
     }),
-  startSession: (topic: string, description: string, difficulty: string, user_position: string) =>
-    apiFetch<{ session_id: string; topic: string; description: string; has_source: boolean; source_status: string }>(
+  startSession: (topic: string, description: string, difficulty: string, user_position: string, topic_id?: string | null) =>
+    apiFetch<{ session_id: string; topic_id: string | null; topic: string; description: string; has_source: boolean; source_status: string }>(
       "/api/sessions/start",
       {
         method: "POST",
-        body: JSON.stringify({ topic, description, difficulty, user_position }),
+        body: JSON.stringify({ topic_id: topic_id ?? null, topic, description, difficulty, user_position }),
       }
     ),
   endSession: (sessionId: string) =>
     apiFetch<{ status: string }>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
+  /** Fire-and-forget end for use in beforeunload / tab-close scenarios. */
+  endSessionBeacon: (sessionId: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("dm_token") : null;
+    const url = `${BASE}/api/sessions/${sessionId}/end`;
+    fetch(url, {
+      method: "POST",
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+    }).catch(() => {});
+  },
   getTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/suggest"),
   getSavedTopics: () => apiFetch<import("@/types").DebatableQuestion[]>("/api/topics/saved"),
   saveQuestion: (q: import("@/types").DebatableQuestion) =>
@@ -130,5 +140,22 @@ export const api = {
   describeUser: () => apiFetch<{ description: string }>("/api/users/me/describe"),
   exportProfileUrl: () => `${BASE}/api/users/me/export`,
   getBrainGraph: () => apiFetch<{ nodes: import("@/types").GraphNode[]; edges: import("@/types").GraphEdge[] }>("/api/users/me/brain"),
+  getKnowledgeGraph: () => apiFetch<import("@/types").KnowledgeGraphData>("/api/users/me/knowledge-graph"),
+  forgetFact: (nodeId: string) =>
+    apiFetch<{ node_id: string; status: string }>(`/api/users/me/facts/${nodeId}`, { method: "DELETE" }),
   getModels: () => apiFetch<{ models: { id: string; name: string; provider: string; context_length: number | null; prompt_price_per_m: number }[]; default_opponent: string; default_judge: string }>("/api/users/models"),
+  getVoiceToken: (sessionId: string) =>
+    apiFetch<import("@/types").VoiceTokenResponse>(`/api/voice/${sessionId}/token`, { method: "POST" }),
+  executeVoiceTool: (sessionId: string, voiceSessionId: string, tool: string, args: Record<string, unknown>) =>
+    apiFetch<Record<string, unknown>>(`/api/voice/${sessionId}/tools`, {
+      method: "POST",
+      body: JSON.stringify({ voice_session_id: voiceSessionId, tool, arguments: args }),
+    }),
+  getVoiceSummary: (sessionId: string) =>
+    apiFetch<VoiceSessionSummary>(`/api/voice/${sessionId}/summary`),
+  saveTranscriptLine: (sessionId: string, voiceSessionId: string, speaker: "user" | "ai", text: string) =>
+    apiFetch<TranscriptLineSaved>(`/api/voice/${sessionId}/transcript-line`, {
+      method: "POST",
+      body: JSON.stringify({ voice_session_id: voiceSessionId, speaker, text }),
+    }),
 };

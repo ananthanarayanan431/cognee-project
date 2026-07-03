@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.constants import CALIBRATION_TOPICS
 from debatemind.agents.extractor import extract_argument
-from debatemind.cognee import remember_argument
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.models.user import User
@@ -17,10 +16,13 @@ from debatemind.schemas.calibration import (
 )
 from debatemind.services import calibration_svc
 from debatemind.types import SuccessResponse, UnauthorizedError
+from debatemind.worker.tasks import remember_argument_task
 
 router = APIRouter()
 
 TOTAL = len(CALIBRATION_TOPICS)
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_user(db: AsyncSession, user_id: str) -> User:
@@ -79,8 +81,13 @@ async def answer(
 
     state = await extract_argument({"topic": topic, "user_message": body.text, "description": ""})
 
+    # Fire-and-forget via Celery: remember_argument runs add()+cognify() which
+    # can take many seconds and, if run in-process, blocks every other
+    # concurrent request on this server's event loop (dlt's sqlalchemy
+    # destination opens a synchronous psycopg2 connection). Dispatch it to
+    # the worker so the user advances immediately without freezing anyone else.
     try:
-        await remember_argument(
+        remember_argument_task.delay(
             user_id=user_id,
             session_id=f"calibration_{user_id}",
             topic=topic,
@@ -89,11 +96,10 @@ async def answer(
             fallacy=state.get("extracted_fallacy"),
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome="Neutral",
+            reasoning=state.get("extracted_reasoning", "") or "",
         )
     except Exception:
-        logging.getLogger(__name__).exception(
-            "remember_argument failed for user %s — continuing", user_id
-        )
+        logger.exception("remember_argument (calibration) dispatch failed for user %s", user_id)
 
     new_idx = calibration_svc.advance(user_id)
     if new_idx >= TOTAL:

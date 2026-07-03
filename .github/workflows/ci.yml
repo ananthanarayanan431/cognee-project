@@ -64,7 +64,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short --cov=debatemind --cov-report=term-missing
 
 # ─── Frontend ───────────────────────────────────────────────────────────────
 

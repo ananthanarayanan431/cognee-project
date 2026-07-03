@@ -45,13 +45,14 @@ export default function TopicDetail() {
     setStartError("");
     setStarting(true);
     try {
-      const res = await api.startSession(topic.title, topic.description, difficulty, position);
+      const res = await api.startSession(topic.title, topic.description, difficulty, position, topic.id);
       api.getSessions().then(setSessions).catch(() => {});
       setSession(res.session_id, {
+        topic_id: res.topic_id,
         topic: topic.title,
         description: topic.description,
         difficulty,
-        position: position as never,
+        position: position as "for" | "against" | "neutral",
       });
     } catch {
       setStartError("Failed to start session — please try again.");
@@ -61,11 +62,12 @@ export default function TopicDetail() {
 
   function resumeSession(session: SessionListItem) {
     setSession(session.session_id, {
+      topic_id: session.topic_id,
       topic: session.topic,
       description: "",
       difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
-      position: "against",
-    });
+      position: session.position,
+    }, false);
   }
 
   function viewMetrics(session: SessionListItem) {
@@ -193,9 +195,13 @@ function SessionRow({
   return (
     <div className="flex items-center gap-4 px-4 py-3 rounded-lg hover:bg-white border border-transparent hover:border-border transition-all mb-px">
 
-      <div className="flex-none w-28">
-        <p className="font-sans text-xs font-semibold text-ink">{formatDate(session.started_at)}</p>
-        <p className="font-sans text-[11px] text-fog mt-0.5">{formatTime(session.started_at)}</p>
+      <div className="flex-1 min-w-0">
+        <p className="font-sans text-xs font-semibold text-ink truncate">
+          {session.title || "Untitled session"}
+        </p>
+        <p className="font-sans text-[11px] text-fog mt-0.5">
+          {formatDate(session.started_at)} · {formatTime(session.started_at)}
+        </p>
       </div>
 
       <span className={`flex-none font-sans text-[10px] font-semibold uppercase tracking-wide px-2.5 py-0.5 rounded-full border ${
@@ -210,7 +216,7 @@ function SessionRow({
         {session.difficulty}
       </span>
 
-      <div className="flex items-center gap-5 flex-1 min-w-0">
+      <div className="flex items-center gap-5 flex-none">
         <div className="text-center">
           <p className="font-mono text-sm font-bold text-ink">
             {session.overall_score > 0 ? session.overall_score : "—"}

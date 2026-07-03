@@ -1,0 +1,361 @@
+<?xml version="1.0"?>
+<!--
+  DebateMind cognitive ontology.
+
+  A static, hand-authored controlled vocabulary that guides Cognee's knowledge-
+  graph extraction (passed to cognee.cognify(ontology_file_path=...)). It is a
+  WIDE, generic model of *how a person thinks* — reasoning approaches, argument
+  patterns, fallacies, cognitive biases — plus an OPEN knowledge-domain root
+  whose concrete domains are created dynamically, per user, at runtime. We do
+  NOT hardcode any subject areas/skills: this is a generic, test-oriented app
+  and must not presume what a given user debates about. The emphasis is the
+  thinker's cognitive fingerprint, not a fixed subject taxonomy.
+
+  Accuracy contract: the ArgumentPattern and EvidenceQuality individuals mirror
+  EXACTLY the strings the grading pipeline writes to Cognee
+  (agents/constants.PATTERN_TYPES, the extractor evidence_quality enum, and the
+  voice note map in voice_agent/tools.py). tests/test_ontology.py enforces this
+  so the two never drift — that alignment is what turns "ontology declares a
+  type" into "the extractor attaches the user's data to it".
+
+  This file is READ-ONLY at runtime. Cognee never writes it. To extend the
+  vocabulary, edit here and keep tests/test_ontology.py in sync.
+-->
+<rdf:RDF xmlns="http://debatemind.ai/ontology/thinking#"
+     xml:base="http://debatemind.ai/ontology/thinking"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+     xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+
+    <owl:Ontology rdf:about="http://debatemind.ai/ontology/thinking">
+        <rdfs:comment>A wide, generic model of how a person reasons, argues, and knows — used to type each user's debate knowledge graph.</rdfs:comment>
+    </owl:Ontology>
+
+    <!-- ======================= Structural classes ======================= -->
+
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Thinker">
+        <rdfs:comment>A person whose reasoning is being modelled.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Argument">
+        <rdfs:comment>A single claim/turn made during a debate.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Claim">
+        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Rebuttal">
+        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Counterargument">
+        <rdfs:subClassOf rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Session">
+        <rdfs:comment>A debate session between a Thinker and the AI opponent.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Topic">
+        <rdfs:comment>The subject under debate; typically maps to a KnowledgeDomain.</rdfs:comment>
+    </owl:Class>
+
+    <!-- ===================== Cognitive dimension ===================== -->
+    <!-- The core: how the thinker reasons and argues. -->
+
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#ThinkingStyle">
+        <rdfs:comment>A measured dimension of thinking (Logic / Evidence / Rhetoric).</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#ReasoningApproach">
+        <rdfs:comment>The mode of inference used to reach a conclusion.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#ArgumentPattern">
+        <rdfs:comment>The dominant rhetorical pattern of an argument (controlled by the grader).</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Fallacy">
+        <rdfs:comment>A flaw in reasoning exhibited by an argument.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#CognitiveBias">
+        <rdfs:comment>A systematic tendency that skews the thinker's reasoning.</rdfs:comment>
+    </owl:Class>
+
+    <!-- ===================== Evidence dimension ===================== -->
+
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#EvidenceQuality">
+        <rdfs:comment>Strength of evidence backing an argument (controlled by the grader).</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#EvidenceType">
+        <rdfs:comment>The kind of evidence offered.</rdfs:comment>
+    </owl:Class>
+
+    <!-- ===================== Performance dimension ===================== -->
+
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#Outcome">
+        <rdfs:comment>Result of an argument or session.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#MasteryStatus">
+        <rdfs:comment>Whether a pattern is active, mastered, or reactivated for targeting.</rdfs:comment>
+    </owl:Class>
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#SkillLevel">
+        <rdfs:comment>Overall debating proficiency of the thinker.</rdfs:comment>
+    </owl:Class>
+
+    <!-- ============ Knowledge dimension (OPEN, dynamic per-user) ============ -->
+    <!-- Deliberately NOT a hardcoded subject taxonomy. This is a generic,
+         test-oriented app: we do not presume what any user debates about, nor
+         which subject areas ("skills") they engage. KnowledgeDomain is an open
+         root ONLY. The concrete domains a user touches — and any finer
+         structure or cross-links — are created dynamically by cognify's
+         extractor at runtime, as nodes/edges hung off this root and off Topic
+         (via aboutTopic / discussesDomain). If a user shows a distinct skill or
+         subject, it lands as its own node/edge automatically; the graph grows
+         to fit the person. Do NOT re-introduce a fixed list of domains here. -->
+
+    <owl:Class rdf:about="http://debatemind.ai/ontology/thinking#KnowledgeDomain">
+        <rdfs:comment>Open root for subject matter. Concrete domains/skills are created per-user at runtime by the extractor, not enumerated here.</rdfs:comment>
+    </owl:Class>
+
+    <!-- ======================= Object properties ======================= -->
+
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#madeBy">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#Thinker"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#partOfSession">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#Session"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#aboutTopic">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#Topic"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#discussesDomain">
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#KnowledgeDomain"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#exhibitsThinkingStyle">
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#ThinkingStyle"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#usesReasoning">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#usesPattern">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#exhibitsFallacy">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#exhibitsBias">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Thinker"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#hasEvidenceQuality">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceQuality"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#hasEvidenceType">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Argument"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#hasOutcome">
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#Outcome"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#hasMasteryStatus">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#MasteryStatus"/>
+    </owl:ObjectProperty>
+    <owl:ObjectProperty rdf:about="http://debatemind.ai/ontology/thinking#hasSkillLevel">
+        <rdfs:domain rdf:resource="http://debatemind.ai/ontology/thinking#Thinker"/>
+        <rdfs:range rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:ObjectProperty>
+
+    <!-- ==================== ThinkingStyle individuals ==================== -->
+    <!-- The three measured dimensions written by fingerprint.py. -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Logic">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ThinkingStyle"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Evidence">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ThinkingStyle"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Rhetoric">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ThinkingStyle"/>
+    </owl:NamedIndividual>
+
+    <!-- =================== ReasoningApproach individuals =================== -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Deductive">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Inductive">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Abductive">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Analogical">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Causal">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Probabilistic">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#FirstPrinciples">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ReasoningApproach"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== ArgumentPattern individuals ==================== -->
+    <!-- EXACT mirror of agents/constants.PATTERN_TYPES plus the voice note-map
+         patterns. Do not rename without updating those sources and the tests. -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#EvidenceBased">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#AppealToAuthority">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#StrawMan">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#AdHominem">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#SlipperySlope">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#FalseEquivalence">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#EmotionalAppeal">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#AnecdotalEvidence">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Concession">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+    <!-- Voice note-map patterns (voice_agent/tools.py). -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#FallacyUsed">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#PositionFlip">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#StrongArgument">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#ArgumentPattern"/>
+    </owl:NamedIndividual>
+
+    <!-- ================= Fallacy-only individuals ================= -->
+    <!-- Common free-text fallacies the extractor may name (fallacy field). -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#HastyGeneralization">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#FalseDichotomy">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#CircularReasoning">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#RedHerring">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Whataboutism">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Fallacy"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== CognitiveBias individuals ==================== -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#ConfirmationBias">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#AnchoringBias">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#AvailabilityBias">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#MotivatedReasoning">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Overconfidence">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#CognitiveBias"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== EvidenceQuality individuals ==================== -->
+    <!-- EXACT mirror of the extractor evidence_quality enum. -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Strong">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceQuality"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Moderate">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceQuality"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Weak">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceQuality"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Absent">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceQuality"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== EvidenceType individuals ==================== -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Empirical">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Statistical">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Anecdotal">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Testimonial">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Logical">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Historical">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#EvidenceType"/>
+    </owl:NamedIndividual>
+
+    <!-- ======================= Outcome individuals ======================= -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Won">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Outcome"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Lost">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Outcome"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Draw">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#Outcome"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== MasteryStatus individuals ==================== -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Active">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#MasteryStatus"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Mastered">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#MasteryStatus"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Reactivated">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#MasteryStatus"/>
+    </owl:NamedIndividual>
+
+    <!-- ==================== SkillLevel individuals ==================== -->
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Novice">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Developing">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Proficient">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Advanced">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:NamedIndividual>
+    <owl:NamedIndividual rdf:about="http://debatemind.ai/ontology/thinking#Expert">
+        <rdf:type rdf:resource="http://debatemind.ai/ontology/thinking#SkillLevel"/>
+    </owl:NamedIndividual>
+
+</rdf:RDF>

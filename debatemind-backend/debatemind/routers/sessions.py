@@ -16,6 +16,7 @@ from debatemind.agents.state import DebateState
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
+from debatemind.models.voice_session import VoiceSession
 from debatemind.schemas.graph import GraphOut
 from debatemind.schemas.session import (
     EndSessionOut,
@@ -30,12 +31,14 @@ from debatemind.schemas.session import (
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
+from debatemind.services.title_svc import generate_session_title
 from debatemind.services.transcript_svc import format_transcript_text
 from debatemind.types import (
     NotFoundError,
     SuccessResponse,
     UnauthorizedError,
 )
+from debatemind.worker.tasks import finalize_session_fingerprint_task
 
 router = APIRouter()
 
@@ -43,6 +46,7 @@ router = APIRouter()
 _session_wins: dict[str, int] = {}
 
 logger = logging.getLogger(__name__)
+
 
 # User-meaningful pipeline nodes, in execution order. remember/prune are
 # internal bookkeeping (memory-graph writes, mastery pruning) with no
@@ -70,9 +74,11 @@ async def list_sessions(
         .group_by(Exchange.session_id)
         .subquery()
     )
+    voice_subq = select(VoiceSession.debate_session_id).distinct().subquery()
     result = await db.execute(
-        select(DebateSession, count_subq.c.cnt)
+        select(DebateSession, count_subq.c.cnt, voice_subq.c.debate_session_id)
         .outerjoin(count_subq, DebateSession.id == count_subq.c.session_id)
+        .outerjoin(voice_subq, DebateSession.id == voice_subq.c.debate_session_id)
         .where(DebateSession.user_id == user_id)
         .order_by(DebateSession.started_at.desc())
     )
@@ -81,15 +87,19 @@ async def list_sessions(
         data=[
             SessionListItemOut(
                 session_id=session.id,
+                topic_id=session.topic_id,
                 topic=session.topic,
+                title=session.title,
                 difficulty=session.difficulty,
+                position=session.user_position,
                 status=session.status,
                 overall_score=session.overall_score,
                 exchanges=cnt or 0,
+                has_voice_session=voice_session_marker is not None,
                 started_at=session.started_at,
                 ended_at=session.ended_at,
             )
-            for session, cnt in rows
+            for session, cnt, voice_session_marker in rows
         ]
     )
 
@@ -112,6 +122,7 @@ async def start_session(
 ):
     session = DebateSession(
         user_id=user_id,
+        topic_id=body.topic_id,
         topic=body.topic,
         description=body.description,
         difficulty=body.difficulty,
@@ -121,9 +132,22 @@ async def start_session(
     await db.commit()
     await db.refresh(session)
     _session_wins[session.id] = 0
+
+    # Fire-and-forget: generate a short title in the background so /start stays fast.
+    async def _write_title(sid: str, topic: str, description: str) -> None:
+        title = await generate_session_title(topic, description)
+        async with AsyncSessionLocal() as title_db:
+            await title_db.execute(
+                update(DebateSession).where(DebateSession.id == sid).values(title=title)
+            )
+            await title_db.commit()
+
+    asyncio.create_task(_write_title(session.id, session.topic, session.description or ""))
+
     return SuccessResponse(
         data=SessionOut(
             session_id=session.id,
+            topic_id=session.topic_id,
             topic=session.topic,
             description=session.description or "",
             difficulty=session.difficulty,
@@ -161,6 +185,19 @@ async def send_message(
     )
     turn = (count_result.scalar() or 0) + 1
 
+    # Last 3 exchanges, chronological — gives the opponent real in-session memory
+    # of what's already been argued, matching the pattern used by /continue.
+    history_result = await db.execute(
+        select(Exchange)
+        .where(Exchange.session_id == session_id)
+        .order_by(Exchange.turn_number.desc())
+        .limit(3)
+    )
+    recent_exchanges = [
+        {"user_message": ex.user_message, "opponent_response": ex.opponent_response}
+        for ex in reversed(history_result.scalars().all())
+    ]
+
     initial_state = DebateState(
         user_id=user_id,
         session_id=session_id,
@@ -171,6 +208,7 @@ async def send_message(
         user_message=body.text,
         turn_number=turn,
         consecutive_wins=_session_wins.get(session_id, 0),
+        recent_exchanges=recent_exchanges,
         model=x_model or None,
         judge_model=x_judge_model or None,
         extracted_pattern=None,
@@ -428,6 +466,20 @@ async def end_session(
     await db.commit()
 
     _session_wins.pop(session_id, None)
+
+    # Finalize the fingerprint in one ordered Celery task: write the session
+    # summary first, THEN re-index. A single task (rather than two independent
+    # dispatches) guarantees the summary is captured before the consolidating
+    # cognify pass — see fingerprint_finalize_svc.finalize_session_fingerprint.
+    try:
+        finalize_session_fingerprint_task.delay(user_id, session_id)
+    except Exception:
+        logger.exception(
+            "finalize_session_fingerprint dispatch failed for user %s session %s",
+            user_id,
+            session_id,
+        )
+
     return SuccessResponse(data=EndSessionOut(status="ended"))
 
 
@@ -520,6 +572,7 @@ async def _build_transcript(session_id: str, user_id: str, db: AsyncSession) -> 
     exchanges = ex_result.scalars().all()
     return TranscriptOut(
         session_id=session.id,
+        topic_id=session.topic_id,
         topic=session.topic,
         difficulty=session.difficulty,
         started_at=session.started_at,
@@ -545,7 +598,7 @@ async def _build_transcript(session_id: str, user_id: str, db: AsyncSession) -> 
     response_model=SuccessResponse[TranscriptOut],
     summary="Get session transcript",
     description=(
-        "Retrieve the full ordered exchange history for a session, " "with judge scores inline."
+        "Retrieve the full ordered exchange history for a session, with judge scores inline."
     ),
     responses={
         401: {"model": UnauthorizedError, "description": "Invalid or missing token"},

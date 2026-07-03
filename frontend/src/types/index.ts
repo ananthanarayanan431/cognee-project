@@ -33,7 +33,26 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+export interface KnowledgeGraphNode {
+  id: string;
+  label: string;
+  type: string;
+  props: Record<string, unknown>;
+}
+
+export interface KnowledgeGraphEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface KnowledgeGraphData {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
 export interface SessionConfig {
+  topic_id?: string | null;
   topic: string;
   description: string;
   difficulty: "balanced" | "targeted" | "ruthless";
@@ -129,11 +148,15 @@ export interface Transcript {
 
 export interface SessionListItem {
   session_id: string;
+  topic_id: string | null;
   topic: string;
+  title?: string | null;
   difficulty: string;
+  position: "for" | "against" | "neutral";
   status: "active" | "ended";
   overall_score: number;
   exchanges: number;
+  has_voice_session: boolean;
   started_at: string;
   ended_at: string | null;
 }
@@ -143,4 +166,34 @@ export interface DebatableQuestion {
   domain: string;
   title: string;
   description: string;
+}
+
+export interface VoiceTokenResponse {
+  client_secret: { value: string; expires_at: number };
+  id: string;
+  model: string;
+  voice_session_id: string;
+  [key: string]: unknown;
+}
+
+export interface VoiceTranscriptLine {
+  speaker: "user" | "ai";
+  text: string;
+}
+
+export interface VoiceSessionSummary {
+  has_voice_session: boolean;
+  voice_session_id?: string;
+  status?: string;
+  duration_seconds?: number | null;
+  closing_summary?: string | null;
+  transcript: VoiceTranscriptLine[];
+  fallacies: string[];
+  strong_arguments: string[];
+  concessions: string[];
+  position_flips: string[];
+}
+
+export interface TranscriptLineSaved {
+  ok: boolean;
 }

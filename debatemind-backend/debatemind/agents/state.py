@@ -11,10 +11,14 @@ class DebateState(TypedDict):
     user_message: str
     turn_number: int
     consecutive_wins: int
+    recent_exchanges: list[dict]
     extracted_pattern: Optional[str]
     extracted_fallacy: Optional[str]
+    extracted_reasoning: Optional[str]  # extractor's one-sentence rationale, fed to Cognee
     evidence_quality: Optional[str]
+    personal_facts: list[str]  # non-argument facts the user revealed this turn (name, likes, etc.)
     weakness_context: list[dict]
+    personal_fact_context: list[dict]
     opponent_response: Optional[str]
     judge_logic: Optional[float]
     judge_evidence: Optional[float]

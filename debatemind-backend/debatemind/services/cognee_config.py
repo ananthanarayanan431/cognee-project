@@ -1,14 +1,25 @@
+import logging
+
 import cognee
 from cognee.infrastructure.databases.vector.embeddings.config import get_embedding_config
 
 from debatemind.config import Settings
 
+logger = logging.getLogger(__name__)
+
 # Routed through OpenRouter via cognee's "custom" provider (a generic
 # OpenAI-compatible adapter) so Cognee's internal LLM calls share the same
 # gateway/key as the debate agents instead of calling Anthropic directly.
 LLM_MODEL = "openai/gpt-4.1-mini"
-EMBEDDING_MODEL = "openai/text-embedding-3-large"
+# Bare model name (no provider prefix): this goes straight to api.openai.com
+# via OPENAI_BASE_URL below, not through OpenRouter's "vendor/model" scheme.
+EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072
+# Embeddings MUST hit OpenAI directly, not OpenRouter: OpenRouter is a
+# chat-completions gateway and does not expose an /embeddings endpoint, so
+# routing text-embedding-3-large through it 404s and silently disables the
+# entire memory layer (cognify fails in the background, recall returns []).
+OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 def configure_cognee(settings: Settings) -> None:
@@ -38,6 +49,8 @@ def configure_cognee(settings: Settings) -> None:
         )
 
     if settings.openrouter_api_key:
+        # Chat/completions go through OpenRouter (works — it's a completions
+        # gateway) so Cognee's internal LLM calls share the debate agents' key.
         cognee.config.set_llm_config(
             {
                 "llm_provider": "custom",
@@ -46,13 +59,20 @@ def configure_cognee(settings: Settings) -> None:
                 "llm_api_key": settings.openrouter_api_key,
             }
         )
-        # Route embeddings through OpenRouter so the same key is used for both
-        # LLM calls and embeddings. The OpenRouter key must go to openrouter.ai,
-        # not api.openai.com — cognee has no public set_embedding_config(), so
-        # we mutate the singleton directly (same pattern as set_llm_config).
+
+    # Embeddings are configured independently of the LLM: they must reach
+    # api.openai.com, never OpenRouter (see OPENAI_BASE_URL note above). Cognee
+    # has no public set_embedding_config(), so we mutate the singleton directly.
+    if settings.openai_api_key:
         embedding_config = get_embedding_config()
         object.__setattr__(embedding_config, "embedding_provider", "openai")
         object.__setattr__(embedding_config, "embedding_model", EMBEDDING_MODEL)
         object.__setattr__(embedding_config, "embedding_dimensions", EMBEDDING_DIMENSIONS)
-        object.__setattr__(embedding_config, "embedding_endpoint", settings.openrouter_base_url)
-        object.__setattr__(embedding_config, "embedding_api_key", settings.openrouter_api_key)
+        object.__setattr__(embedding_config, "embedding_endpoint", OPENAI_BASE_URL)
+        object.__setattr__(embedding_config, "embedding_api_key", settings.openai_api_key)
+    else:
+        logger.warning(
+            "cognee.embeddings.unconfigured: OPENAI_API_KEY is not set. Embeddings "
+            "cannot run through OpenRouter (no /embeddings endpoint), so the Cognee "
+            "memory layer (cognify + recall) will be non-functional until a key is set."
+        )

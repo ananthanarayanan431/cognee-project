@@ -10,11 +10,44 @@ from debatemind.agents.prompts.opponent import (
     opponent_user_message,
 )
 from debatemind.agents.state import DebateState
-from debatemind.cognee import recall_weaknesses
+from debatemind.cognee import recall_user_facts, recall_weaknesses
+from debatemind.cognee._base import filter_out_patterns
 from debatemind.config import settings
+from debatemind.database import AsyncSessionLocal
+from debatemind.services.mastery_svc import get_active_mastered_patterns
 
 # Bounded TTL cache: max 1024 users, entries expire after 1 hour.
+# Holds the *raw* (unfiltered) recall so mastered-pattern exclusion can be
+# re-applied per turn against the live mastery state instead of being frozen
+# into the cache — mastering a pattern takes effect on the very next turn.
+# The 1-hour TTL is just a safety net for idle users; freshness within an
+# active session comes from invalidate_weakness_cache(), called once each
+# background remember_argument() write completes (see pipeline.py).
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
+
+# Same shape as _weakness_cache, but for personal facts (name, likes, etc.)
+# recalled via recall_user_facts(). Kept separate since it's invalidated
+# independently, by remember_personal_fact() writes rather than argument writes.
+_facts_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
+
+
+def invalidate_weakness_cache(user_id: str) -> None:
+    """Force the next recall_weaknesses() call for this user to hit Cognee live.
+
+    Called after a new argument is written to the knowledge graph so a fallacy
+    or weak pattern surfaced this session is available to the opponent on the
+    very next turn, instead of waiting up to an hour for the TTL to lapse.
+    """
+    _weakness_cache.pop(user_id, None)
+
+
+def invalidate_facts_cache(user_id: str) -> None:
+    """Force the next recall_user_facts() call for this user to hit Cognee live.
+
+    Called after a new personal fact is written so it's available to the
+    opponent as ammo on the very next turn instead of waiting on the TTL.
+    """
+    _facts_cache.pop(user_id, None)
 
 
 async def generate_opponent(state: DebateState) -> DebateState:
@@ -23,12 +56,27 @@ async def generate_opponent(state: DebateState) -> DebateState:
     if user_id not in _weakness_cache:
         _weakness_cache[user_id] = await recall_weaknesses(user_id)
 
-    state["weakness_context"] = _weakness_cache[user_id]
+    # Exclude patterns the user has already mastered so the opponent stops
+    # exploiting beaten weaknesses (the behavioural payoff of forget()). This
+    # DB read is best-effort — a transient failure shouldn't abort the turn,
+    # it just means mastered patterns aren't filtered out this time.
+    try:
+        async with AsyncSessionLocal() as db:
+            mastered = await get_active_mastered_patterns(db, user_id)
+    except Exception:
+        mastered = set()
+    state["weakness_context"] = filter_out_patterns(_weakness_cache[user_id], mastered)
 
     weakness_text = (
         "\n".join(r.get("text", "") for r in state["weakness_context"][:5])
         or "No prior weaknesses recorded — probe broadly."
     )
+
+    if user_id not in _facts_cache:
+        _facts_cache[user_id] = await recall_user_facts(user_id, state["topic"])
+    state["personal_fact_context"] = _facts_cache[user_id]
+
+    personal_facts_text = "\n".join(r.get("text", "") for r in state["personal_fact_context"][:5])
 
     difficulty = state.get("difficulty", "targeted")
 
@@ -36,11 +84,16 @@ async def generate_opponent(state: DebateState) -> DebateState:
 
     msg = await openrouter.chat.completions.create(
         model=state.get("model") or settings.main_model,
-        max_tokens=300,
+        max_tokens=200,
         messages=[
             {
                 "role": "system",
-                "content": opponent_system_prompt(weakness_text, difficulty, user_position),
+                "content": opponent_system_prompt(
+                    weakness_text,
+                    difficulty,
+                    user_position,
+                    personal_facts_text=personal_facts_text,
+                ),
             },
             {
                 "role": "user",
@@ -49,6 +102,7 @@ async def generate_opponent(state: DebateState) -> DebateState:
                     state["user_message"],
                     state.get("description") or "",
                     user_position,
+                    state.get("recent_exchanges") or [],
                 ),
             },
         ],
@@ -72,7 +126,7 @@ async def generate_opening(
     """
     msg = await openrouter.chat.completions.create(
         model=model or settings.main_model,
-        max_tokens=200,
+        max_tokens=150,
         messages=[
             {
                 "role": "system",
@@ -102,7 +156,7 @@ async def generate_continuation(
     """
     msg = await openrouter.chat.completions.create(
         model=model or settings.main_model,
-        max_tokens=200,
+        max_tokens=150,
         messages=[
             {
                 "role": "system",

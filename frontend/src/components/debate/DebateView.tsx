@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { IconChartLine, IconHistory } from "@tabler/icons-react";
+import { IconChartLine, IconHistory, IconMessages, IconPhone } from "@tabler/icons-react";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, Message } from "@/types";
@@ -9,6 +9,7 @@ import InputArea from "./InputArea";
 import { useStreamContinuation, useStreamOpening } from "@/hooks/useDebateSSE";
 import FingerprintGraph from "@/components/graph/FingerprintGraph";
 import SessionScoreBar from "./SessionScoreBar";
+import VoiceSession from "@/components/voice/VoiceSession";
 
 const STAGE_LABELS: Record<string, string> = {
   extract: "Analysing your argument…",
@@ -18,7 +19,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export default function DebateView() {
-  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph } = useDebate();
+  const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph, voiceMode, setVoiceMode } = useDebate();
   const scrollRef    = useRef<HTMLDivElement>(null);
   const hydratedRef  = useRef<string | null>(null);
   const streamOpening = useStreamOpening();
@@ -103,6 +104,14 @@ export default function DebateView() {
 
   const setSessions = useDebate((s) => s.setSessions);
 
+  // Auto-end the session when the user closes the tab / refreshes the page.
+  useEffect(() => {
+    if (!sessionId) return;
+    const handler = () => api.endSessionBeacon(sessionId);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [sessionId]);
+
   async function endSession() {
     if (sessionId) await api.endSession(sessionId);
     api.getSessions().then(setSessions).catch(() => {});
@@ -132,7 +141,12 @@ export default function DebateView() {
       {/* Nav */}
       <nav className="flex items-center justify-between h-14 px-5 bg-white border-b border-border sticky top-0 z-20">
         <button
-          onClick={() => setScreen("topic")}
+          onClick={() => {
+            // End the session (fire-and-forget) then navigate back.
+            if (sessionId) api.endSession(sessionId).catch(() => {});
+            api.getSessions().then(setSessions).catch(() => {});
+            setScreen("topic");
+          }}
           className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-fog/10 transition-colors flex items-center gap-1.5"
         >
           ← Back
@@ -146,6 +160,27 @@ export default function DebateView() {
           )}
         </span>
         <div className="flex items-center gap-3">
+          {/* Chat / Voice toggle */}
+          <div className="flex items-center rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => setVoiceMode(false)}
+              aria-label="Text chat"
+              aria-pressed={!voiceMode}
+              title="Text chat"
+              className={`px-2.5 py-1.5 transition-colors ${!voiceMode ? "bg-ink text-white" : "text-fog hover:text-ink hover:bg-fog/10"}`}
+            >
+              <IconMessages size={15} stroke={1.75} />
+            </button>
+            <button
+              onClick={() => setVoiceMode(true)}
+              aria-label="Voice call"
+              aria-pressed={voiceMode}
+              title="Voice call"
+              className={`px-2.5 py-1.5 transition-colors ${voiceMode ? "bg-scarlet text-white" : "text-fog hover:text-ink hover:bg-fog/10"}`}
+            >
+              <IconPhone size={15} stroke={1.75} />
+            </button>
+          </div>
           <button onClick={() => setScreen("progress")} aria-label="Progress" className="text-fog hover:text-ink transition-colors">
             <IconChartLine size={18} stroke={1.75} />
           </button>
@@ -167,8 +202,17 @@ export default function DebateView() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Voice panel — replaces chat when voice mode is active */}
+        {voiceMode && sessionId && sessionConfig && (
+          <VoiceSession
+            sessionId={sessionId}
+            sessionConfig={sessionConfig}
+            onEnd={() => setVoiceMode(false)}
+          />
+        )}
+
         {/* Chat panel */}
-        <div className="flex flex-col flex-1 min-w-0 bg-chalk">
+        <div className={`flex flex-col flex-1 min-w-0 bg-chalk ${voiceMode ? "hidden" : ""}`}>
           <div
             ref={scrollRef}
             className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-3.5"
@@ -220,7 +264,7 @@ export default function DebateView() {
                     O
                   </span>
                   <span className="font-sans text-[10px] font-semibold text-scarlet tracking-widest">
-                    OPPONENT
+                    DEBATEMIND
                   </span>
                 </div>
                 <span className="font-sans italic text-sm text-fog">

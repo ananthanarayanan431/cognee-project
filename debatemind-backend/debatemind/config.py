@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     database_url: str
     secret_key: str
     openrouter_api_key: str
-    fast_model: str = "anthropic/claude-haiku-4-5"
-    main_model: str = "anthropic/claude-sonnet-4-6"
+    fast_model: str = "openai/gpt-4.1-mini"
+    main_model: str = "openai/gpt-4.1-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     cognee_mode: str = "local"  # "local" (self-hosted via docker-compose) | "cloud"
     cognee_db_host: str = "localhost"
@@ -21,11 +21,18 @@ class Settings(BaseSettings):
     neo4j_password: str = "debatemind"
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:3000"]
+    # Per-client-IP request budget (sliding 60s window). 0 disables the limiter.
+    rate_limit_per_minute: int = 120
+    # Emit HSTS (only meaningful behind HTTPS; keep off for local http dev).
+    enable_hsts: bool = False
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours
     refresh_token_expire_days: int = 7
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
+    openai_api_key: str = (
+        ""  # Required for voice agent (OpenAI Realtime API — OpenRouter does not support it)
+    )
 
 
 settings = Settings()

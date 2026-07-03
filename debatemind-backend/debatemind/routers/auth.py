@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 import httpx
@@ -18,6 +19,8 @@ from debatemind.services.auth import (
 from debatemind.types import BadRequestError, SuccessResponse, UnauthorizedError
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -106,8 +109,16 @@ async def clerk_exchange(body: ClerkExchangeIn, db: AsyncSession = Depends(get_d
                     ),
                     None,
                 )
+            else:
+                logger.warning(
+                    "clerk user lookup returned %s; proceeding without email",
+                    r.status_code,
+                )
     except Exception:
-        pass
+        # Network/parse failure — degrade to a synthetic email but make it visible,
+        # otherwise a Clerk outage silently creates users with @clerk.user addresses.
+        # Don't log the raw clerk_user_id — it's a stable external identifier for the user.
+        logger.exception("clerk user lookup failed; proceeding without email")
 
     # 1. Look up by clerk_id (sso_id column)
     result = await db.execute(select(User).where(User.sso_id == clerk_user_id))

@@ -4,7 +4,7 @@ Cognee and the debate pipeline are mocked; the DB layer is a real in-memory SQLi
 """
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from debatemind.database import Base, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
+from debatemind.models.voice_session import VoiceSession
 from debatemind.routers import sessions as sessions_router
 from debatemind.schemas.graph import GraphOut
 
@@ -44,7 +45,8 @@ def api_client(session_factory):
 
 async def _make_session(session_factory, **overrides) -> str:
     async with session_factory() as db:
-        session = DebateSession(user_id="u1", topic="AI Safety", **overrides)
+        overrides.setdefault("topic", "AI Safety")
+        session = DebateSession(user_id="u1", **overrides)
         db.add(session)
         await db.commit()
         await db.refresh(session)
@@ -178,3 +180,34 @@ async def test_start_session_persists_description(api_client):
     assert resp.status_code == 200
     body = resp.json()["data"]
     assert body["description"] == "Focus on EU AI Act"
+
+
+async def test_end_session_dispatches_finalize_fingerprint_task(
+    api_client, session_factory, monkeypatch
+):
+    session_id = await _make_session(session_factory)
+
+    fake_task = Mock()
+    monkeypatch.setattr(sessions_router, "finalize_session_fingerprint_task", fake_task)
+
+    resp = api_client.post(f"/api/sessions/{session_id}/end")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "ended"
+    fake_task.delay.assert_called_once_with("u1", session_id)
+
+
+async def test_list_sessions_flags_has_voice_session(api_client, session_factory):
+    voice_session_id = await _make_session(session_factory, topic="Voice Topic")
+    text_session_id = await _make_session(session_factory, topic="Text Topic")
+
+    async with session_factory() as db:
+        db.add(VoiceSession(debate_session_id=voice_session_id, user_id="u1"))
+        await db.commit()
+
+    response = api_client.get("/api/sessions")
+    assert response.status_code == 200
+
+    items = {item["session_id"]: item for item in response.json()["data"]}
+    assert items[voice_session_id]["has_voice_session"] is True
+    assert items[text_session_id]["has_voice_session"] is False

@@ -1,10 +1,26 @@
 """Shared constants, dataset-name builders, and log helpers for every cognee module."""
 
 import time
+from pathlib import Path
 
 ADD_TIMEOUT = 60.0
 COGNIFY_TIMEOUT = 300.0
 SEARCH_TIMEOUT = 10.0
+
+# Static, hand-authored domain ontology that guides cognee's graph extraction.
+# Resolved from this module's location (not the process CWD) so it works the
+# same whether run from source, a wheel, or the Docker image.
+ONTOLOGY_PATH = Path(__file__).parent / "ontology" / "debate_domain.owl"
+
+
+def ontology_file() -> str | None:
+    """Absolute path to the debate ontology, or None if the asset is absent.
+
+    Returning None makes cognee.cognify() behave exactly as before (it falls
+    back to an empty ontology), so a missing file degrades gracefully in
+    production instead of raising.
+    """
+    return str(ONTOLOGY_PATH) if ONTOLOGY_PATH.exists() else None
 
 
 def fingerprint_dataset(user_id: str) -> str:
@@ -25,3 +41,17 @@ def result_text(r) -> str:
     if isinstance(r, dict):
         return r.get("text", str(r))
     return getattr(r, "text", str(r))
+
+
+def filter_out_patterns(items: list[dict], patterns: set[str] | None) -> list[dict]:
+    """Drop recalled argument records whose pattern_type is a mastered pattern.
+
+    This is what makes forget()/mastery behaviourally real: once a pattern is
+    mastered, its weakness records stop being fed to the opponent, so the AI
+    demonstrably stops targeting it. Matches the structured `pattern_type` field
+    recall.py attaches to every ArgumentRecord dict (not a text marker) — records
+    with no `pattern_type` key (e.g. personal facts) are always kept.
+    """
+    if not patterns:
+        return items
+    return [it for it in items if it.get("pattern_type") not in patterns]
