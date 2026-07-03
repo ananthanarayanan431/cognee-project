@@ -32,14 +32,16 @@ loop"). The only safe isolation is a genuinely separate **process**.
 
 The bug is in shared library code, not any one caller, so scoping the fix to
 "voice only" wouldn't work — any concurrent caller elsewhere in the process
-can still freeze the loop for voice users. Four call sites hit this path
-today:
+can still freeze the loop for voice users. Five call sites hit this path
+today (re-verified against the current code, which has moved since this
+scope was first drafted):
 
 | Call site | Function(s) | Current pattern |
 |---|---|---|
-| `voice_agent/tools.py:418-429,441,545-559,564` | `remember_argument`, `remember_session_summary`, `forget_pattern`, `improve_fingerprint` | `asyncio.create_task(...)`, fire-and-forget |
+| `voice_agent/tools.py` (`_save_debate_observation`, `_end_voice_session`) | `remember_argument`, `forget_pattern`, `remember_session_summary`, `improve_fingerprint` | `asyncio.create_task(...)`, fire-and-forget. `_end_voice_session` fires `remember_session_summary` and `improve_fingerprint` as two **independent, unordered** tasks — same race the `sessions.py` comment below already warns about, just not yet fixed here. |
 | `agents/pipeline.py` (`_remember_node`) | `remember_argument` | `asyncio.create_task(...)` + done-callback that also invalidates `_weakness_cache` (`agents/opponent.py`) |
-| `agents/pipeline.py` (`_mastery_prune_node`) | `forget_pattern` | `await`ed **inline**, per-pattern try/except with retry-next-turn bookkeeping (`state["mastery_events"]`) — the worst of the four, since it blocks the chat response directly, not just the background |
+| `agents/pipeline.py` (`_remember_facts_node`) | `remember_personal_fact` | `asyncio.create_task(...)` per new fact + done-callback that invalidates `_facts_cache` (`agents/opponent.py`) — same shape as `_remember_node`, separate cache |
+| `agents/pipeline.py` (`_mastery_prune_node`) | `forget_pattern` | `await`ed **inline**, per pattern. As of the current code there is no retry-next-turn bookkeeping (a prior version tracked failed patterns in `state["mastery_events"]`; the current version just logs and continues, "must not erase the achieved-mastery list"). This is still the worst of the five: it blocks the chat response directly for the full `add()+cognify()` duration, not just the background. |
 | `routers/calibration.py:99-113` | `remember_argument` | `asyncio.create_task(...)`, fire-and-forget |
 | `routers/sessions.py:553` (`_finalize_session_fingerprint`) | `remember_session_summary` then `improve_fingerprint`, **in order** | one `asyncio.create_task(...)` wrapping both sequentially |
 
@@ -73,19 +75,46 @@ exists in the root `docker-compose.yml`.
 
 ### 2. Define one Celery task per fingerprint operation
 
-New module `debatemind/cognee/tasks.py` defines Celery tasks that wrap the
-existing `fingerprint.py` functions with `asyncio.run(...)` (safe here
-because each task runs in a fresh worker process with no pre-existing event
-loop or cached engine from another loop):
+`debatemind/worker/tasks.py` already exists, is already the `include=[...]`
+target in `celery_app.py`, and already has a `worker_init` signal handler —
+it just registers zero tasks today. Add the task definitions there (no new
+module needed) wrapping the existing `fingerprint.py` functions with
+`asyncio.run(...)` (safe here because each task runs in a fresh worker
+process with no pre-existing event loop or cached engine from another loop):
 
-- `remember_argument_task`
-- `remember_session_summary_task`
-- `forget_pattern_task`
-- `improve_fingerprint_task`
-- `finalize_session_fingerprint_task` — wraps the existing ordered
-  summary-then-reindex sequence as a single task, preserving the current
-  ordering guarantee (splitting into two independent Celery dispatches would
-  reintroduce the race the current code comment warns about).
+`remember_session_summary` and `improve_fingerprint` are, on inspection,
+never called standalone anywhere in the codebase — every call site pairs
+them (summary then reindex), so they don't need their own tasks, only the
+two ordered "finalize" tasks below need to exist:
+
+- `remember_argument_task` — used by `voice_agent/tools.py`,
+  `agents/pipeline.py` (`_remember_node`), `routers/calibration.py`
+- `remember_personal_fact_task` — used by `agents/pipeline.py`
+  (`_remember_facts_node`)
+- `forget_pattern_task` — used by `agents/pipeline.py`
+  (`_mastery_prune_node`), `voice_agent/tools.py` (voice mastery prune)
+- `finalize_session_fingerprint_task` — wraps a new
+  `services/fingerprint_finalize_svc.finalize_session_fingerprint(user_id,
+  session_id)` (moved out of `routers/sessions.py`'s private
+  `_finalize_session_fingerprint`, same ordered summary-then-reindex body),
+  used by `routers/sessions.py`
+- `finalize_voice_session_fingerprint_task` — wraps a new
+  `services/fingerprint_finalize_svc.finalize_voice_session_fingerprint(...)`,
+  used by `voice_agent/tools.py`. Voice's `_end_voice_session` currently
+  fires `remember_session_summary` and `improve_fingerprint` as two
+  independent, unordered tasks (see scope table above); this task fixes
+  that same ordering race while moving the work off the event loop, mirroring
+  the chat-side fix.
+- `improve_fingerprint_task` — a standalone reindex-only task, needed
+  because `_end_voice_session` currently runs `improve_fingerprint`
+  unconditionally even when there's no `debate_session` to summarize (in
+  which case the finalize task above doesn't apply); this preserves that
+  fallback path.
+
+Both finalize functions live together in one new module,
+`debatemind/services/fingerprint_finalize_svc.py`, following the existing
+`services/*_svc.py` convention — keeps `worker/tasks.py` from having to
+import private helpers out of a router module.
 
 ### 3. Update call sites
 
@@ -104,17 +133,17 @@ fire-and-forget shape as today, just without the shared-loop risk.
   only blocks on Celery's Redis result polling, it never runs a coroutine or
   touches cognee's engine, so it doesn't hit the loop-binding problem this
   design is fixing.
-- **`_mastery_prune_node`**: change from synchronous `await forget_pattern(...)`
-  with per-pattern retry tracking to `forget_pattern_task.delay(...)` per
-  pattern, clearing `mastery_events` immediately after dispatch. This is an
-  intentional behavior change: today a failed prune is retried on the very
-  next graph run via `_should_prune`; after this change, a silently-failed
-  Celery task relies on `check_mastery` naturally re-flagging the same
-  pattern on some future turn instead of an immediate retry. Accepted
-  because it matches how `_remember_node` already treats failures (log and
-  move on, no inline retry), and because the alternative (blocking the graph
-  on Celery result polling) would reintroduce the exact latency problem
-  being removed.
+- **`_remember_facts_node`**: same shape as `_remember_node` — dispatch via
+  `remember_personal_fact_task.delay(...)` per fact, keep the existing
+  `asyncio.create_task(...)` + `asyncio.to_thread(async_result.get, ...)` +
+  `invalidate_facts_cache(user_id)` wrapper so cache invalidation still
+  happens the moment the write lands.
+- **`_mastery_prune_node`**: change from `await forget_pattern(...)` per
+  pattern to `forget_pattern_task.delay(...)` per pattern. No retry
+  bookkeeping to preserve here — the current code already just logs
+  failures and continues (no `state["mastery_events"]` retry tracking left
+  to carry over), so this is a direct swap with no behavior change beyond
+  no longer blocking the chat turn on the write.
 
 ### 4. Error handling
 
