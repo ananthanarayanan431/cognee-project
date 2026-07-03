@@ -7,8 +7,12 @@ no real Cognee storage/LLM calls happen here.
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from debatemind.cognee._base import classify_entity
 from debatemind.cognee.recall import (
+    cognitive_profile_text,
+    filter_profile_patterns,
     owned_nodes,
+    recall_cognitive_profile,
     recall_topic_weaknesses,
     recall_user_facts,
     recall_weaknesses,
@@ -20,11 +24,12 @@ def _node(node_type: str, **props):
 
 
 class _FakeGraphEngine:
-    def __init__(self, nodes):
+    def __init__(self, nodes, edges=None):
         self._nodes = nodes
+        self._edges = edges or []
 
     async def get_graph_data(self):
-        return self._nodes, []
+        return self._nodes, self._edges
 
 
 class _FakeScoredResult:
@@ -32,9 +37,9 @@ class _FakeScoredResult:
         self.id = node_id
 
 
-def _patch_graph_engine(monkeypatch, nodes):
+def _patch_graph_engine(monkeypatch, nodes, edges=None):
     async def fake_get_graph_engine():
-        return _FakeGraphEngine(nodes)
+        return _FakeGraphEngine(nodes, edges)
 
     monkeypatch.setattr(
         "cognee.infrastructure.databases.graph.get_graph_engine", fake_get_graph_engine
@@ -180,3 +185,152 @@ async def test_recall_user_facts_returns_owned_facts(monkeypatch):
     results = await recall_user_facts("u1")
 
     assert [r["text"] for r in results] == ["I'm a nurse"]
+
+
+# --- classify_entity (ontology vocab matching) -----------------------------
+
+
+def test_classify_entity_matches_exact_and_fuzzy_names():
+    assert classify_entity("StrawMan") == ("fallacy", "StrawMan")
+    assert classify_entity("straw man") == ("fallacy", "StrawMan")  # cognify fuzz
+    assert classify_entity("Confirmation-Bias") == ("bias", "ConfirmationBias")
+    assert classify_entity("Inductive") == ("reasoning", "Inductive")
+    assert classify_entity("Statistical") == ("evidence_type", "Statistical")
+
+
+def test_classify_entity_returns_none_for_non_vocab():
+    assert classify_entity("AI regulation") is None  # a topic, not vocabulary
+    assert classify_entity("") is None
+    assert classify_entity(None) is None
+
+
+# --- recall_cognitive_profile ----------------------------------------------
+
+
+async def test_profile_layer1_reads_fields_off_the_record(monkeypatch):
+    # No edges at all — Layer 1 (fields on the owned record) must still work.
+    id_a, node_a = _node(
+        "ArgumentRecord",
+        user_id="u1",
+        fallacy="StrawMan",
+        outcome="Lost",
+        topic_name="AI regulation",
+    )
+    _patch_graph_engine(monkeypatch, [(id_a, node_a)])
+
+    profile = await recall_cognitive_profile("u1")
+
+    assert profile["record_count"] == 1
+    assert profile["recurring_fallacies"] == ["StrawMan"]
+    assert profile["weak_domains"] == ["AI regulation"]
+
+
+async def test_profile_layer2_classifies_cognify_neighbours(monkeypatch):
+    id_a, node_a = _node("ArgumentRecord", user_id="u1", outcome="Lost", topic_name="AI")
+    bias_id, bias_node = _node("Entity", name="ConfirmationBias")  # cognify-derived, no user_id
+    reasoning_id, reasoning_node = _node("Entity", name="Inductive")
+    edges = [(id_a, bias_id, "exhibitsBias"), (reasoning_id, id_a, "usesReasoning")]
+    _patch_graph_engine(
+        monkeypatch,
+        [(id_a, node_a), (bias_id, bias_node), (reasoning_id, reasoning_node)],
+        edges,
+    )
+
+    profile = await recall_cognitive_profile("u1")
+
+    assert profile["cognitive_biases"] == ["ConfirmationBias"]
+    assert profile["reasoning_approaches"] == ["Inductive"]  # edge direction agnostic
+
+
+async def test_profile_isolates_by_user_id(monkeypatch):
+    id_a, node_a = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", outcome="Lost")
+    id_b, node_b = _node("ArgumentRecord", user_id="u2", fallacy="AdHominem", outcome="Lost")
+    # u2's record is wired to a bias node; it must not leak into u1's profile.
+    bias_id, bias_node = _node("Entity", name="Overconfidence")
+    edges = [(id_b, bias_id, "exhibitsBias")]
+    _patch_graph_engine(monkeypatch, [(id_a, node_a), (id_b, node_b), (bias_id, bias_node)], edges)
+
+    profile = await recall_cognitive_profile("u1")
+
+    assert profile["record_count"] == 1
+    assert profile["recurring_fallacies"] == ["StrawMan"]
+    assert profile["cognitive_biases"] == []  # u2's neighbour excluded
+
+
+async def test_profile_weights_lost_outcomes_higher(monkeypatch):
+    # Two AdHominem (Won), one StrawMan (Lost). Lost counts double (2 > 1+1? no,
+    # 2 == 2) — add a second StrawMan-Lost to make StrawMan rank first.
+    won_a = _node("ArgumentRecord", user_id="u1", fallacy="AdHominem", outcome="Won")
+    lost_a = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", outcome="Lost")
+    lost_b = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", outcome="Lost")
+    _patch_graph_engine(monkeypatch, [won_a, lost_a, lost_b])
+
+    profile = await recall_cognitive_profile("u1")
+
+    # StrawMan: 2 records * weight 2 = 4; AdHominem: 1 * 1 = 1.
+    assert profile["recurring_fallacies"][0] == "StrawMan"
+
+
+async def test_profile_filters_by_topic(monkeypatch):
+    ai = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", topic_name="AI", outcome="Lost")
+    climate = _node(
+        "ArgumentRecord", user_id="u1", fallacy="AdHominem", topic_name="Climate", outcome="Lost"
+    )
+    _patch_graph_engine(monkeypatch, [ai, climate])
+
+    profile = await recall_cognitive_profile("u1", topic="ai")  # case-insensitive
+
+    assert profile["record_count"] == 1
+    assert profile["recurring_fallacies"] == ["StrawMan"]
+
+
+async def test_profile_empty_when_nothing_owned(monkeypatch):
+    _patch_graph_engine(monkeypatch, [])
+
+    profile = await recall_cognitive_profile("u1")
+
+    assert profile["record_count"] == 0
+    assert profile["recurring_fallacies"] == []
+    assert cognitive_profile_text(profile) == ""
+
+
+# --- filter_profile_patterns / cognitive_profile_text ----------------------
+
+
+def test_filter_profile_patterns_drops_mastered_fallacies_only():
+    profile = {
+        "record_count": 3,
+        "recurring_fallacies": ["StrawMan", "AdHominem"],
+        "cognitive_biases": ["ConfirmationBias"],
+        "reasoning_approaches": ["Inductive"],
+        "evidence_types": [],
+        "weak_domains": ["AI"],
+    }
+
+    filtered = filter_profile_patterns(profile, {"StrawMan"})
+
+    assert filtered["recurring_fallacies"] == ["AdHominem"]
+    assert filtered["cognitive_biases"] == ["ConfirmationBias"]  # biases never mastered away
+    assert profile["recurring_fallacies"] == ["StrawMan", "AdHominem"]  # original not mutated
+
+
+def test_filter_profile_patterns_noop_without_patterns():
+    profile = {"recurring_fallacies": ["StrawMan"]}
+    assert filter_profile_patterns(profile, None) is profile
+    assert filter_profile_patterns(profile, set()) is profile
+
+
+def test_cognitive_profile_text_renders_present_fields():
+    profile = {
+        "record_count": 5,
+        "recurring_fallacies": ["StrawMan"],
+        "cognitive_biases": ["ConfirmationBias"],
+        "reasoning_approaches": [],
+        "evidence_types": [],
+        "weak_domains": ["AI regulation"],
+    }
+    text = cognitive_profile_text(profile)
+    assert "recurring fallacies: StrawMan" in text
+    assert "cognitive biases: ConfirmationBias" in text
+    assert "weakest on topics: AI regulation" in text
+    assert "leans on reasoning" not in text  # empty field omitted

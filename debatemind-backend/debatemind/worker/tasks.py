@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 
 @worker_init.connect
 def _configure_cognee(**kwargs):
-    import cognee
+    from cognee.modules.engine.operations.setup import setup as cognee_setup
 
     from debatemind.services.cognee_config import configure_cognee
 
     configure_cognee(settings)
-    asyncio.run(cognee.setup())
+    asyncio.run(cognee_setup())
 
 
 @celery_app.task(name="debatemind.remember_argument")

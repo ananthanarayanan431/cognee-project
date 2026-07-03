@@ -23,7 +23,12 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from debatemind.cognee import recall_topic_weaknesses, recall_weaknesses
+from debatemind.cognee import (
+    filter_profile_patterns,
+    recall_cognitive_profile,
+    recall_topic_weaknesses,
+    recall_weaknesses,
+)
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
@@ -108,13 +113,17 @@ TOOL_DEFINITIONS: list[dict] = [
         "name": "get_knowledge_context",
         "description": (
             "Query this user's long-term knowledge graph (Cognee) for weakness patterns "
-            "beyond what was preloaded at session start. Call this when: the debate "
+            "beyond what was preloaded at session start. Returns both specific past "
+            "weaknesses ('patterns') and a 'cognitive_profile' — their typed trait over "
+            "all debates: recurring fallacies, cognitive biases, reasoning style, and "
+            "the topics they're weakest on. Call this when: the debate "
             "shifts to a sub-topic or angle not covered by your initial context; the "
             "user directly asks about their history or trends ('what have I struggled "
             "with before', 'how am I doing on this topic over time'); or the user's "
             "position or framing pivots mid-session and you want fresh topic-specific "
-            "context. Results are for sharpening your strategy only — never read them "
-            "aloud verbatim."
+            "context. Use the cognitive_profile to anticipate HOW they argue — pre-empt "
+            "the reasoning move, bait the recurring fallacy. For sharpening your strategy "
+            "only — never read any of it aloud verbatim."
         ),
         "parameters": {
             "type": "object",
@@ -440,12 +449,22 @@ async def _get_knowledge_context(
     tasks = [recall_topic_weaknesses(user_id, topic, exclude_patterns=excluded)] if topic else []
     if include_generic:
         tasks.append(recall_weaknesses(user_id, exclude_patterns=excluded))
+    # Graph-aware cognitive profile (cross-topic trait): same typed signal the
+    # chat opponent now gets — recurring fallacies, biases, reasoning style,
+    # weak domains — so voice and chat sharpen strategy off the same graph.
+    tasks.append(recall_cognitive_profile(user_id))
+    profile_idx = len(tasks) - 1
 
     results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
 
+    profile_result = results[profile_idx] if results else None
+    profile: dict = {}
+    if isinstance(profile_result, dict):
+        profile = filter_profile_patterns(profile_result, excluded)
+
     seen: set[str] = set()
     patterns: list[str] = []
-    for items in results:
+    for items in results[:profile_idx]:
         if isinstance(items, Exception):
             continue
         for item in items:
@@ -459,6 +478,7 @@ async def _get_knowledge_context(
         "topic_queried": topic,
         "patterns": patterns,
         "count": len(patterns),
+        "cognitive_profile": profile,
         "note": "Internal strategy context only — never read this aloud.",
     }
 
