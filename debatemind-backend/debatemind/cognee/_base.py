@@ -44,14 +44,14 @@ def result_text(r) -> str:
 
 
 def filter_out_patterns(items: list[dict], patterns: set[str] | None) -> list[dict]:
-    """Drop recalled argument records whose ArgumentPattern is a mastered pattern.
+    """Drop recalled argument records whose pattern_type is a mastered pattern.
 
     This is what makes forget()/mastery behaviourally real: once a pattern is
     mastered, its weakness records stop being fed to the opponent, so the AI
-    demonstrably stops targeting it. Session-summary records are kept (they carry
-    topic-level context, not a single exploitable pattern).
+    demonstrably stops targeting it. Matches the structured `pattern_type` field
+    recall.py attaches to every ArgumentRecord dict (not a text marker) — records
+    with no `pattern_type` key (e.g. personal facts) are always kept.
     """
     if not patterns:
         return items
-    markers = tuple(f"ArgumentPattern: {p}" for p in patterns)
-    return [it for it in items if not any(m in it.get("text", "") for m in markers)]
+    return [it for it in items if it.get("pattern_type") not in patterns]
