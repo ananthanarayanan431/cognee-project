@@ -38,6 +38,7 @@ export default function TopicSelection() {
   const [newOpen, setNewOpen] = useState(true);
   const [newQuestions, setNewQuestions] = useState<DebatableQuestion[]>([]);
   const [generateDomain, setGenerateDomain] = useState<Exclude<Domain, "ALL">>("POLICY");
+  const [generateFocus, setGenerateFocus] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const { setSession, setSessions, setTopicDetail, sessions, setVoiceMode } = useDebate();
 
@@ -144,7 +145,7 @@ export default function TopicSelection() {
   async function generateMore() {
     setGenerating(true);
     try {
-      const generated = await api.generateTopics(generateDomain, 10);
+      const generated = await api.generateTopics(generateDomain, 10, generateFocus.trim());
       const existingIds = new Set([
         ...Object.values(cardsByDomain).flat().map(q => q.id),
         ...newQuestions.map(q => q.id),
@@ -258,7 +259,7 @@ export default function TopicSelection() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1 flex-none">
+        <div className="flex items-center flex-none">
           <select
             value={generateDomain}
             onChange={(e) => setGenerateDomain(e.target.value as Exclude<Domain, "ALL">)}
@@ -269,6 +270,15 @@ export default function TopicSelection() {
               <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>
             ))}
           </select>
+          <input
+            value={generateFocus}
+            onChange={(e) => setGenerateFocus(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !generating) { e.preventDefault(); generateMore(); } }}
+            disabled={generating}
+            placeholder="Focus theme (optional)"
+            title="Steer generation toward a specific sector or theme, e.g. healthcare AI"
+            className="font-sans text-xs text-ink border-y border-dashed border-fog/30 px-2.5 py-1 bg-white outline-none w-40 placeholder:text-fog/50 disabled:opacity-50 focus:border-scarlet/40 transition-all"
+          />
           <button
             onClick={generateMore}
             disabled={generating}

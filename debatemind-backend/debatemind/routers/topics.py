@@ -311,9 +311,18 @@ async def generate(
     user_id: str = Depends(current_user_id),
 ):
     count = min(body.count, 10)
+    focus = body.focus.strip()
+    focus_line = (
+        f' Center every question tightly on this sector/theme: "{focus}". Each one must be '
+        "recognizably about that theme — explored from a different angle, not a generic "
+        "question that merely name-drops it. Still tag each with the given domain."
+        if focus
+        else ""
+    )
     user_prompt = (
-        f"Generate {count} original, debatable questions for the domain: {body.domain}. "
-        "Each question should be thought-provoking, contestable, and distinct from the others."
+        f"Generate {count} original, debatable questions for the domain: "
+        f"{body.domain}.{focus_line} Each question should be thought-provoking, "
+        "contestable, and distinct from the others."
     )
     try:
         completion = await openrouter.chat.completions.create(

@@ -15,3 +15,4 @@ class DebatableQuestion(BaseModel):
 class GenerateTopicsIn(BaseModel):
     domain: Domain
     count: int = Field(default=5, ge=1)
+    focus: str = Field(default="", max_length=200)
