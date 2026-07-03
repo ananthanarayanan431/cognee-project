@@ -458,6 +458,14 @@ async def end_session(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Idempotent: the frontend POSTs /end from three paths — the "End session"
+    # button, the "← Back" nav, and the beforeunload beacon — so one session can
+    # reach here more than once. Finalize exactly once; a repeat call must not
+    # re-dispatch the summary write + cognify re-index, which would duplicate the
+    # session-summary node and burn a redundant (expensive) cognify pass.
+    if session.status == "ended":
+        return SuccessResponse(data=EndSessionOut(status="ended"))
+
     await db.execute(
         update(DebateSession)
         .where(DebateSession.id == session_id)

@@ -197,6 +197,24 @@ async def test_end_session_dispatches_finalize_fingerprint_task(
     fake_task.delay.assert_called_once_with("u1", session_id)
 
 
+async def test_end_session_is_idempotent(api_client, session_factory, monkeypatch):
+    """The frontend hits /end from three paths (button, Back nav, unload beacon),
+    so ending an already-ended session must not re-run finalization: no duplicate
+    session-summary node, no redundant cognify re-index."""
+    session_id = await _make_session(session_factory)
+
+    fake_task = Mock()
+    monkeypatch.setattr(sessions_router, "finalize_session_fingerprint_task", fake_task)
+
+    first = api_client.post(f"/api/sessions/{session_id}/end")
+    second = api_client.post(f"/api/sessions/{session_id}/end")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["data"]["status"] == "ended"
+    fake_task.delay.assert_called_once_with("u1", session_id)
+
+
 async def test_list_sessions_flags_has_voice_session(api_client, session_factory):
     voice_session_id = await _make_session(session_factory, topic="Voice Topic")
     text_session_id = await _make_session(session_factory, topic="Text Topic")
