@@ -19,6 +19,7 @@ import time
 
 import cognee
 from cognee.api.v1.search.search import SearchType
+from cognee.tasks.storage import add_data_points
 
 from debatemind.cognee._base import (
     ADD_TIMEOUT,
@@ -30,6 +31,15 @@ from debatemind.cognee._base import (
     ontology_file,
     preview,
     result_text,
+)
+from debatemind.cognee.schema import (
+    ArgumentRecord,
+    PersonalFact,
+    SessionSummary,
+    Topic,
+    UserProfile,
+    topic_id,
+    user_profile_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,11 +94,8 @@ async def remember_argument(
     )
     if reasoning:
         text += f"Reasoning: {reasoning}\n"
-    text += (
-        "Summary: "
-        + _argument_summary(topic, pattern_type, fallacy, evidence_quality, outcome, reasoning)
-        + "\n"
-    )
+    summary = _argument_summary(topic, pattern_type, fallacy, evidence_quality, outcome, reasoning)
+    text += "Summary: " + summary + "\n"
     dataset = fingerprint_dataset(user_id)
 
     logger.info(
@@ -145,6 +152,34 @@ async def remember_argument(
         },
     )
 
+    # Typed node: gives forget() a precise node to delete and the
+    # knowledge-graph view a stable node to render, independent of what
+    # cognify's LLM extraction infers from the prose above.
+    try:
+        owner = UserProfile(id=user_profile_id(user_id), user_id=user_id)
+        topic_node = Topic(id=topic_id(user_id, topic), user_id=user_id, name=topic)
+        record = ArgumentRecord(
+            user_id=user_id,
+            session_id=session_id,
+            topic_name=topic,
+            claim_text=claim_text,
+            pattern_type=pattern_type,
+            fallacy=fallacy,
+            evidence_quality=evidence_quality,
+            outcome=outcome,
+            reasoning=reasoning,
+            summary=summary,
+            topic=topic_node,
+            owner=owner,
+        )
+        await add_data_points([owner, topic_node, record])
+    except Exception:
+        logger.exception(
+            "add_data_points failed for ArgumentRecord user %s — continuing "
+            "(prose write above already succeeded; only the typed node is lost)",
+            user_id,
+        )
+
 
 async def remember_session_summary(
     user_id: str,
@@ -184,13 +219,13 @@ async def remember_session_summary(
     # Prose sentence weaving topic (-> KnowledgeDomain), thinking style, and weak
     # patterns so cognify can extract domain-linked, typed nodes rather than
     # scoring the terse markers alone.
-    text += (
-        "Summary: "
+    summary = (
         f'Over {rounds_played} rounds debating "{topic}" in {mode} mode at '
         f"{difficulty} difficulty, the user won {win_rate:.0%} of exchanges. "
         f"Their thinking style leaned Logic {avg_logic:.1f}, Evidence {avg_evidence:.1f}, "
-        f"Rhetoric {avg_rhetoric:.1f}. Recurring weak patterns: {patterns_str}.\n"
+        f"Rhetoric {avg_rhetoric:.1f}. Recurring weak patterns: {patterns_str}."
     )
+    text += "Summary: " + summary + "\n"
 
     dataset = fingerprint_dataset(user_id)
 
@@ -236,6 +271,30 @@ async def remember_session_summary(
             "elapsed_ms": elapsed_ms(t0),
         },
     )
+
+    try:
+        owner = UserProfile(id=user_profile_id(user_id), user_id=user_id)
+        topic_node = Topic(id=topic_id(user_id, topic), user_id=user_id, name=topic)
+        session_summary = SessionSummary(
+            user_id=user_id,
+            session_id=session_id,
+            topic_name=topic,
+            mode=mode,
+            difficulty=difficulty,
+            rounds_played=rounds_played,
+            win_rate=win_rate,
+            avg_logic=avg_logic,
+            avg_evidence=avg_evidence,
+            avg_rhetoric=avg_rhetoric,
+            weak_patterns=weak_patterns,
+            coaching_note=coaching_note,
+            summary=summary,
+            topic=topic_node,
+            owner=owner,
+        )
+        await add_data_points([owner, topic_node, session_summary])
+    except Exception:
+        logger.exception("add_data_points failed for SessionSummary user %s — continuing", user_id)
 
 
 async def remember_personal_fact(user_id: str, session_id: str, fact_text: str) -> None:
@@ -293,6 +352,15 @@ async def remember_personal_fact(user_id: str, session_id: str, fact_text: str) 
             "elapsed_ms": elapsed_ms(t0),
         },
     )
+
+    try:
+        owner = UserProfile(id=user_profile_id(user_id), user_id=user_id)
+        fact = PersonalFact(
+            user_id=user_id, session_id=session_id, fact_text=fact_text, owner=owner
+        )
+        await add_data_points([owner, fact])
+    except Exception:
+        logger.exception("add_data_points failed for PersonalFact user %s — continuing", user_id)
 
 
 async def recall_user_facts(user_id: str, topic: str = "") -> list[dict]:

@@ -202,3 +202,106 @@ async def test_reactivate_pattern_fact_records_a_reactivated_marker(monkeypatch)
     cognify_mock.assert_awaited_once_with(
         datasets="user_u1_fingerprint", ontology_file_path=_base.ontology_file()
     )
+
+
+async def test_remember_argument_writes_typed_argument_record(monkeypatch):
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", AsyncMock())
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", AsyncMock())
+    add_data_points_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod, "add_data_points", add_data_points_mock)
+
+    await remember_argument(
+        user_id="u1",
+        session_id="s1",
+        topic="AI Safety",
+        claim_text="AI will inevitably take over",
+        pattern_type="SlipperySlope",
+        fallacy="SlipperySlope",
+        evidence_quality="Weak",
+        outcome="Lost",
+        reasoning="Asserts an extreme outcome without a causal chain.",
+    )
+
+    add_data_points_mock.assert_awaited_once()
+    (nodes,), _ = add_data_points_mock.call_args
+    types = {n.type for n in nodes}
+    assert types == {"UserProfile", "Topic", "ArgumentRecord"}
+    record = next(n for n in nodes if n.type == "ArgumentRecord")
+    assert record.user_id == "u1"
+    assert record.session_id == "s1"
+    assert record.topic_name == "AI Safety"
+    assert record.pattern_type == "SlipperySlope"
+    assert record.fallacy == "SlipperySlope"
+    assert record.evidence_quality == "Weak"
+    assert record.outcome == "Lost"
+    assert 'In a debate about "AI Safety"' in record.summary
+    assert record.topic.name == "AI Safety"
+    assert record.owner.user_id == "u1"
+
+
+async def test_remember_argument_typed_write_failure_does_not_raise(monkeypatch):
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", AsyncMock())
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", AsyncMock())
+    monkeypatch.setattr(
+        fingerprint_mod, "add_data_points", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+
+    # Must not raise: the prose write is the load-bearing path, the typed node
+    # is best-effort supplementary.
+    await remember_argument(
+        user_id="u1",
+        session_id="s1",
+        topic="AI Safety",
+        claim_text="claim",
+        pattern_type="EvidenceBased",
+        fallacy=None,
+        evidence_quality="Strong",
+        outcome="Won",
+    )
+
+
+async def test_remember_session_summary_writes_typed_session_summary(monkeypatch):
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", AsyncMock())
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", AsyncMock())
+    add_data_points_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod, "add_data_points", add_data_points_mock)
+
+    await remember_session_summary(
+        user_id="u1",
+        session_id="s1",
+        topic="AI regulation",
+        mode="chat",
+        difficulty="hard",
+        rounds_played=5,
+        win_rate=0.4,
+        avg_logic=6.0,
+        avg_evidence=4.0,
+        avg_rhetoric=7.0,
+        weak_patterns=["SlipperySlope", "StrawMan"],
+    )
+
+    (nodes,), _ = add_data_points_mock.call_args
+    summary = next(n for n in nodes if n.type == "SessionSummary")
+    assert summary.user_id == "u1"
+    assert summary.topic_name == "AI regulation"
+    assert summary.rounds_played == 5
+    assert summary.weak_patterns == ["SlipperySlope", "StrawMan"]
+    assert "the user won" in summary.summary
+
+
+async def test_remember_personal_fact_writes_typed_personal_fact(monkeypatch):
+    monkeypatch.setattr(fingerprint_mod.cognee, "add", AsyncMock())
+    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", AsyncMock())
+    add_data_points_mock = AsyncMock()
+    monkeypatch.setattr(fingerprint_mod, "add_data_points", add_data_points_mock)
+
+    from debatemind.cognee.fingerprint import remember_personal_fact
+
+    await remember_personal_fact("u1", "s1", "I'm a nurse in Denver")
+
+    (nodes,), _ = add_data_points_mock.call_args
+    fact = next(n for n in nodes if n.type == "PersonalFact")
+    assert fact.user_id == "u1"
+    assert fact.session_id == "s1"
+    assert fact.fact_text == "I'm a nurse in Denver"
+    assert fact.owner.user_id == "u1"
