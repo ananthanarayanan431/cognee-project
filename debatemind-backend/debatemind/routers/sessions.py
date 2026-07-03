@@ -28,7 +28,6 @@ from debatemind.schemas.session import (
     TranscriptExchange,
     TranscriptOut,
 )
-from debatemind.services.fingerprint_finalize_svc import finalize_session_fingerprint
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
@@ -39,6 +38,7 @@ from debatemind.types import (
     SuccessResponse,
     UnauthorizedError,
 )
+from debatemind.worker.tasks import finalize_session_fingerprint_task
 
 router = APIRouter()
 
@@ -467,21 +467,18 @@ async def end_session(
 
     _session_wins.pop(session_id, None)
 
-    # Finalize the fingerprint in one ordered background task: write the
-    # session summary first, THEN re-index. Running these as two independent
-    # tasks (as before) let improve_fingerprint's cognify race ahead of the
-    # summary write, so the summary could miss the current re-index pass.
-    def _log_finalize_exc(task: asyncio.Task) -> None:
-        if not task.cancelled() and task.exception():
-            logger.error(
-                "session fingerprint finalize failed for user %s session %s",
-                user_id,
-                session_id,
-                exc_info=task.exception(),
-            )
-
-    finalize_task = asyncio.create_task(finalize_session_fingerprint(user_id, session_id))
-    finalize_task.add_done_callback(_log_finalize_exc)
+    # Finalize the fingerprint in one ordered Celery task: write the session
+    # summary first, THEN re-index. A single task (rather than two independent
+    # dispatches) guarantees the summary is captured before the consolidating
+    # cognify pass — see fingerprint_finalize_svc.finalize_session_fingerprint.
+    try:
+        finalize_session_fingerprint_task.delay(user_id, session_id)
+    except Exception:
+        logger.exception(
+            "finalize_session_fingerprint dispatch failed for user %s session %s",
+            user_id,
+            session_id,
+        )
 
     return SuccessResponse(data=EndSessionOut(status="ended"))
 
