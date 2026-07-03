@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from cachetools import TTLCache
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -250,8 +251,10 @@ _VOICE_MASTERY_THRESHOLD = 3
 
 # In-memory strong-argument counter per voice session, keyed by voice_session_id.
 # Same lifecycle risk as _session_wins in sessions.py (resets on restart),
-# which is acceptable since sessions are short-lived.
-_voice_strong_arg_counts: dict[str, int] = {}
+# which is acceptable since sessions are short-lived. Bounded TTLCache so voice
+# sessions that never reach the end_voice_session tool (dropped connection,
+# closed tab) don't leak their counter for the life of the process.
+_voice_strong_arg_counts: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 
 def _dispatch(task_fn, *args, op_name: str, **kwargs) -> None:

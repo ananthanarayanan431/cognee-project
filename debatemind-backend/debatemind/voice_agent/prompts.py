@@ -40,6 +40,8 @@ def build_voice_system_prompt(
     difficulty: str,
     user_position: str,
     cognee_weaknesses: list[str] | None = None,
+    personal_facts: list[str] | None = None,
+    cognitive_profile: str = "",
 ) -> str:
     tactics = _DIFFICULTY_TACTICS.get(difficulty, _DIFFICULTY_TACTICS["targeted"])
 
@@ -56,6 +58,23 @@ def build_voice_system_prompt(
             cognee_section = (
                 f"\n\n**Known weakness patterns from this user's history** "
                 f"(use these to sharpen your attack strategy — do NOT read them aloud):\n{patterns}"
+            )
+
+    profile_section = ""
+    if cognitive_profile:
+        profile_section = (
+            f"\n\n**Cognitive profile across this user's entire debate history** "
+            f"(strategy fuel only — never read it aloud): {cognitive_profile}"
+        )
+
+    facts_section = ""
+    if personal_facts:
+        facts = "\n".join(f"- {f.strip()}" for f in personal_facts[:5] if f.strip())
+        if facts:
+            facts_section = (
+                f"\n\n**Personal context the user shared in past sessions** "
+                f"(weave into your arguments naturally when relevant — "
+                f"never recite as a list):\n{facts}"
             )
 
     if position_label != "unspecified":
@@ -76,7 +95,7 @@ def build_voice_system_prompt(
 Your purpose is to make the user a better debater by challenging every weak argument, \
 naming every logical flaw, and never letting sloppy reasoning go unchallenged.
 
-**Motion**: {topic}{context_line}{cognee_section}
+**Motion**: {topic}{context_line}{cognee_section}{profile_section}{facts_section}
 
 **User's position**: {position_label}
 {position_rule}
