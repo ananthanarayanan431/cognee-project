@@ -9,6 +9,44 @@ from debatemind.worker.celery_app import celery_app  # noqa: F401 — ensures ta
 logger = logging.getLogger(__name__)
 
 
+def _reset_cognee_async_engines() -> None:
+    """Drop cognee's lru_cached async DB engines so this task rebuilds them on
+    its own event loop.
+
+    Every task runs a fresh asyncio.run() loop, but cognee caches its relational
+    (asyncpg) and graph (neo4j async) engines process-globally via @lru_cache —
+    and @worker_init creates them once in the PARENT process before Celery forks
+    the children, so the children inherit engines bound to a loop they don't own.
+    Reusing such an engine fails with "another operation is in progress" /
+    "attached to a different loop", so only the first task per worker ever
+    succeeded. Clearing the caches forces a fresh, correctly-bound engine for
+    every task (first or not, freshly forked or not).
+    """
+    from cognee.infrastructure.databases.graph.get_graph_engine import create_graph_engine
+    from cognee.infrastructure.databases.relational.create_relational_engine import (
+        create_relational_engine,
+    )
+
+    create_relational_engine.cache_clear()
+    create_graph_engine.cache_clear()
+    try:
+        from cognee.infrastructure.databases.vector.create_vector_engine import (
+            create_vector_engine,
+        )
+
+        cache_clear = getattr(create_vector_engine, "cache_clear", None)
+        if cache_clear:
+            cache_clear()
+    except Exception:
+        logger.debug("vector engine cache clear skipped", exc_info=True)
+
+
+def _run_cognee(coro):
+    """Run a cognee coroutine with freshly-bound engines (see reset helper)."""
+    _reset_cognee_async_engines()
+    return asyncio.run(coro)
+
+
 @worker_init.connect
 def _configure_cognee(**kwargs):
     from cognee.modules.engine.operations.setup import setup as cognee_setup
@@ -35,7 +73,7 @@ def remember_argument_task(
 ) -> None:
     from debatemind.cognee import remember_argument
 
-    asyncio.run(
+    _run_cognee(
         remember_argument(
             user_id=user_id,
             session_id=session_id,
@@ -56,28 +94,28 @@ def remember_argument_task(
 def remember_personal_fact_task(user_id: str, session_id: str, fact_text: str) -> None:
     from debatemind.cognee import remember_personal_fact
 
-    asyncio.run(remember_personal_fact(user_id, session_id, fact_text))
+    _run_cognee(remember_personal_fact(user_id, session_id, fact_text))
 
 
 @celery_app.task(name="debatemind.forget_pattern")
 def forget_pattern_task(user_id: str, pattern_type: str) -> None:
     from debatemind.cognee import forget_pattern
 
-    asyncio.run(forget_pattern(user_id, pattern_type))
+    _run_cognee(forget_pattern(user_id, pattern_type))
 
 
 @celery_app.task(name="debatemind.improve_fingerprint")
 def improve_fingerprint_task(user_id: str) -> None:
     from debatemind.cognee import improve_fingerprint
 
-    asyncio.run(improve_fingerprint(user_id))
+    _run_cognee(improve_fingerprint(user_id))
 
 
 @celery_app.task(name="debatemind.finalize_session_fingerprint")
 def finalize_session_fingerprint_task(user_id: str, session_id: str) -> None:
     from debatemind.services.fingerprint_finalize_svc import finalize_session_fingerprint
 
-    asyncio.run(finalize_session_fingerprint(user_id, session_id))
+    _run_cognee(finalize_session_fingerprint(user_id, session_id))
 
 
 @celery_app.task(name="debatemind.finalize_voice_session_fingerprint")
@@ -95,7 +133,7 @@ def finalize_voice_session_fingerprint_task(
         finalize_voice_session_fingerprint,
     )
 
-    asyncio.run(
+    _run_cognee(
         finalize_voice_session_fingerprint(
             user_id=user_id,
             session_id=session_id,
