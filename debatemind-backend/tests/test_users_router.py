@@ -37,6 +37,15 @@ def test_get_knowledge_graph_returns_nodes_and_edges(client):
     assert data["edges"] == []
 
 
+def test_get_knowledge_graph_returns_200_with_empty_graph_on_error(client):
+    view = {"nodes": [], "edges": [], "error": "graph unavailable"}
+    with patch.object(users_router, "user_graph_view", new=AsyncMock(return_value=view)):
+        res = client.get("/api/users/me/knowledge-graph")
+
+    assert res.status_code == 200
+    assert res.json()["data"] == {"nodes": [], "edges": []}
+
+
 def test_delete_fact_returns_forgotten_status(client):
     with patch.object(
         users_router,

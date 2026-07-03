@@ -1,4 +1,5 @@
 import hashlib
+import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +30,8 @@ from debatemind.services.progress_svc import (
     get_win_rate_by_topic,
 )
 from debatemind.types import NotFoundError, SuccessResponse, UnauthorizedError
+
+logger = logging.getLogger(__name__)
 
 
 class DescribeOut(BaseModel):
@@ -180,6 +183,8 @@ async def get_brain_graph(
 )
 async def get_knowledge_graph(user_id: str = Depends(current_user_id)):
     view = await user_graph_view(user_id)
+    if view.get("error"):
+        logger.warning("user_graph_view returned an error for user %s: %s", user_id, view["error"])
     return SuccessResponse(data=KnowledgeGraphOut(nodes=view["nodes"], edges=view["edges"]))
 
 
