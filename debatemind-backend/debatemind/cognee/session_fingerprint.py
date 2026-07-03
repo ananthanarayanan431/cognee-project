@@ -21,10 +21,15 @@ Postgres -- a graceful degrade to build_graph's old behavior for this session.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
+
+from sqlalchemy import select
 
 from debatemind.agents.constants import PATTERN_TYPES
 from debatemind.cognee.graph_view import _node_props
+from debatemind.database import AsyncSessionLocal
+from debatemind.models.session import Exchange
+from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +86,35 @@ async def _neo4j_tallies(user_id: str, session_id: str) -> tuple[dict[str, list[
             tally[1] += 1
 
     return dict(tallies), neo4j_count
+
+
+async def session_scoped_fingerprint(user_id: str, session_id: str, topic: str) -> GraphOut:
+    tallies, neo4j_count = await _neo4j_tallies(user_id, session_id)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Exchange.detected_pattern, Exchange.outcome)
+            .where(Exchange.session_id == session_id)
+            .where(Exchange.detected_pattern.is_not(None))
+            .order_by(Exchange.created_at)
+        )
+        rows = result.fetchall()
+
+    tallies = _merge_pending_exchanges(tallies, neo4j_count, list(rows))
+
+    pattern_counts = Counter({pattern: count for pattern, (count, _wins) in tallies.items()})
+    if not pattern_counts:
+        return GraphOut(nodes=[], edges=[])
+
+    total = sum(pattern_counts.values())
+    nodes: list[GraphNode] = [GraphNode(id="topic", label=topic[:20], type="topic", weight=1.0)]
+    edges: list[GraphEdge] = []
+
+    for pattern, count in pattern_counts.most_common(8):
+        weight = round(min(count / total * 3, 0.95), 2)
+        win_rate = tallies[pattern][1] / count
+        node_type = "strength" if win_rate >= 0.5 else "weakness"
+        nodes.append(GraphNode(id=pattern, label=pattern, type=node_type, weight=weight))
+        edges.append(GraphEdge(source="topic", target=pattern, weight=weight))
+
+    return GraphOut(nodes=nodes, edges=edges)

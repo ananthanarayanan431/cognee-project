@@ -9,7 +9,12 @@ SQLite.
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
 from debatemind.cognee import session_fingerprint
+from debatemind.database import Base
+from debatemind.models.session import DebateSession, Exchange
 
 
 def test_merge_only_applies_to_the_tail_past_neo4j_count():
@@ -116,3 +121,112 @@ async def test_neo4j_tallies_returns_empty_on_engine_failure():
 
     assert tallies == {}
     assert count == 0
+
+
+@pytest.fixture
+async def seed(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(session_fingerprint, "AsyncSessionLocal", factory)
+
+    async def _seed(session_id: str, user_id: str, topic: str, rows: list[tuple[str, str]]):
+        """rows = [(detected_pattern, outcome), ...], oldest first."""
+        async with factory() as db:
+            db.add(DebateSession(id=session_id, user_id=user_id, topic=topic))
+            await db.flush()
+            for i, (pattern, outcome) in enumerate(rows):
+                db.add(
+                    Exchange(
+                        session_id=session_id,
+                        turn_number=i + 1,
+                        user_message="msg",
+                        detected_pattern=pattern,
+                        outcome=outcome,
+                    )
+                )
+            await db.commit()
+
+    yield _seed
+    await engine.dispose()
+
+
+async def test_empty_session_returns_empty_graph(seed):
+    await seed("s1", "u1", "UBI", [])
+    with _patched([]):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    assert graph.nodes == []
+    assert graph.edges == []
+
+
+async def test_topic_node_is_first_and_label_truncated_to_20(seed):
+    long_topic = "Should social media platforms be regulated by governments"
+    await seed("s1", "u1", long_topic, [("StrawMan", "Lost")])
+    with _patched([_record("a", "u1", "s1", "StrawMan", "Lost")]):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", long_topic)
+
+    assert graph.nodes[0].id == "topic"
+    assert graph.nodes[0].type == "topic"
+    assert graph.nodes[0].weight == 1.0
+    assert graph.nodes[0].label == long_topic[:20]
+
+
+async def test_fully_synced_session_uses_neo4j_tallies_without_duplication(seed):
+    await seed("s1", "u1", "UBI", [("EvidenceBased", "Won")])
+    with _patched([_record("a", "u1", "s1", "EvidenceBased", "Won")]):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    by_id = {n.id: n for n in graph.nodes}
+    assert by_id["EvidenceBased"].type == "strength"
+    assert by_id["EvidenceBased"].weight == 0.95  # 1/1 * 3 capped
+
+
+async def test_merges_pending_exchange_neo4j_has_not_synced_yet(seed):
+    # Neo4j only has the first exchange; the second hasn't synced yet.
+    await seed("s1", "u1", "UBI", [("EvidenceBased", "Won"), ("StrawMan", "Lost")])
+    with _patched([_record("a", "u1", "s1", "EvidenceBased", "Won")]):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    by_id = {n.id: n for n in graph.nodes}
+    assert by_id["EvidenceBased"].type == "strength"
+    assert by_id["StrawMan"].type == "weakness"
+
+
+async def test_falls_back_to_postgres_when_neo4j_unavailable(seed):
+    await seed("s1", "u1", "UBI", [("StrawMan", "Lost"), ("StrawMan", "Lost")])
+    with patch(
+        "cognee.infrastructure.databases.graph.get_graph_engine",
+        new=AsyncMock(side_effect=RuntimeError("boom")),
+    ):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    by_id = {n.id: n for n in graph.nodes}
+    assert by_id["StrawMan"].type == "weakness"
+
+
+async def test_excludes_other_sessions_from_postgres_and_neo4j(seed):
+    await seed("s1", "u1", "UBI", [("StrawMan", "Lost")])
+    await seed("s2", "u1", "UBI", [("Concession", "Won")])  # different session, same topic
+    with _patched([_record("a", "u1", "s1", "StrawMan", "Lost")]):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    ids = {n.id for n in graph.nodes if n.id != "topic"}
+    assert ids == {"StrawMan"}
+
+
+async def test_caps_pattern_nodes_at_eight(seed):
+    # _neo4j_tallies() doesn't filter by _VALID_PATTERNS (Neo4j's ArgumentRecord
+    # nodes are trusted, same as brain_view.user_brain_graph) -- these 10
+    # synthetic pattern names are fine to exercise the most_common(8) cap.
+    # No Postgres rows are seeded, so neo4j_count (10) exceeds len(rows) (0)
+    # and _merge_pending_exchanges's rows[10:] slice is empty: every count
+    # comes straight from Neo4j.
+    neo4j_nodes = [_record(f"n{i}", "u1", "s1", f"Pattern{i}", "Won") for i in range(10)]
+    await seed("s1", "u1", "UBI", [])
+    with _patched(neo4j_nodes):
+        graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
+
+    pattern_nodes = [n for n in graph.nodes if n.id != "topic"]
+    assert len(pattern_nodes) == 8
