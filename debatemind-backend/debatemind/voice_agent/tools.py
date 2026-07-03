@@ -23,18 +23,17 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from debatemind.cognee import (
-    forget_pattern,
-    improve_fingerprint,
-    recall_topic_weaknesses,
-    recall_weaknesses,
-    remember_argument,
-    remember_session_summary,
-)
+from debatemind.cognee import recall_topic_weaknesses, recall_weaknesses
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
 from debatemind.services.mastery_svc import get_active_mastered_patterns
+from debatemind.worker.tasks import (
+    finalize_voice_session_fingerprint_task,
+    forget_pattern_task,
+    improve_fingerprint_task,
+    remember_argument_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,12 +245,11 @@ _VOICE_MASTERY_THRESHOLD = 3
 _voice_strong_arg_counts: dict[str, int] = {}
 
 
-def _log_cognee_exc(task: asyncio.Task) -> None:
-    if not task.cancelled() and task.exception():
-        logger.exception(
-            "cognee background task failed (voice)",
-            exc_info=task.exception(),
-        )
+def _dispatch(task_fn, *args, op_name: str, **kwargs) -> None:
+    try:
+        task_fn.delay(*args, **kwargs)
+    except Exception:
+        logger.exception("%s dispatch failed (voice)", op_name)
 
 
 async def execute_tool(
@@ -492,19 +490,18 @@ async def _save_debate_observation(
         session = session_row.scalar_one_or_none()
         topic = session.topic if session else "unknown"
 
-        task = asyncio.create_task(
-            remember_argument(
-                user_id=user_id,
-                session_id=debate_session_id,
-                topic=topic,
-                claim_text=content,
-                pattern_type=pattern_type,
-                fallacy=content if note_type == "fallacy" else None,
-                evidence_quality=evidence_quality,
-                outcome=outcome,
-            )
+        _dispatch(
+            remember_argument_task,
+            user_id=user_id,
+            session_id=debate_session_id,
+            topic=topic,
+            claim_text=content,
+            pattern_type=pattern_type,
+            fallacy=content if note_type == "fallacy" else None,
+            evidence_quality=evidence_quality,
+            outcome=outcome,
+            op_name="remember_argument",
         )
-        task.add_done_callback(_log_cognee_exc)
 
         # Mirror chat mastery: when the user lands enough strong arguments in a
         # single voice session, mark that pattern as mastered in both Cognee and
@@ -515,8 +512,7 @@ async def _save_debate_observation(
             if count >= _VOICE_MASTERY_THRESHOLD:
                 _voice_strong_arg_counts[voice_session_id] = 0
                 # 1. Cognee: mark pattern as mastered in the knowledge graph
-                prune_task = asyncio.create_task(forget_pattern(user_id, pattern_type))
-                prune_task.add_done_callback(_log_cognee_exc)
+                _dispatch(forget_pattern_task, user_id, pattern_type, op_name="forget_pattern")
                 # 2. SQL: write MasteryLog row so brain graph, reactivate API,
                 #    and get_session_context tool all see the mastery
                 db.add(
@@ -619,27 +615,25 @@ async def _end_voice_session(
             :3
         ]
 
-        summary_task = asyncio.create_task(
-            remember_session_summary(
-                user_id=user_id,
-                session_id=debate_session_id,
-                topic=debate_session.topic,
-                mode="voice",
-                difficulty=debate_session.difficulty,
-                rounds_played=note_count,
-                win_rate=voice_win_rate,
-                avg_logic=0.0,
-                avg_evidence=0.0,
-                avg_rhetoric=0.0,
-                weak_patterns=weak_patterns,
-                coaching_note=closing_summary,
-            )
+        # Ordered: write the summary before re-indexing, in one dispatched
+        # task, so the summary is captured by the same consolidating cognify
+        # pass (previously these were two independent, unordered tasks).
+        _dispatch(
+            finalize_voice_session_fingerprint_task,
+            user_id=user_id,
+            session_id=debate_session_id,
+            topic=debate_session.topic,
+            difficulty=debate_session.difficulty,
+            rounds_played=note_count,
+            win_rate=voice_win_rate,
+            weak_patterns=weak_patterns,
+            coaching_note=closing_summary,
+            op_name="finalize_voice_session_fingerprint",
         )
-        summary_task.add_done_callback(_log_cognee_exc)
-
-    # Re-index the fingerprint after all voice observations and summary are written.
-    improve_task = asyncio.create_task(improve_fingerprint(user_id))
-    improve_task.add_done_callback(_log_cognee_exc)
+    else:
+        # No debate session to summarize, but still re-index any observations
+        # already written during the session.
+        _dispatch(improve_fingerprint_task, user_id, op_name="improve_fingerprint")
 
     return {
         "ended": True,
