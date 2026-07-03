@@ -18,8 +18,9 @@ import {
 import { useClerk as useAuthProvider } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
-import { GraphData, SessionListItem } from "@/types";
+import { GraphData, KnowledgeGraphData, SessionListItem } from "@/types";
 import BrainGraph from "@/components/graph/BrainGraph";
+import KnowledgeGraphView from "@/components/graph/KnowledgeGraphView";
 
 const DIFFICULTY_COLOR: Record<string, string> = {
   balanced: "bg-blue-50 text-blue-600 border border-blue-100",
@@ -158,9 +159,15 @@ function BrainMapModal({
   totalSessions: number;
   description: string | null;
 }) {
+  const [tab, setTab] = useState<"brain" | "knowledge">("brain");
+
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(false);
+
+  const [kgData, setKgData]       = useState<KnowledgeGraphData | null>(null);
+  const [kgLoading, setKgLoading] = useState(false);
+  const [kgError, setKgError]     = useState(false);
 
   useEffect(() => {
     api.getBrainGraph()
@@ -168,6 +175,15 @@ function BrainMapModal({
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (tab !== "knowledge" || kgData || kgLoading) return;
+    setKgLoading(true);
+    api.getKnowledgeGraph()
+      .then((d) => setKgData(d))
+      .catch(() => setKgError(true))
+      .finally(() => setKgLoading(false));
+  }, [tab, kgData, kgLoading]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -185,15 +201,34 @@ function BrainMapModal({
         </div>
 
         <div className="flex items-center gap-5">
-          {LEGEND.map((l) => (
-            <div key={l.label} className="flex items-center gap-1.5">
-              <span
-                className="inline-block w-3 h-3 rounded-full border"
-                style={{ background: l.color, borderColor: l.border }}
-              />
-              <span className="font-sans text-[12px] text-fog">{l.label}</span>
-            </div>
-          ))}
+          <div className="flex items-center gap-1 bg-fog/5 rounded-md p-0.5">
+            <button
+              onClick={() => setTab("brain")}
+              className={`px-2.5 py-1 rounded font-sans text-[11px] transition-colors ${
+                tab === "brain" ? "bg-white text-ink shadow-sm" : "text-fog"
+              }`}
+            >
+              Brain Map
+            </button>
+            <button
+              onClick={() => setTab("knowledge")}
+              className={`px-2.5 py-1 rounded font-sans text-[11px] transition-colors ${
+                tab === "knowledge" ? "bg-white text-ink shadow-sm" : "text-fog"
+              }`}
+            >
+              Knowledge Graph
+            </button>
+          </div>
+          {tab === "brain" &&
+            LEGEND.map((l) => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-3 h-3 rounded-full border"
+                  style={{ background: l.color, borderColor: l.border }}
+                />
+                <span className="font-sans text-[12px] text-fog">{l.label}</span>
+              </div>
+            ))}
         </div>
 
         <button onClick={onClose} className="text-fog/60 hover:text-ink transition-colors p-1">
@@ -203,25 +238,52 @@ function BrainMapModal({
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 relative overflow-hidden bg-[#0d0d0d]">
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-4xl opacity-30 animate-pulse">🧠</span>
-                <p className="font-sans text-[13px] text-white/30">Building your brain map…</p>
+          {tab === "brain" && (
+            <>
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="text-4xl opacity-30 animate-pulse">🧠</span>
+                    <p className="font-sans text-[13px] text-white/30">Building your brain map…</p>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="font-sans text-[13px] text-white/30">Failed to load brain map.</p>
+                </div>
+              )}
+              {graphData && !loading && <BrainGraph data={graphData} />}
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
+                <span className="font-sans text-[10px] text-white/20">
+                  Scroll to zoom · drag nodes · click topic to expand
+                </span>
               </div>
-            </div>
+            </>
           )}
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="font-sans text-[13px] text-white/30">Failed to load brain map.</p>
-            </div>
+          {tab === "knowledge" && (
+            <>
+              {kgLoading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="text-4xl opacity-30 animate-pulse">🕸️</span>
+                    <p className="font-sans text-[13px] text-white/30">Loading knowledge graph…</p>
+                  </div>
+                </div>
+              )}
+              {kgError && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="font-sans text-[13px] text-white/30">Failed to load knowledge graph.</p>
+                </div>
+              )}
+              {kgData && !kgLoading && <KnowledgeGraphView data={kgData} />}
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
+                <span className="font-sans text-[10px] text-white/20">
+                  Scroll to zoom · drag nodes — raw Cognee graph, unfiltered by mastery
+                </span>
+              </div>
+            </>
           )}
-          {graphData && !loading && <BrainGraph data={graphData} />}
-          <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
-            <span className="font-sans text-[10px] text-white/20">
-              Scroll to zoom · drag nodes · click topic to expand
-            </span>
-          </div>
         </div>
 
         <div className="w-1/2 border-l border-border flex flex-col overflow-y-auto flex-shrink-0">
