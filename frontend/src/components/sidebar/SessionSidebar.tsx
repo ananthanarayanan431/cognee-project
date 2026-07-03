@@ -19,13 +19,18 @@ import { useClerk as useAuthProvider } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, KnowledgeGraphData, SessionListItem } from "@/types";
+import type { DebateMode } from "@/lib/debateModes";
 import BrainGraph from "@/components/graph/BrainGraph";
 import KnowledgeGraphView from "@/components/graph/KnowledgeGraphView";
 
 const DIFFICULTY_COLOR: Record<string, string> = {
+  gentle: "bg-emerald-50 text-emerald-600 border border-emerald-100",
   balanced: "bg-blue-50 text-blue-600 border border-blue-100",
   targeted: "bg-amber-50 text-amber-700 border border-amber-100",
   ruthless: "bg-scarlet/10 text-scarlet border border-scarlet/20",
+  relentless: "bg-purple-50 text-purple-700 border border-purple-100",
+  socratic: "bg-indigo-50 text-indigo-600 border border-indigo-100",
+  devils_advocate: "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-100",
 };
 
 function formatDate(iso: string) {
@@ -251,7 +256,7 @@ function BrainMapModal({
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 relative overflow-hidden bg-[#0d0d0d]">
+        <div className="w-[70%] flex-shrink-0 relative overflow-hidden bg-[#0d0d0d]">
           {tab === "brain" && (
             <>
               {loading && (
@@ -300,17 +305,17 @@ function BrainMapModal({
           )}
         </div>
 
-        <div className="w-1/2 border-l border-border flex flex-col overflow-y-auto flex-shrink-0">
+        <div className="flex-1 min-w-0 border-l border-border flex flex-col overflow-y-auto">
           <div className="flex border-b border-border">
-            <div className="flex-1 px-8 py-6 text-center border-r border-border">
-              <p className="font-mono text-[40px] font-bold text-ink leading-none">{totalSessions}</p>
-              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Sessions</p>
+            <div className="flex-1 px-6 py-5 text-center border-r border-border">
+              <p className="font-mono text-[28px] font-bold text-ink leading-none">{totalSessions}</p>
+              <p className="font-sans text-[10px] text-fog uppercase tracking-widest mt-2">Sessions</p>
             </div>
-            <div className="flex-1 px-8 py-6 text-center">
-              <p className="font-mono text-[40px] font-bold text-ink leading-none">
+            <div className="flex-1 px-6 py-5 text-center">
+              <p className="font-mono text-[28px] font-bold text-ink leading-none">
                 {winRate !== null ? `${winRate}%` : "—"}
               </p>
-              <p className="font-sans text-[11px] text-fog uppercase tracking-widest mt-2">Win Rate</p>
+              <p className="font-sans text-[10px] text-fog uppercase tracking-widest mt-2">Win Rate</p>
             </div>
           </div>
 
@@ -439,7 +444,7 @@ export default function SessionSidebar() {
         topic_id: session.topic_id,
         topic: session.topic,
         description: "",
-        difficulty: session.difficulty as "balanced" | "targeted" | "ruthless",
+        difficulty: session.difficulty as DebateMode,
         position: "against",
       },
       false, // reopening an existing session — do not stream a fresh opening
