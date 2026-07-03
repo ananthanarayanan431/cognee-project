@@ -72,9 +72,10 @@ PersonalFact(user_id, session_id, fact_text, created_at)
 ```
 
 - `metadata = {"index_fields": [...]}` on each class picks the field cognee embeds
-  (`ArgumentRecord.summary`, `PersonalFact.fact_text`, `SessionSummary.coaching_note`
-  falling back to a synthesized summary sentence when empty — recall needs *something*
-  embeddable even when the user gave no coaching note).
+  (`ArgumentRecord.summary`, `PersonalFact.fact_text`, `SessionSummary.summary` — the
+  synthesized summary sentence, not `coaching_note`, since that field is frequently
+  empty and recall needs *something* embeddable regardless of whether the user got a
+  coaching note).
 - `UserProfile.id` and `Topic.id` are deterministic (`uuid5` of `f"user:{user_id}"` /
   `f"topic:{user_id}:{name.lower()}"`) so repeated `add_data_points()` calls naturally
   reuse the same node instead of duplicating it — `add_data_points()` dedupes by `id`
