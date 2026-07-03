@@ -4,7 +4,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.mastery import MASTERY_THRESHOLD
-from debatemind.cognee import reactivate_pattern_fact
 from debatemind.models.mastery import MasteryLog
 
 
@@ -48,7 +47,10 @@ async def reactivate_pattern(db: AsyncSession, user_id: str, pattern_type: str) 
     if row is None:
         return False
 
-    await reactivate_pattern_fact(user_id, pattern_type)
+    # Only clears the Postgres gate so the opponent resumes targeting this
+    # pattern — forget_pattern() already permanently deleted its ArgumentRecord
+    # evidence from Cognee, and reactivation does not restore it. New evidence
+    # accumulates fresh from here.
     row.reactivated_at = datetime.now(timezone.utc)
     await db.commit()
     return True

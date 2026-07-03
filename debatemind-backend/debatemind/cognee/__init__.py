@@ -7,16 +7,13 @@ if the internal layout changes.
 """
 
 from debatemind.cognee.fingerprint import (
-    forget_pattern,
     improve_fingerprint,
-    reactivate_pattern_fact,
-    recall_topic_weaknesses,
-    recall_user_facts,
-    recall_weaknesses,
     remember_argument,
     remember_personal_fact,
     remember_session_summary,
 )
+from debatemind.cognee.forget import forget_pattern, forget_personal_fact
+from debatemind.cognee.recall import recall_topic_weaknesses, recall_user_facts, recall_weaknesses
 
 __all__ = [
     "remember_argument",
@@ -27,5 +24,5 @@ __all__ = [
     "recall_user_facts",
     "improve_fingerprint",
     "forget_pattern",
-    "reactivate_pattern_fact",
+    "forget_personal_fact",
 ]

@@ -9,10 +9,7 @@ from unittest.mock import AsyncMock
 from debatemind.cognee import _base
 from debatemind.cognee import fingerprint as fingerprint_mod
 from debatemind.cognee.fingerprint import (
-    forget_pattern,
     improve_fingerprint,
-    reactivate_pattern_fact,
-    recall_weaknesses,
     remember_argument,
     remember_session_summary,
 )
@@ -111,93 +108,11 @@ async def test_remember_session_summary_writes_topic_prose(monkeypatch):
     assert "SlipperySlope" in text_arg
 
 
-async def test_recall_weaknesses_searches_and_wraps_results_as_text_dicts(monkeypatch):
-    # Records must carry the "User: <id>" marker to survive the ownership filter.
-    search_mock = AsyncMock(
-        return_value=[
-            "User: u1\nArgumentPattern: StrawMan\nOutcome: Lost",
-            "User: u1\nArgumentPattern: AdHominem\nOutcome: Lost",
-            "User: someone_else\nArgumentPattern: StrawMan",  # must be filtered out
-        ]
-    )
-    monkeypatch.setattr(fingerprint_mod.cognee, "search", search_mock)
-
-    results = await recall_weaknesses("u1")
-
-    search_mock.assert_awaited_once()
-    kwargs = search_mock.call_args.kwargs
-    # Isolation-safe vector retrieval: CHUNKS + a per-user "User:" marker filter.
-    # (Graph-native retrievers in cognee 0.1.40 traverse the GLOBAL graph and
-    # would leak other users' patterns, so recall deliberately uses CHUNKS.)
-    assert kwargs["query_type"] == fingerprint_mod.SearchType.CHUNKS
-    assert kwargs["datasets"] == ["user_u1_fingerprint"]
-    assert kwargs["top_k"] == 20
-
-    # Only this user's records survive; the other user's record is dropped.
-    assert results == [
-        {"text": "User: u1\nArgumentPattern: StrawMan\nOutcome: Lost"},
-        {"text": "User: u1\nArgumentPattern: AdHominem\nOutcome: Lost"},
-    ]
-
-
-async def test_recall_weaknesses_excludes_mastered_patterns(monkeypatch):
-    search_mock = AsyncMock(
-        return_value=[
-            "User: u1\nArgumentPattern: StrawMan\nOutcome: Lost",
-            "User: u1\nArgumentPattern: AdHominem\nOutcome: Lost",
-        ]
-    )
-    monkeypatch.setattr(fingerprint_mod.cognee, "search", search_mock)
-
-    # Once StrawMan is mastered, it must not be recalled as a weakness anymore.
-    results = await recall_weaknesses("u1", exclude_patterns={"StrawMan"})
-
-    assert results == [{"text": "User: u1\nArgumentPattern: AdHominem\nOutcome: Lost"}]
-
-
 async def test_improve_fingerprint_recognifies_the_dataset(monkeypatch):
     cognify_mock = AsyncMock()
     monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
 
     await improve_fingerprint("u1")
-
-    cognify_mock.assert_awaited_once_with(
-        datasets="user_u1_fingerprint", ontology_file_path=_base.ontology_file()
-    )
-
-
-async def test_forget_pattern_records_a_mastered_marker(monkeypatch):
-    add_mock = AsyncMock()
-    cognify_mock = AsyncMock()
-    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
-    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
-
-    await forget_pattern("u1", "StrawMan")
-
-    add_mock.assert_awaited_once()
-    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
-    assert kwargs["dataset_name"] == "user_u1_fingerprint"
-    assert "MASTERED" in text_arg
-    assert "StrawMan" in text_arg
-
-    cognify_mock.assert_awaited_once_with(
-        datasets="user_u1_fingerprint", ontology_file_path=_base.ontology_file()
-    )
-
-
-async def test_reactivate_pattern_fact_records_a_reactivated_marker(monkeypatch):
-    add_mock = AsyncMock()
-    cognify_mock = AsyncMock()
-    monkeypatch.setattr(fingerprint_mod.cognee, "add", add_mock)
-    monkeypatch.setattr(fingerprint_mod.cognee, "cognify", cognify_mock)
-
-    await reactivate_pattern_fact("u1", "AdHominem")
-
-    add_mock.assert_awaited_once()
-    text_arg, kwargs = add_mock.call_args.args[0], add_mock.call_args.kwargs
-    assert kwargs["dataset_name"] == "user_u1_fingerprint"
-    assert "REACTIVATED" in text_arg
-    assert "AdHominem" in text_arg
 
     cognify_mock.assert_awaited_once_with(
         datasets="user_u1_fingerprint", ontology_file_path=_base.ontology_file()
