@@ -152,14 +152,28 @@ function BrainMapModal({
   onClose,
   winRate,
   totalSessions,
-  description,
 }: {
   onClose: () => void;
   winRate: number | null;
   totalSessions: number;
-  description: string | null;
 }) {
   const [tab, setTab] = useState<"brain" | "knowledge">("brain");
+
+  // The modal is fullscreen, so the sidebar's "Describe me" button is hidden
+  // behind it — the modal owns its own profile generation.
+  const [description, setDescription] = useState<string | null>(null);
+  const [loadingDesc, setLoadingDesc] = useState(false);
+
+  async function handleDescribe() {
+    if (loadingDesc) return;
+    setLoadingDesc(true);
+    try {
+      const data = await api.describeUser();
+      setDescription(data.description);
+    } finally {
+      setLoadingDesc(false);
+    }
+  }
 
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -300,7 +314,15 @@ function BrainMapModal({
             </div>
           </div>
 
-          <div className="flex-1 p-8">
+          <div className="flex-1 p-8 flex flex-col">
+            <button
+              onClick={handleDescribe}
+              disabled={loadingDesc}
+              className="self-start mb-6 flex items-center gap-2 px-4 py-2 rounded-lg bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[13px] text-scarlet disabled:opacity-50"
+            >
+              <IconSparkles size={15} />
+              {loadingDesc ? "Analyzing…" : description ? "Regenerate profile" : "Describe me"}
+            </button>
             {description ? (
               <div className="prose prose-sm max-w-none
                 prose-headings:font-sans prose-headings:font-semibold prose-headings:text-ink
@@ -313,10 +335,10 @@ function BrainMapModal({
                 <ReactMarkdown>{description}</ReactMarkdown>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-3 h-full text-center">
+              <div className="flex flex-col items-center justify-center gap-3 flex-1 text-center">
                 <IconSparkles size={24} className="text-fog/30" />
                 <p className="font-sans text-[14px] text-fog leading-relaxed max-w-[260px]">
-                  Use &ldquo;Describe me&rdquo; in the sidebar to generate your debate profile.
+                  Click &ldquo;Describe me&rdquo; above to generate your debate profile.
                 </p>
               </div>
             )}
@@ -595,7 +617,6 @@ export default function SessionSidebar() {
           onClose={() => setShowBrainMap(false)}
           winRate={winRate}
           totalSessions={sessions.length}
-          description={null}
         />
       )}
     </aside>

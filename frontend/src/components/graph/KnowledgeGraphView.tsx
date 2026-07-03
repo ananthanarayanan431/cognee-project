@@ -103,6 +103,19 @@ export default function KnowledgeGraphView({ data }: { data: KnowledgeGraphData 
       .attr("stroke", "rgba(255,255,255,0.2)")
       .attr("stroke-width", 1);
 
+    // Persistent label below each node (mirrors BrainGraph) so the graph is
+    // readable at a glance rather than only on hover.
+    node
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "hanging")
+      .attr("y", (d) => (NODE_R[d.type] ?? 10) + 3)
+      .attr("fill", "rgba(255,255,255,0.6)")
+      .attr("font-size", "7")
+      .attr("font-family", "Inter, system-ui, sans-serif")
+      .attr("pointer-events", "none")
+      .text((d) => (d.label.length > 16 ? d.label.slice(0, 15) + "…" : d.label));
+
     const tt = tooltipRef.current;
     node
       .on("mouseenter", (ev, d) => {
