@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -37,7 +37,7 @@ def api_client(session_factory, monkeypatch):
             }
         ),
     )
-    monkeypatch.setattr(calibration_router, "remember_argument", AsyncMock())
+    monkeypatch.setattr(calibration_router, "remember_argument_task", MagicMock())
 
     async def override_get_db():
         async with session_factory() as session:
