@@ -34,6 +34,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"]),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "fact_text", name="uq_user_facts_user_id_fact_text"),
     )
     op.create_index("ix_user_facts_user_id", "user_facts", ["user_id"])
 

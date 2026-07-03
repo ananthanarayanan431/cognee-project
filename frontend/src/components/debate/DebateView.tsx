@@ -165,6 +165,7 @@ export default function DebateView() {
             <button
               onClick={() => setVoiceMode(false)}
               aria-label="Text chat"
+              aria-pressed={!voiceMode}
               title="Text chat"
               className={`px-2.5 py-1.5 transition-colors ${!voiceMode ? "bg-ink text-white" : "text-fog hover:text-ink hover:bg-fog/10"}`}
             >
@@ -173,6 +174,7 @@ export default function DebateView() {
             <button
               onClick={() => setVoiceMode(true)}
               aria-label="Voice call"
+              aria-pressed={voiceMode}
               title="Voice call"
               className={`px-2.5 py-1.5 transition-colors ${voiceMode ? "bg-scarlet text-white" : "text-fog hover:text-ink hover:bg-fog/10"}`}
             >
