@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.agents.opponent import generate_continuation, generate_opening
 from debatemind.agents.pipeline import debate_pipeline
 from debatemind.agents.state import DebateState
-from debatemind.cognee import improve_fingerprint, remember_session_summary
 from debatemind.database import AsyncSessionLocal, get_db
 from debatemind.deps import current_user_id
 from debatemind.models.session import DebateSession, Exchange
@@ -29,6 +28,7 @@ from debatemind.schemas.session import (
     TranscriptExchange,
     TranscriptOut,
 )
+from debatemind.services.fingerprint_finalize_svc import finalize_session_fingerprint
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import record_mastery_events
 from debatemind.services.summary_svc import get_session_summary
@@ -46,76 +46,6 @@ router = APIRouter()
 _session_wins: dict[str, int] = {}
 
 logger = logging.getLogger(__name__)
-
-
-async def _write_chat_session_summary(user_id: str, session_id: str) -> None:
-    """Read completed session exchanges and write a summary to the Cognee fingerprint.
-
-    Gives the AI cross-session topic-level context: win rate on this topic,
-    average thinking-style scores, and which patterns were weak this session.
-    Runs as a background task so end_session stays fast.
-    """
-    try:
-        async with AsyncSessionLocal() as db:
-            session_row = (
-                await db.execute(select(DebateSession).where(DebateSession.id == session_id))
-            ).scalar_one_or_none()
-            if not session_row:
-                return
-            exchanges = (
-                (await db.execute(select(Exchange).where(Exchange.session_id == session_id)))
-                .scalars()
-                .all()
-            )
-
-        if not exchanges:
-            return
-
-        total = len(exchanges)
-        won = sum(1 for e in exchanges if e.outcome == "Won")
-        win_rate = won / total
-
-        logics = [e.judge_logic for e in exchanges if e.judge_logic is not None]
-        evidences = [e.judge_evidence for e in exchanges if e.judge_evidence is not None]
-        rhetorics = [e.judge_rhetoric for e in exchanges if e.judge_rhetoric is not None]
-        avg_logic = sum(logics) / len(logics) if logics else 0.0
-        avg_evidence = sum(evidences) / len(evidences) if evidences else 0.0
-        avg_rhetoric = sum(rhetorics) / len(rhetorics) if rhetorics else 0.0
-
-        from collections import Counter
-
-        weak_counts = Counter(
-            e.detected_pattern for e in exchanges if e.detected_pattern and e.outcome != "Won"
-        )
-        weak_patterns = [p for p, _ in weak_counts.most_common(3)]
-
-        await remember_session_summary(
-            user_id=user_id,
-            session_id=session_id,
-            topic=session_row.topic,
-            mode="chat",
-            difficulty=session_row.difficulty,
-            rounds_played=total,
-            win_rate=win_rate,
-            avg_logic=avg_logic,
-            avg_evidence=avg_evidence,
-            avg_rhetoric=avg_rhetoric,
-            weak_patterns=weak_patterns,
-        )
-    except Exception:
-        logger.exception(
-            "remember_session_summary failed for user %s session %s", user_id, session_id
-        )
-
-
-async def _finalize_session_fingerprint(user_id: str, session_id: str) -> None:
-    """Ordered end-of-session fingerprint update: summary first, then re-index.
-
-    Sequencing these (rather than firing both as concurrent tasks) guarantees
-    the session summary is written before the consolidating cognify runs.
-    """
-    await _write_chat_session_summary(user_id, session_id)
-    await improve_fingerprint(user_id)
 
 
 # User-meaningful pipeline nodes, in execution order. remember/prune are
@@ -550,7 +480,7 @@ async def end_session(
                 exc_info=task.exception(),
             )
 
-    finalize_task = asyncio.create_task(_finalize_session_fingerprint(user_id, session_id))
+    finalize_task = asyncio.create_task(finalize_session_fingerprint(user_id, session_id))
     finalize_task.add_done_callback(_log_finalize_exc)
 
     return SuccessResponse(data=EndSessionOut(status="ended"))
