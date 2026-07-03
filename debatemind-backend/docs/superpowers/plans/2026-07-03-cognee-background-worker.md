@@ -900,9 +900,16 @@ async def _remember_facts_node(state: DebateState) -> DebateState:
         return state
 
     for fact_text in new_facts:
-        async_result = remember_personal_fact_task.delay(
-            state["user_id"], state["session_id"], fact_text
-        )
+        try:
+            async_result = remember_personal_fact_task.delay(
+                state["user_id"], state["session_id"], fact_text
+            )
+        except Exception:
+            logger.exception(
+                "remember_personal_fact dispatch failed for user %s — continuing",
+                state["user_id"],
+            )
+            continue
         asyncio.create_task(
             _await_and_invalidate(
                 async_result, invalidate_facts_cache, state["user_id"], "remember_personal_fact"
@@ -979,17 +986,21 @@ async def _remember_node(state: DebateState) -> DebateState:
     # (pre-response); fall back to extractor if judge found nothing.
     fallacy = state.get("judge_fallacy") or state.get("extracted_fallacy")
 
-    async_result = remember_argument_task.delay(
-        user_id=state["user_id"],
-        session_id=state["session_id"],
-        topic=state["topic"],
-        claim_text=enriched_claim,
-        pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-        fallacy=fallacy,
-        evidence_quality=state.get("evidence_quality", "Moderate"),
-        outcome=state.get("outcome", "Neutral"),
-        reasoning=state.get("extracted_reasoning", "") or "",
-    )
+    try:
+        async_result = remember_argument_task.delay(
+            user_id=state["user_id"],
+            session_id=state["session_id"],
+            topic=state["topic"],
+            claim_text=enriched_claim,
+            pattern_type=state.get("extracted_pattern", "EvidenceBased"),
+            fallacy=fallacy,
+            evidence_quality=state.get("evidence_quality", "Moderate"),
+            outcome=state.get("outcome", "Neutral"),
+            reasoning=state.get("extracted_reasoning", "") or "",
+        )
+    except Exception:
+        logger.exception("remember_argument dispatch failed for user %s", state["user_id"])
+        return state
     asyncio.create_task(
         _await_and_invalidate(
             async_result, invalidate_weakness_cache, state["user_id"], "remember_argument"
