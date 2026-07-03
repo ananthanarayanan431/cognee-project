@@ -9,13 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.agents.client import openrouter
-from debatemind.cognee import recall_weaknesses
+from debatemind.cognee import forget_personal_fact, recall_weaknesses
+from debatemind.cognee.graph_view import user_graph_view
 from debatemind.config import settings
 from debatemind.database import get_db
 from debatemind.deps import current_user_id
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
+from debatemind.schemas.knowledge_graph import KnowledgeGraphOut
 from debatemind.schemas.progress import ProgressOut
 from debatemind.services.graph_svc import build_graph
 from debatemind.services.mastery_svc import get_active_mastered_patterns, reactivate_pattern
@@ -163,6 +165,47 @@ async def get_brain_graph(
         edges.append(GraphEdge(source=topic_id, target=pattern_id, weight=weight))
 
     return SuccessResponse(data=GraphOut(nodes=nodes, edges=edges))
+
+
+@router.get(
+    "/me/knowledge-graph",
+    response_model=SuccessResponse[KnowledgeGraphOut],
+    summary="Get raw Cognee knowledge graph",
+    description=(
+        "Retrieve the user's typed Cognee graph (arguments, topics, personal facts, "
+        "session summaries) plus any entities cognify's LLM pass linked to them — "
+        "distinct from /me/brain, which is a Postgres-derived, mastery-colored view."
+    ),
+    responses={401: {"model": UnauthorizedError, "description": "Invalid or missing token"}},
+)
+async def get_knowledge_graph(user_id: str = Depends(current_user_id)):
+    view = await user_graph_view(user_id)
+    return SuccessResponse(data=KnowledgeGraphOut(nodes=view["nodes"], edges=view["edges"]))
+
+
+class ForgetFactOut(BaseModel):
+    node_id: str
+    status: str
+
+
+@router.delete(
+    "/me/facts/{node_id}",
+    response_model=SuccessResponse[ForgetFactOut],
+    summary="Forget a personal fact",
+    description=(
+        "Permanently delete one personal fact the user shared, from both the "
+        "graph and its embedding."
+    ),
+    responses={
+        401: {"model": UnauthorizedError, "description": "Invalid or missing token"},
+        404: {"model": NotFoundError, "description": "Fact not found"},
+    },
+)
+async def delete_fact(node_id: str, user_id: str = Depends(current_user_id)):
+    result = await forget_personal_fact(user_id, node_id)
+    if result["status"] == "not_found":
+        raise HTTPException(status_code=404, detail="Fact not found")
+    return SuccessResponse(data=ForgetFactOut(**result))
 
 
 @router.get(
