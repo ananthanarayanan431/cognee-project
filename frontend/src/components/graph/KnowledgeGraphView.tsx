@@ -7,11 +7,18 @@ import { KnowledgeGraphData, KnowledgeGraphNode } from "@/types";
 // Distinct vocabulary from BrainGraph's weakness/strength/mastered/topic —
 // this renders Cognee's raw typed graph, not the Postgres-derived mastery view.
 const NODE_COLOR: Record<string, string> = {
+  // Typed add_data_points() anchors (debatemind/cognee/schema.py)
   UserProfile: "#0d0d0d",
   Topic: "#1e3a5f",
   ArgumentRecord: "#C0392B",
   SessionSummary: "#8e44ad",
   PersonalFact: "#27AE60",
+  // Cognify's prose-derived entity web (add() -> cognify())
+  TextDocument: "#2c3e50",
+  DocumentChunk: "#34495e",
+  TextSummary: "#16a085",
+  Entity: "#2980B9",
+  EntityType: "#D4AC0D",
   Node: "#555",
 };
 
@@ -21,6 +28,11 @@ const NODE_R: Record<string, number> = {
   ArgumentRecord: 11,
   SessionSummary: 13,
   PersonalFact: 11,
+  TextDocument: 15,
+  DocumentChunk: 9,
+  TextSummary: 12,
+  Entity: 9,
+  EntityType: 14,
   Node: 8,
 };
 

@@ -58,8 +58,41 @@ async def test_includes_cognify_derived_entity_one_hop_from_owned_node():
     ids = {n["id"] for n in result["nodes"]}
     assert ids == {"a", "e"}
     entity = next(n for n in result["nodes"] if n["id"] == "e")
-    assert entity["type"] == "Node"  # untyped/cognify-derived, not one of our schema classes
+    # Cognify's own node types are rendered as themselves (not folded to "Node")
+    # so the panel can color the entity web distinctly from typed anchors.
+    assert entity["type"] == "Entity"
     assert entity["label"] == "SlipperySlope"
+
+
+async def test_seeds_from_document_chunk_user_marker_when_no_typed_nodes():
+    """The real-world case: a user has only cognify's prose graph (add()/cognify)
+    and no typed add_data_points() nodes. Their identity lives ONLY inside each
+    DocumentChunk's text ("User: {uid}"), never as a node property — so scoping
+    must seed off that marker or the whole graph reads as empty."""
+    nodes = [
+        (
+            "chunk",
+            {
+                "id": "chunk",
+                "type": "DocumentChunk",
+                "text": "User: u1\nSession: s1\nTopic: AI safety\nClaim: ...",
+            },
+        ),
+        ("ent", {"id": "ent", "type": "Entity", "name": "StrawMan"}),  # no user_id
+        (
+            "other",
+            {"id": "other", "type": "DocumentChunk", "text": "User: u2\nTopic: taxes"},
+        ),
+    ]
+    edges = [("chunk", "ent", "contains")]
+    with _patched(nodes, edges):
+        result = await user_graph_view("u1")
+
+    ids = {n["id"] for n in result["nodes"]}
+    assert ids == {"chunk", "ent"}  # u1's chunk + its entity; u2's chunk excluded
+    chunk = next(n for n in result["nodes"] if n["id"] == "chunk")
+    assert chunk["type"] == "DocumentChunk"
+    assert chunk["label"] == "AI safety"  # Topic line, not the raw User:/Session: header
 
 
 async def test_excludes_entities_not_connected_to_any_owned_node():
