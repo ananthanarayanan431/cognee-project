@@ -353,26 +353,8 @@ function BrainMapModal({
 
 function BrainSection({ winRate }: { winRate: number | null }) {
   const { sessions } = useDebate();
-  const [description, setDescription] = useState<string | null>(null);
-  const [loadingDesc, setLoadingDesc] = useState(false);
-  const [showDesc, setShowDesc]       = useState(false);
 
   const totalSessions = sessions.length;
-
-  async function handleDescribe() {
-    if (description) {
-      setShowDesc((v) => !v);
-      return;
-    }
-    setLoadingDesc(true);
-    try {
-      const data = await api.describeUser();
-      setDescription(data.description);
-      setShowDesc(true);
-    } finally {
-      setLoadingDesc(false);
-    }
-  }
 
   function handleExport() {
     const url = api.exportProfileUrl();
@@ -418,21 +400,6 @@ function BrainSection({ winRate }: { winRate: number | null }) {
           <p className="font-sans text-[9px] text-fog uppercase tracking-wide mt-0.5">Win rate</p>
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleDescribe}
-          disabled={loadingDesc}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-scarlet/10 hover:bg-scarlet/20 transition-colors font-sans text-[11px] text-scarlet disabled:opacity-50"
-        >
-          <IconSparkles size={12} />
-          {loadingDesc ? "Analyzing…" : showDesc ? "Hide profile" : "Describe me"}
-        </button>
-      </div>
-
-      {showDesc && description && (
-        <p className="mt-2.5 font-sans text-[11px] text-fog leading-relaxed">{description}</p>
-      )}
     </div>
   );
 }
