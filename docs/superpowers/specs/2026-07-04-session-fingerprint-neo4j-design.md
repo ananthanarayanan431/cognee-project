@@ -62,9 +62,20 @@ Algorithm:
    each pattern node. Same shape means `FingerprintGraph.tsx` requires no
    changes.
 
-`routers/sessions.py::get_graph` (currently line ~544) changes its one call
-from `build_graph(user_id, session.topic)` to
-`session_scoped_fingerprint(user_id, session_id, session.topic)`.
+Two call sites in `routers/sessions.py` change from `build_graph(user_id,
+session.topic)` to `session_scoped_fingerprint(user_id, session_id,
+session.topic)`:
+
+- `get_graph` (line ~544, `GET /{session_id}/graph`) — fetched on page
+  load/resume.
+- The per-turn SSE stream (line ~308, inside the `/message` handler) — fires
+  right after the exchange is committed to Postgres and emits the `"graph"`
+  event the frontend live-renders after each turn. This is the call site that
+  most directly exercises the lag scenario this design handles: it runs
+  before the async Celery `remember_argument_task` (dispatched from
+  `agents/pipeline.py::_remember_node`, fired earlier in the same request)
+  can plausibly have written the Neo4j node for the exchange that was just
+  saved.
 
 ## Known limitation
 
