@@ -38,6 +38,8 @@ def test_remember_argument_task_calls_remember_argument(monkeypatch):
         evidence_quality="Strong",
         outcome="Won",
         reasoning="",
+        reasoning_approach=None,
+        cognitive_bias=None,
     )
 
 

@@ -208,11 +208,13 @@ def test_classify_entity_returns_none_for_non_vocab():
 
 
 async def test_profile_layer1_reads_fields_off_the_record(monkeypatch):
-    # No edges at all — Layer 1 (fields on the owned record) must still work.
+    # No edges at all — Layer 1 (structured fields on the owned record) alone.
     id_a, node_a = _node(
         "ArgumentRecord",
         user_id="u1",
         fallacy="StrawMan",
+        reasoning_approach="Inductive",
+        cognitive_bias="ConfirmationBias",
         outcome="Lost",
         topic_name="AI regulation",
     )
@@ -222,39 +224,54 @@ async def test_profile_layer1_reads_fields_off_the_record(monkeypatch):
 
     assert profile["record_count"] == 1
     assert profile["recurring_fallacies"] == ["StrawMan"]
+    assert profile["reasoning_approaches"] == ["Inductive"]
+    assert profile["cognitive_biases"] == ["ConfirmationBias"]
     assert profile["weak_domains"] == ["AI regulation"]
 
 
-async def test_profile_layer2_classifies_cognify_neighbours(monkeypatch):
-    id_a, node_a = _node("ArgumentRecord", user_id="u1", outcome="Lost", topic_name="AI")
-    bias_id, bias_node = _node("Entity", name="ConfirmationBias")  # cognify-derived, no user_id
-    reasoning_id, reasoning_node = _node("Entity", name="Inductive")
-    edges = [(id_a, bias_id, "exhibitsBias"), (reasoning_id, id_a, "usesReasoning")]
-    _patch_graph_engine(
-        monkeypatch,
-        [(id_a, node_a), (bias_id, bias_node), (reasoning_id, reasoning_node)],
-        edges,
-    )
+async def test_profile_layer2_bridges_cognify_entities_via_user_chunks(monkeypatch):
+    # cognify entities carry NO user_id; they are reached through the user's own
+    # DocumentChunk, whose prose embeds the "User: {id}" marker.
+    rec = _node("ArgumentRecord", user_id="u1", outcome="Lost", topic_name="AI")
+    chunk = _node("DocumentChunk", text="User: u1\nSession: s\nClaim: ...")
+    bias = _node("Entity", name="Confirmation Bias")  # fuzzy label, still classifies
+    reasoning = _node("Entity", name="Inductive")
+    edges = [(chunk[0], bias[0], "contains"), (chunk[0], reasoning[0], "contains")]
+    _patch_graph_engine(monkeypatch, [rec, chunk, bias, reasoning], edges)
 
     profile = await recall_cognitive_profile("u1")
 
     assert profile["cognitive_biases"] == ["ConfirmationBias"]
-    assert profile["reasoning_approaches"] == ["Inductive"]  # edge direction agnostic
+    assert profile["reasoning_approaches"] == ["Inductive"]
 
 
-async def test_profile_isolates_by_user_id(monkeypatch):
-    id_a, node_a = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", outcome="Lost")
-    id_b, node_b = _node("ArgumentRecord", user_id="u2", fallacy="AdHominem", outcome="Lost")
-    # u2's record is wired to a bias node; it must not leak into u1's profile.
-    bias_id, bias_node = _node("Entity", name="Overconfidence")
-    edges = [(id_b, bias_id, "exhibitsBias")]
-    _patch_graph_engine(monkeypatch, [(id_a, node_a), (id_b, node_b), (bias_id, bias_node)], edges)
+async def test_profile_bridge_isolates_by_chunk_user_marker(monkeypatch):
+    # u2's chunk wires a bias entity; it must not leak into u1's profile even
+    # though the Entity node itself carries no user_id.
+    rec1 = _node("ArgumentRecord", user_id="u1", fallacy="StrawMan", outcome="Lost")
+    rec2 = _node("ArgumentRecord", user_id="u2", fallacy="AdHominem", outcome="Lost")
+    chunk2 = _node("DocumentChunk", text="User: u2\nSession: s")
+    bias = _node("Entity", name="Overconfidence")
+    edges = [(chunk2[0], bias[0], "contains")]
+    _patch_graph_engine(monkeypatch, [rec1, rec2, chunk2, bias], edges)
 
     profile = await recall_cognitive_profile("u1")
 
     assert profile["record_count"] == 1
     assert profile["recurring_fallacies"] == ["StrawMan"]
-    assert profile["cognitive_biases"] == []  # u2's neighbour excluded
+    assert profile["cognitive_biases"] == []  # u2's chunk entity excluded
+
+
+async def test_profile_no_bridge_when_user_has_no_records(monkeypatch):
+    # A stray chunk with the marker but zero owned records → no profile, no bridge.
+    chunk = _node("DocumentChunk", text="User: u1\nSession: s")
+    bias = _node("Entity", name="ConfirmationBias")
+    _patch_graph_engine(monkeypatch, [chunk, bias], [(chunk[0], bias[0], "contains")])
+
+    profile = await recall_cognitive_profile("u1")
+
+    assert profile["record_count"] == 0
+    assert profile["cognitive_biases"] == []
 
 
 async def test_profile_weights_lost_outcomes_higher(monkeypatch):

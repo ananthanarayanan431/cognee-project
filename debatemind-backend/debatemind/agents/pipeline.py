@@ -95,6 +95,8 @@ async def _remember_node(state: DebateState) -> DebateState:
             evidence_quality=state.get("evidence_quality", "Moderate"),
             outcome=state.get("outcome", "Neutral"),
             reasoning=state.get("extracted_reasoning", "") or "",
+            reasoning_approach=state.get("extracted_reasoning_approach"),
+            cognitive_bias=state.get("extracted_cognitive_bias"),
         )
     except Exception:
         logger.exception(

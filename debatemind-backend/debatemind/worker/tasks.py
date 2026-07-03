@@ -30,6 +30,8 @@ def remember_argument_task(
     evidence_quality: str,
     outcome: str,
     reasoning: str = "",
+    reasoning_approach: str | None = None,
+    cognitive_bias: str | None = None,
 ) -> None:
     from debatemind.cognee import remember_argument
 
@@ -44,6 +46,8 @@ def remember_argument_task(
             evidence_quality=evidence_quality,
             outcome=outcome,
             reasoning=reasoning,
+            reasoning_approach=reasoning_approach,
+            cognitive_bias=cognitive_bias,
         )
     )
 

@@ -15,6 +15,10 @@ class DebateState(TypedDict):
     extracted_pattern: Optional[str]
     extracted_fallacy: Optional[str]
     extracted_reasoning: Optional[str]  # extractor's one-sentence rationale, fed to Cognee
+    # Ontology-typed cognitive signal (ReasoningApproach / CognitiveBias individuals),
+    # None when the message makes no real argument. Feed the cognitive fingerprint.
+    extracted_reasoning_approach: Optional[str]
+    extracted_cognitive_bias: Optional[str]
     evidence_quality: Optional[str]
     personal_facts: list[str]  # non-argument facts the user revealed this turn (name, likes, etc.)
     weakness_context: list[dict]

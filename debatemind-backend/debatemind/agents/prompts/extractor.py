@@ -1,4 +1,11 @@
 from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
+from debatemind.cognee._base import COGNITIVE_BIASES, REASONING_APPROACHES
+
+# Ordered enum values for the structured-output schema (the ontology individuals
+# from debate_domain.owl, kept in sync by tests/test_ontology.py). null is a
+# valid value: a message with no real argument exhibits neither.
+_REASONING_ENUM = sorted(REASONING_APPROACHES) + [None]
+_BIAS_ENUM = sorted(COGNITIVE_BIASES) + [None]
 
 EXTRACTOR_RESPONSE_SCHEMA = {
     "name": "argument_classification",
@@ -14,6 +21,22 @@ EXTRACTOR_RESPONSE_SCHEMA = {
             },
             "pattern_type": {"type": "string", "enum": PATTERN_TYPES},
             "fallacy": {"type": ["string", "null"]},
+            "reasoning_approach": {
+                "type": ["string", "null"],
+                "enum": _REASONING_ENUM,
+                "description": (  # noqa: E501
+                    "The dominant mode of inference the argument uses to reach its "
+                    "conclusion; null when the message makes no real argument."
+                ),
+            },
+            "cognitive_bias": {
+                "type": ["string", "null"],
+                "enum": _BIAS_ENUM,
+                "description": (  # noqa: E501
+                    "The single cognitive bias most clearly evident in the reasoning, "
+                    "or null when none is clearly present. Never force one."
+                ),
+            },
             "evidence_quality": {
                 "type": "string",
                 "enum": ["Strong", "Moderate", "Weak", "Absent"],
@@ -33,6 +56,8 @@ EXTRACTOR_RESPONSE_SCHEMA = {
             "reasoning",
             "pattern_type",
             "fallacy",
+            "reasoning_approach",
+            "cognitive_bias",
             "evidence_quality",
             "personal_facts",
         ],
@@ -45,6 +70,8 @@ def extractor_prompt(topic: str, argument: str, description: str = "") -> str:  
     pattern_list = "\n".join(
         f"- {name}: {desc}" for name, desc in PATTERN_TYPE_DESCRIPTIONS.items()
     )
+    reasoning_list = ", ".join(sorted(REASONING_APPROACHES))
+    bias_list = ", ".join(sorted(COGNITIVE_BIASES))
     context_block = f"\n<context>{description}</context>" if description else ""
     return f"""You are a rigorous debate-pattern classifier. You read one
 message from the user and do two independent jobs:
@@ -82,6 +109,21 @@ but commits no specific fallacy. Do not invent a fallacy just because the
 evidence is weak, and do not reflexively pick the fallacy that shares a name
 with the pattern.
 
+Reasoning approach — the dominant mode of inference, chosen ONLY from:
+{reasoning_list}. Pick the one the conclusion most depends on (e.g. Causal for
+"X causes Y", Inductive for generalizing from cases, Analogical for "like X so
+Y", Deductive for rule-then-instance). Use null when the message makes no real
+argument (small talk, a bare question, a personal remark) or when none of the
+listed modes clearly fits (e.g. a purely rhetorical move like a strawman).
+
+Cognitive bias — the single systematic bias most clearly on display, ONLY from:
+{bias_list}. Name one only when the reasoning genuinely exhibits it
+(ConfirmationBias: only cites what fits their side; Overconfidence: states a
+contested claim as settled fact; MotivatedReasoning: conclusion is driven by
+what they want to be true; AnchoringBias: fixates on one figure/reference;
+AvailabilityBias: leans on a vivid recent example as if typical). Use null when
+none is clearly present — this is the common case; never force one.
+
 Evidence quality — judge strictly what is offered in THIS message, nothing you
 could imagine adding:
   - "Strong": specific, attributable support — a named source, dataset,
@@ -105,27 +147,27 @@ and return an empty array rather than forcing a marginal one.
 <example>
 <topic>Should cities ban single-use plastic bags?</topic>
 <argument>My neighbor switched to reusable bags and said her grocery bill went down, so banning plastic bags clearly saves families money.</argument>
-<output>{{"reasoning": "Generalizes a policy-wide economic claim from one neighbor's anecdote.", "pattern_type": "AnecdotalEvidence", "fallacy": "Hasty Generalization", "evidence_quality": "Weak", "personal_facts": []}}</output>
+<output>{{"reasoning": "Generalizes a policy-wide economic claim from one neighbor's anecdote.", "pattern_type": "AnecdotalEvidence", "fallacy": "Hasty Generalization", "reasoning_approach": "Inductive", "cognitive_bias": "AvailabilityBias", "evidence_quality": "Weak", "personal_facts": []}}</output>
 </example>
 <example>
 <topic>Should remote work be the default for office jobs?</topic>
 <argument>A 2023 Stanford study tracking 16,000 workers found remote employees were 13% more productive and had measurably lower attrition.</argument>
-<output>{{"reasoning": "Cites a specific, named, measurable study directly supporting the claim.", "pattern_type": "EvidenceBased", "fallacy": null, "evidence_quality": "Strong", "personal_facts": []}}</output>
+<output>{{"reasoning": "Cites a specific, named, measurable study directly supporting the claim.", "pattern_type": "EvidenceBased", "fallacy": null, "reasoning_approach": "Inductive", "cognitive_bias": null, "evidence_quality": "Strong", "personal_facts": []}}</output>
 </example>
 <example>
 <topic>Should the voting age be lowered to 16?</topic>
 <argument>Anyone who opposes this clearly doesn't trust young people or believe in democracy.</argument>
-<output>{{"reasoning": "Recasts opponents' position as bad faith rather than engaging their actual argument.", "pattern_type": "StrawMan", "fallacy": "Strawman", "evidence_quality": "Absent", "personal_facts": []}}</output>
+<output>{{"reasoning": "Recasts opponents' position as bad faith rather than engaging their actual argument.", "pattern_type": "StrawMan", "fallacy": "Strawman", "reasoning_approach": null, "cognitive_bias": "MotivatedReasoning", "evidence_quality": "Absent", "personal_facts": []}}</output>
 </example>
 <example>
 <topic>Universal basic income should be implemented globally</topic>
 <argument>hey im anantha, please use this name to call me</argument>
-<output>{{"reasoning": "No argument was made; this is a personal introduction.", "pattern_type": "EvidenceBased", "fallacy": null, "evidence_quality": "Absent", "personal_facts": ["The user's name is Anantha."]}}</output>
+<output>{{"reasoning": "No argument was made; this is a personal introduction.", "pattern_type": "EvidenceBased", "fallacy": null, "reasoning_approach": null, "cognitive_bias": null, "evidence_quality": "Absent", "personal_facts": ["The user's name is Anantha."]}}</output>
 </example>
 <example>
 <topic>Universal basic income should be implemented globally</topic>
 <argument>okay fine, why we need the universal income and I feel the people stay in home and don't go to the job. also I don't really follow sports.</argument>
-<output>{{"reasoning": "Concedes a labor-disincentive point without evidence.", "pattern_type": "AnecdotalEvidence", "fallacy": null, "evidence_quality": "Weak", "personal_facts": ["The user does not follow sports."]}}</output>
+<output>{{"reasoning": "Concedes a labor-disincentive point without evidence.", "pattern_type": "AnecdotalEvidence", "fallacy": null, "reasoning_approach": "Causal", "cognitive_bias": null, "evidence_quality": "Weak", "personal_facts": ["The user does not follow sports."]}}</output>
 </example>
 </examples>
 {context_block}

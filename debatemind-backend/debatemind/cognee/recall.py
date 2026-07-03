@@ -257,38 +257,72 @@ async def recall_user_facts(user_id: str, topic: str = "") -> list[dict]:
 #     topic_name) — always available. This is what powers recurring_fallacies
 #     and weak_domains today.
 #
-#   Layer 2 (ontology entities cognify() extracted — CognitiveBias,
-#     ReasoningApproach, EvidenceType) reached by a one-hop walk out of the
-#     record. NOTE: in the pinned cognee, add_data_points()'s typed nodes and
-#     cognify()'s prose-derived Entity graph are SEPARATE subgraphs — a typed
-#     ArgumentRecord's only edges are its typed Topic/UserProfile links, so
-#     this walk currently surfaces nothing extra. The code is kept because it
-#     is isolation-safe and lights up for free if the two graphs are ever
-#     bridged (e.g. a memify pass linking records to their extracted entities);
-#     until then biases/reasoning/evidence_types come back empty by design.
+#   Layer 2 (the chunk bridge): the ontology entities cognify() extracts
+#     (CognitiveBias, ReasoningApproach, EvidenceType, extra fallacies) live in
+#     a SEPARATE subgraph from the typed ArgumentRecord nodes — the record's
+#     only edges are its typed Topic/UserProfile links, so a walk straight out
+#     of the record reaches nothing. cognify's entities ARE reachable through
+#     the DocumentChunk that carries the argument's prose, and that prose embeds
+#     the "User: {id}" marker remember_argument() writes. So Layer 2 attributes
+#     an entity to a user only by reaching it THROUGH one of that user's own
+#     chunks (_chunk_entity_signal) — never by matching a globally-shared entity
+#     node directly. This supplements Layer 1 with anything cognify inferred
+#     that the structured fields didn't already capture.
 
-_WEAK_EVIDENCE = {"Weak", "Absent"}
 
-
-def _neighbour_ids(edges: list[tuple[str, str]], owned_ids: set[str]) -> dict[str, set[str]]:
-    """One-hop undirected adjacency, restricted to owned records as endpoints."""
-    adj: dict[str, set[str]] = {nid: set() for nid in owned_ids}
+def _neighbour_ids(edges: list[tuple[str, str]], anchor_ids: set[str]) -> dict[str, set[str]]:
+    """One-hop undirected adjacency, keyed by each anchor node's id."""
+    adj: dict[str, set[str]] = {nid: set() for nid in anchor_ids}
     for src, tgt in edges:
-        if src in owned_ids and tgt:
+        if src in anchor_ids and tgt:
             adj[src].add(tgt)
-        if tgt in owned_ids and src:
+        if tgt in anchor_ids and src:
             adj[tgt].add(src)
     return adj
+
+
+def _chunk_entity_signal(
+    user_id: str, nodes_by_id: dict[str, dict], edges: list[tuple[str, str]]
+) -> dict[str, set[str]]:
+    """Cognify entities reachable through THIS user's own DocumentChunks.
+
+    Returns {category: {canonical_name, ...}} for the vocabulary categories.
+    Isolation: entity nodes are global (two users who both commit StrawMan share
+    one node), so an entity is attributed to this user only when it is one hop
+    from a chunk whose prose carries `User: {user_id}` — the marker
+    remember_argument() writes. Matching an entity node directly would leak.
+    """
+    marker = f"User: {user_id}"
+    chunk_ids = {
+        nid
+        for nid, p in nodes_by_id.items()
+        if p.get("type") == "DocumentChunk" and marker in (p.get("text") or "")
+    }
+    if not chunk_ids:
+        return {}
+    adj = _neighbour_ids(edges, chunk_ids)
+    signal: dict[str, set[str]] = {}
+    for cid in chunk_ids:
+        for neighbour_id in adj.get(cid, ()):
+            hit = classify_entity((nodes_by_id.get(neighbour_id) or {}).get("name"))
+            if hit:
+                signal.setdefault(hit[0], set()).add(hit[1])
+    return signal
 
 
 async def recall_cognitive_profile(user_id: str, topic: str = "") -> dict:
     """Aggregate typed cognitive signal across this user's ArgumentRecords.
 
-    Weighted toward Lost outcomes (a weakness that cost a debate matters more
-    than one that didn't). Returns raw counts-derived lists; mastered-pattern
-    exclusion is applied by the caller via filter_profile_patterns() so the
-    result stays cacheable and mastery takes effect on the very next turn
-    (mirrors how recall_weaknesses() is cached raw in opponent.py).
+    Layer 1 reads the structured fields the extractor writes onto each record
+    (fallacy, reasoning_approach, cognitive_bias, topic_name), weighted toward
+    Lost outcomes. Layer 2 (_chunk_entity_signal) supplements it with anything
+    extra cognify inferred, reached through the user's own chunks. Returns raw
+    counts-derived lists; mastered-pattern exclusion is applied by the caller
+    via filter_profile_patterns() so the result stays cacheable and mastery
+    takes effect on the very next turn (like recall_weaknesses() in opponent.py).
+
+    `topic` narrows the Layer-1 records; the Layer-2 bridge stays user-global
+    since biases/reasoning are cross-topic traits, not topic-specific.
     """
     t0 = time.monotonic()
     nodes_by_id, edges = await _load_graph()
@@ -304,45 +338,42 @@ async def recall_cognitive_profile(user_id: str, topic: str = "") -> dict:
     fallacies: Counter = Counter()
     reasoning: Counter = Counter()
     biases: Counter = Counter()
-    evidence_types: Counter = Counter()
     weak_domains: Counter = Counter()
 
-    adj = _neighbour_ids(edges, set(owned))
-    for nid, props in owned.items():
+    # Layer 1 — structured fields on the owned record (reliable, outcome-weighted).
+    _field_counters = (
+        ("fallacy", "fallacy", fallacies),
+        ("reasoning_approach", "reasoning", reasoning),
+        ("cognitive_bias", "bias", biases),
+    )
+    for props in owned.values():
         lost = props.get("outcome") == "Lost"
         weight = 2 if lost else 1
-
-        # Layer 1 — structured fields already on the owned record (reliable).
-        hit = classify_entity(props.get("fallacy"))
-        if hit and hit[0] == "fallacy":
-            fallacies[hit[1]] += weight
+        for field, category, counter in _field_counters:
+            hit = classify_entity(props.get(field))
+            if hit and hit[0] == category:
+                counter[hit[1]] += weight
         if lost:
             domain = (props.get("topic_name") or "").strip()
             if domain:
                 weak_domains[domain] += 1
 
-        # Layer 2 — cognify's ontology neighbours (best-effort, graph-derived).
-        for neighbour_id in adj.get(nid, ()):
-            neighbour = nodes_by_id.get(neighbour_id) or {}
-            hit = classify_entity(neighbour.get("name") or neighbour.get("summary"))
-            if not hit:
-                continue
-            category, canonical = hit
-            if category == "fallacy":
-                fallacies[canonical] += weight
-            elif category == "reasoning":
-                reasoning[canonical] += weight
-            elif category == "bias":
-                biases[canonical] += weight
-            elif category == "evidence_type":
-                evidence_types[canonical] += weight
+    # Layer 2 — cognify entities via this user's own chunks, supplementing Layer 1.
+    bridge = _chunk_entity_signal(user_id, nodes_by_id, edges) if owned else {}
+
+    def _merge(counter: Counter, category: str, k: int) -> list[str]:
+        names = [name for name, _ in counter.most_common(k)]
+        for extra in sorted(bridge.get(category, ())):
+            if extra not in names and len(names) < k:
+                names.append(extra)
+        return names
 
     profile = {
         "record_count": len(owned),
-        "recurring_fallacies": [name for name, _ in fallacies.most_common(4)],
-        "cognitive_biases": [name for name, _ in biases.most_common(3)],
-        "reasoning_approaches": [name for name, _ in reasoning.most_common(3)],
-        "evidence_types": [name for name, _ in evidence_types.most_common(3)],
+        "recurring_fallacies": _merge(fallacies, "fallacy", 4),
+        "cognitive_biases": _merge(biases, "bias", 3),
+        "reasoning_approaches": _merge(reasoning, "reasoning", 3),
+        "evidence_types": _merge(Counter(), "evidence_type", 3),
         "weak_domains": [name for name, _ in weak_domains.most_common(3)],
     }
     logger.info(
