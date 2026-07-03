@@ -66,6 +66,41 @@ small talk. Write each as one short standalone third-person sentence.
 {pattern_list}
 </pattern_types>
 
+<classification_rules>
+Work in this order: first write the one-sentence `reasoning`, then let it drive
+the labels — never pick a label first and justify it afterward.
+
+Dominant pattern: a message can show more than one move. Choose the single
+pattern that carries the most persuasive weight — the one the argument would
+collapse without. Use "EvidenceBased" only when cited facts, data, or named
+sources are the load-bearing element, not merely mentioned in passing.
+
+Pattern vs. fallacy: `pattern_type` is HOW the message tries to persuade;
+`fallacy` is a distinct, named reasoning error. Name a fallacy only when one is
+clearly committed — leave it null when the reasoning is merely thin or unsourced
+but commits no specific fallacy. Do not invent a fallacy just because the
+evidence is weak, and do not reflexively pick the fallacy that shares a name
+with the pattern.
+
+Evidence quality — judge strictly what is offered in THIS message, nothing you
+could imagine adding:
+  - "Strong": specific, attributable support — a named source, dataset,
+    statistic, or a concrete, checkable mechanism.
+  - "Moderate": real support that is unsourced, general, or only partly relevant
+    (a plausible reason or a real example given without attribution).
+  - "Weak": a single anecdote, hearsay, or a bare assertion presented as if it
+    were proof.
+  - "Absent": no evidentiary support at all — pure opinion, emotion, a question,
+    or small talk.
+
+Personal facts: capture only stable facts the user asserts about THEMSELVES
+(identity, preferences, occupation, background, life circumstances). Exclude
+their stance or claims on the debate topic, passing moods, hypotheticals, and
+anything you infer rather than they state outright. Each fact stands alone,
+third-person and self-contained ("The user works as a nurse."). De-duplicate,
+and return an empty array rather than forcing a marginal one.
+</classification_rules>
+
 <examples>
 <example>
 <topic>Should cities ban single-use plastic bags?</topic>

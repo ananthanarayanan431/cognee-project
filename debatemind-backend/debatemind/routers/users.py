@@ -297,9 +297,11 @@ async def describe_user(
         f"- Mastered argument patterns: {mastered_list}\n"
         f"- Current weaknesses: {weakness_list}\n"
         f"- Win rate by topic:\n{topic_lines}\n\n"
-        "Write the profile in a direct, insightful, and encouraging tone."
-        " Be specific — reference actual numbers and patterns."
-        " Keep it under 200 words total."
+        "Ground every claim in the stats above — cite the actual numbers and"
+        " pattern names, and never invent figures, sessions, or trends not shown"
+        " (if a stat is empty or zero, say so plainly rather than guessing)."
+        " Write in a direct, insightful, and encouraging tone, and end with one"
+        " concrete thing they should practise next. Keep it under 200 words total."
     )
 
     response = await openrouter.chat.completions.create(

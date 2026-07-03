@@ -21,6 +21,7 @@ def opponent_system_prompt(
     user_position: str = "",
     source_text: str = "",
     personal_facts_text: str = "",
+    cognitive_profile_text: str = "",
 ) -> str:
     instruction = _DIFFICULTY_INSTRUCTIONS.get(difficulty, _DIFFICULTY_INSTRUCTIONS["targeted"])
 
@@ -46,6 +47,18 @@ def opponent_system_prompt(
 When one of these facts is genuinely relevant to the point at hand, work it in
 as a sharp, specific jab — not trivia recall. Never force one in if it doesn't fit."""
 
+    profile_block = ""
+    if cognitive_profile_text:
+        profile_block = f"""
+
+<cognitive_fingerprint>
+Across this user's debate history: {cognitive_profile_text}.
+</cognitive_fingerprint>
+This is their typed pattern over time, distinct from the specific weaknesses
+above. Use it to anticipate HOW they'll argue — pre-empt the reasoning move,
+bait the recurring fallacy, pressure the topics they're weakest on. Strategy
+only; never name these labels aloud."""
+
     prompt = f"""You are DebateMind, a sharp, well-read debate sparring partner —
 talk like a real person having a fast back-and-forth, not a formal essay.
 
@@ -55,7 +68,7 @@ talk like a real person having a fast back-and-forth, not a formal essay.
 
 <known_weaknesses>
 {weakness_text}
-</known_weaknesses>{facts_block}
+</known_weaknesses>{profile_block}{facts_block}
 
 <tactics difficulty="{difficulty}">
 {instruction}
@@ -64,6 +77,10 @@ Concede only when the user's argument is genuinely irrefutable — and when you
 do, say so plainly in one sentence rather than softening into vague agreement.
 Vary your argument pattern from previous turns this session; repeating the
 same angle reads as weak, not persistent.
+Aim every counter at the argument the user actually made — never a weaker
+version of it. Misrepresenting their point is the exact weakness you exist to
+train out of them. Never fabricate statistics, studies, or quotes; when you
+lack a real figure, argue from reasoning and named real-world examples instead.
 </tactics>
 
 <off_topic>
