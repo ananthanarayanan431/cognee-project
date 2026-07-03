@@ -403,17 +403,15 @@ async def test_excludes_other_sessions_from_postgres_and_neo4j(seed):
 
 
 async def test_caps_pattern_nodes_at_eight(seed):
-    rows = [(f"Pattern{i}", "Won") for i in range(10)]
-    # Only the first 8 pattern names matter for this cap check; reuse valid
-    # names by cycling through PATTERN_TYPES-adjacent stand-ins isn't needed --
-    # patch _VALID_PATTERNS-independent path via Neo4j records directly.
+    # _neo4j_tallies() doesn't filter by _VALID_PATTERNS (Neo4j's ArgumentRecord
+    # nodes are trusted, same as brain_view.user_brain_graph) -- these 10
+    # synthetic pattern names are fine to exercise the most_common(8) cap.
+    # No Postgres rows are seeded, so neo4j_count (10) exceeds len(rows) (0)
+    # and _merge_pending_exchanges's rows[10:] slice is empty: every count
+    # comes straight from Neo4j.
     neo4j_nodes = [_record(f"n{i}", "u1", "s1", f"Pattern{i}", "Won") for i in range(10)]
+    await seed("s1", "u1", "UBI", [])
     with _patched(neo4j_nodes):
-        # Bypass the PATTERN_TYPES filter for this synthetic test by seeding
-        # no Postgres rows at all -- neo4j_count will exceed len(rows) (0),
-        # so _merge_pending_exchanges's rows[neo4j_count:] slice is empty and
-        # every count comes straight from Neo4j regardless of _VALID_PATTERNS.
-        await seed("s1", "u1", "UBI", [])
         graph = await session_fingerprint.session_scoped_fingerprint("u1", "s1", "UBI")
 
     pattern_nodes = [n for n in graph.nodes if n.id != "topic"]
@@ -545,7 +543,7 @@ async def test_get_graph_404s_for_another_users_session(api_client, session_fact
 - [ ] **Step 3: Run the router tests and confirm they fail**
 
 Run: `cd debatemind-backend && .venv/bin/pytest tests/test_sessions_router.py -v`
-Expected: FAIL — the streaming test fails because `sessions_router` has no attribute `session_scoped_fingerprint` to monkeypatch; the two new `test_get_graph_*` tests fail the same way once reached (or with an `AttributeError` from `monkeypatch.setattr`, since strict mode requires the attribute to already exist... note: `monkeypatch.setattr` requires the target attribute to exist unless `raising=False`. Since the router hasn't imported `session_scoped_fingerprint` yet, this step's tests fail with `AttributeError: <module 'debatemind.routers.sessions'> has no attribute 'session_scoped_fingerprint'` — confirming the wiring in Step 4 is what's missing.
+Expected: FAIL — `monkeypatch.setattr` requires the target attribute to already exist, and `sessions_router` hasn't imported `session_scoped_fingerprint` yet, so all three touched tests fail with `AttributeError: <module 'debatemind.routers.sessions'> has no attribute 'session_scoped_fingerprint'`. This confirms the wiring in Step 4 is what's missing.
 
 - [ ] **Step 4: Wire the router to `session_scoped_fingerprint`**
 
