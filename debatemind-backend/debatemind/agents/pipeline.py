@@ -12,38 +12,31 @@ from debatemind.agents.opponent import (
     invalidate_weakness_cache,
 )
 from debatemind.agents.state import DebateState
-from debatemind.cognee import forget_pattern, remember_argument, remember_personal_fact
+from debatemind.cognee._base import ADD_TIMEOUT, COGNIFY_TIMEOUT
 from debatemind.database import AsyncSessionLocal
 from debatemind.services.user_facts_svc import record_user_facts
+from debatemind.worker.tasks import (
+    forget_pattern_task,
+    remember_argument_task,
+    remember_personal_fact_task,
+)
 
 logger = logging.getLogger(__name__)
 
-
-def _make_remember_callback(user_id: str):
-    def _callback(task: asyncio.Task) -> None:
-        if not task.cancelled() and task.exception():
-            logger.exception(
-                "remember_argument background task failed",
-                exc_info=task.exception(),
-            )
-        # Invalidate regardless of outcome: on success the next turn should see
-        # the fresh write immediately rather than up to an hour later; on
-        # failure a retryable fresh recall is harmless.
-        invalidate_weakness_cache(user_id)
-
-    return _callback
+# Generous upper bound on how long a dispatched remember task can take: cognee
+# add() (up to ADD_TIMEOUT) followed by cognify() (up to COGNIFY_TIMEOUT).
+_RESULT_TIMEOUT = ADD_TIMEOUT + COGNIFY_TIMEOUT
 
 
-def _make_fact_remember_callback(user_id: str):
-    def _callback(task: asyncio.Task) -> None:
-        if not task.cancelled() and task.exception():
-            logger.exception(
-                "remember_personal_fact background task failed",
-                exc_info=task.exception(),
-            )
-        invalidate_facts_cache(user_id)
-
-    return _callback
+async def _await_and_invalidate(async_result, invalidate_fn, user_id: str, op_name: str) -> None:
+    try:
+        await asyncio.to_thread(async_result.get, timeout=_RESULT_TIMEOUT)
+    except Exception:
+        logger.exception("%s background task failed", op_name)
+    # Invalidate regardless of outcome: on success the next turn should see
+    # the fresh write immediately rather than up to an hour later; on
+    # failure a retryable fresh recall is harmless.
+    invalidate_fn(user_id)
 
 
 async def _remember_facts_node(state: DebateState) -> DebateState:
@@ -59,10 +52,14 @@ async def _remember_facts_node(state: DebateState) -> DebateState:
         return state
 
     for fact_text in new_facts:
-        task = asyncio.create_task(
-            remember_personal_fact(state["user_id"], state["session_id"], fact_text)
+        async_result = remember_personal_fact_task.delay(
+            state["user_id"], state["session_id"], fact_text
         )
-        task.add_done_callback(_make_fact_remember_callback(state["user_id"]))
+        asyncio.create_task(
+            _await_and_invalidate(
+                async_result, invalidate_facts_cache, state["user_id"], "remember_personal_fact"
+            )
+        )
     return state
 
 
@@ -80,20 +77,22 @@ async def _remember_node(state: DebateState) -> DebateState:
     # (pre-response); fall back to extractor if judge found nothing.
     fallacy = state.get("judge_fallacy") or state.get("extracted_fallacy")
 
-    task = asyncio.create_task(
-        remember_argument(
-            user_id=state["user_id"],
-            session_id=state["session_id"],
-            topic=state["topic"],
-            claim_text=enriched_claim,
-            pattern_type=state.get("extracted_pattern", "EvidenceBased"),
-            fallacy=fallacy,
-            evidence_quality=state.get("evidence_quality", "Moderate"),
-            outcome=state.get("outcome", "Neutral"),
-            reasoning=state.get("extracted_reasoning", "") or "",
+    async_result = remember_argument_task.delay(
+        user_id=state["user_id"],
+        session_id=state["session_id"],
+        topic=state["topic"],
+        claim_text=enriched_claim,
+        pattern_type=state.get("extracted_pattern", "EvidenceBased"),
+        fallacy=fallacy,
+        evidence_quality=state.get("evidence_quality", "Moderate"),
+        outcome=state.get("outcome", "Neutral"),
+        reasoning=state.get("extracted_reasoning", "") or "",
+    )
+    asyncio.create_task(
+        _await_and_invalidate(
+            async_result, invalidate_weakness_cache, state["user_id"], "remember_argument"
         )
     )
-    task.add_done_callback(_make_remember_callback(state["user_id"]))
     return state
 
 
@@ -101,16 +100,17 @@ async def _mastery_prune_node(state: DebateState) -> DebateState:
     # `mastery_events` is read downstream (routers/sessions.py) to persist
     # MasteryLog rows and to notify the frontend. The Cognee write below is a
     # best-effort supplementary fact — Postgres is the source of truth for
-    # gating (see get_active_mastered_patterns) — so a failure here must not
-    # erase the achieved-mastery list, or the feature only ever "fires" when
-    # Cognee happens to be down. Mirrors voice_agent/tools.py, which writes
-    # MasteryLog unconditionally via a fire-and-forget forget_pattern task.
+    # gating (see get_active_mastered_patterns) — so a dispatch failure here
+    # must not erase the achieved-mastery list, or the feature only ever
+    # "fires" when Cognee happens to be down. Mirrors voice_agent/tools.py,
+    # which writes MasteryLog unconditionally regardless of the dispatched
+    # forget_pattern task's outcome.
     for pattern in state.get("mastery_events", []):
         try:
-            await forget_pattern(state["user_id"], pattern)
+            forget_pattern_task.delay(state["user_id"], pattern)
         except Exception:
             logger.exception(
-                "forget_pattern failed for user %s pattern %s — continuing",
+                "forget_pattern dispatch failed for user %s pattern %s — continuing",
                 state["user_id"],
                 pattern,
             )
