@@ -10,6 +10,10 @@ export interface TranscriptLine {
   speaker: "user" | "ai";
   text: string;
   timestamp: number;
+  // Realtime item this line belongs to. AI transcript deltas are grouped by it
+  // so an interleaved user line can't split one utterance across two bubbles,
+  // and the authoritative `...transcript.done` text can be reconciled onto it.
+  itemId?: string;
 }
 
 export interface VoiceSummary {
@@ -169,25 +173,61 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
 
     // ── AI speech transcript (streaming delta) ────────────────────────────────
     // GA Realtime renamed this from "response.audio_transcript.delta" (beta).
+    // Group deltas by the response item they belong to (item_id), not by
+    // "is the last line an AI line?": while the AI is speaking, a user
+    // transcription can complete and push a user bubble in between, which would
+    // otherwise start a fresh AI bubble and split one utterance across two,
+    // each showing only part of the sentence.
     if (type === "response.output_audio_transcript.delta") {
       const delta = (msg.delta as string) ?? "";
+      const itemId = msg.item_id as string | undefined;
       if (delta) {
         aiDeltaRef.current += delta;
         setTranscript((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.speaker === "ai") {
-            return [...prev.slice(0, -1), { ...last, text: last.text + delta }];
+          const idx = itemId
+            ? prev.findIndex((l) => l.speaker === "ai" && l.itemId === itemId)
+            : prev.reduce((acc, l, i) => (l.speaker === "ai" ? i : acc), -1);
+          if (idx !== -1) {
+            const target = prev[idx];
+            const next = [...prev];
+            next[idx] = { ...target, text: target.text + delta };
+            return next;
           }
-          return [...prev, { id: nextId(), speaker: "ai", text: delta, timestamp: Date.now() }];
+          return [
+            ...prev,
+            { id: nextId(), speaker: "ai", text: delta, timestamp: Date.now(), itemId },
+          ];
         });
       }
     }
 
-    // ── AI speech transcript (complete utterance) — persist to DB ─────────────
+    // ── AI speech transcript (complete utterance) — reconcile + persist ───────
     // GA Realtime renamed this from "response.audio_transcript.done" (beta).
+    // The done event carries the authoritative full transcript. Reconcile the
+    // on-screen line with it so any dropped/split deltas are healed to the
+    // complete sentence, then persist that full text.
     if (type === "response.output_audio_transcript.done") {
-      const text = ((msg.transcript as string) ?? aiDeltaRef.current).trim();
+      const full = (msg.transcript as string) ?? "";
+      const itemId = msg.item_id as string | undefined;
+      const text = (full || aiDeltaRef.current).trim();
       aiDeltaRef.current = "";
+      if (text) {
+        setTranscript((prev) => {
+          const idx = itemId
+            ? prev.findIndex((l) => l.speaker === "ai" && l.itemId === itemId)
+            : prev.reduce((acc, l, i) => (l.speaker === "ai" ? i : acc), -1);
+          if (idx === -1) {
+            return [
+              ...prev,
+              { id: nextId(), speaker: "ai", text, timestamp: Date.now(), itemId },
+            ];
+          }
+          if (prev[idx].text === text) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], text };
+          return next;
+        });
+      }
       const vsId = voiceSessionIdRef.current;
       if (text && vsId) {
         api.saveTranscriptLine(sessionIdRef.current, vsId, "ai", text).catch(() => {});

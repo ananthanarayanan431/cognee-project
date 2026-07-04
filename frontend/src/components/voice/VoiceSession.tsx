@@ -320,12 +320,15 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
     return () => clearInterval(id);
   }, [status, refreshGraph]);
 
-  // After the session ends, the last observations + the voice score are still
-  // being written async. Re-fetch a few times on a decay schedule so the graph
-  // and score bar catch up without the user having to reopen the session.
+  // After the session ends, the score and the fingerprint patterns are still
+  // being written async — the score lands in-process within a second or two,
+  // but each derived argument pattern is a separate Celery→Neo4j write, so the
+  // graph can take longer to fill in. Re-fetch on a decay schedule that runs
+  // out past those writes so the graph and score bar catch up without the user
+  // having to reopen the session.
   useEffect(() => {
     if (status !== "ended") return;
-    const timers = [1500, 5000, 12000].map((delay) =>
+    const timers = [1500, 5000, 12000, 20000, 30000].map((delay) =>
       setTimeout(() => {
         refreshGraph();
         refreshSummary();
