@@ -41,9 +41,33 @@ def _reset_cognee_async_engines() -> None:
         logger.debug("vector engine cache clear skipped", exc_info=True)
 
 
+def _reset_litellm_logging_worker() -> None:
+    """Drop litellm's process-global async logging worker so this task rebuilds
+    its queue on its own event loop.
+
+    Same shape of bug as the cognee engines above: cognee calls litellm, whose
+    GLOBAL_LOGGING_WORKER caches an asyncio.Queue bound to the first loop that
+    ran it. Every task uses a fresh asyncio.run() loop, so from the second task
+    on the worker's `await self._queue.get()` raises "<Queue> is bound to a
+    different event loop" — an un-awaited background-task crash that spams the
+    logs and silently drops litellm's success/cost callbacks. Clearing the
+    singleton's queue/task forces a fresh, correctly-bound queue per task. Any
+    callbacks still queued from the previous loop are best-effort and are dropped
+    (they were already failing); no functional logging is lost.
+    """
+    try:
+        from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
+
+        GLOBAL_LOGGING_WORKER._queue = None
+        GLOBAL_LOGGING_WORKER._worker_task = None
+    except Exception:
+        logger.debug("litellm logging worker reset skipped", exc_info=True)
+
+
 def _run_cognee(coro):
-    """Run a cognee coroutine with freshly-bound engines (see reset helper)."""
+    """Run a cognee coroutine with freshly-bound engines (see reset helpers)."""
     _reset_cognee_async_engines()
+    _reset_litellm_logging_worker()
     return asyncio.run(coro)
 
 
