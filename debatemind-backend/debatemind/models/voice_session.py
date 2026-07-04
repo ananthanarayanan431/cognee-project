@@ -54,6 +54,17 @@ class VoiceSessionNote(Base):
         String, ForeignKey("voice_sessions.id"), index=True
     )
     # observation | fallacy | strong_argument | concession | position_flip
+    #   | transcript_user | transcript_ai
     note_type: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
+    # For transcript_user notes: the argument pattern this spoken turn was
+    # classified as, written synchronously by voice_score_svc when the turn is
+    # derived. This is the Cognitive Fingerprint's *fast path* — session_
+    # fingerprint.py reads it straight from Postgres so the graph fills in on the
+    # next poll, without waiting on the slow async cognee→Neo4j write (which is
+    # still dispatched as the durable store). Mirrors how text reads
+    # Exchange.detected_pattern. NULL until the turn is classified (or for
+    # small-talk turns that carry no pattern).
+    detected_pattern: Mapped[str] = mapped_column(String, nullable=True)
+    outcome: Mapped[str] = mapped_column(String, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())

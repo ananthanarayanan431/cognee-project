@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from debatemind.database import Base
@@ -178,6 +179,25 @@ async def test_only_new_turns_are_processed(db_session, monkeypatch):
     # Watermark advances to cover every turn seen so far.
     await db_session.refresh(vs)
     assert vs.patterns_derived_count == 3
+
+
+async def test_pattern_written_to_note_for_fast_path(db_session, monkeypatch):
+    # The fingerprint fast path reads the pattern straight off the note, so
+    # derivation must persist detected_pattern/outcome synchronously.
+    vs = await _make_voice_session(db_session, ["My neighbor said prices dropped."])
+    create_mock = AsyncMock(side_effect=[_cls("AnecdotalEvidence", "Weak")])
+    monkeypatch.setattr(voice_score_svc.openrouter.chat.completions, "create", create_mock)
+    monkeypatch.setattr(voice_score_svc.remember_argument_task, "delay", MagicMock())
+
+    await derive_voice_session_patterns(db_session, vs.id)
+
+    note = (
+        await db_session.execute(
+            select(VoiceSessionNote).where(VoiceSessionNote.note_type == "transcript_user")
+        )
+    ).scalar_one()
+    assert note.detected_pattern == "AnecdotalEvidence"
+    assert note.outcome == "Lost"
 
 
 async def test_repeated_derivation_does_not_double_count(db_session, monkeypatch):

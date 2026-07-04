@@ -217,23 +217,26 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
         .scalars()
         .all()
     )
-    user_turns = [n.content for n in notes if n.content and n.content.strip()]
+    # Keep note ids alongside content: the fingerprint fast path writes each
+    # turn's classified pattern back onto its note row (see below), and the id is
+    # what lets us target that specific turn.
+    turns = [(n.id, n.content) for n in notes if n.content and n.content.strip()]
 
     start = vs.patterns_derived_count or 0
-    if start >= len(user_turns):
+    if start >= len(turns):
         # Nothing new since the last pass — a duplicate dispatch, or the tail was
         # already handled live. Release the lock without touching Cognee.
         await db.commit()
         return 0
 
-    pending = user_turns[start:]
+    pending = turns[start:]
     # Capture scoping before the commit (defensive even under
     # expire_on_commit=False) and claim these turns by advancing the watermark
     # now, so the slow LLM classification runs *after* the row lock is released
     # and a concurrent pass sees them as already taken.
     user_id = vs.user_id
     debate_session_id = vs.debate_session_id
-    vs.patterns_derived_count = len(user_turns)
+    vs.patterns_derived_count = len(turns)
     await db.commit()
 
     session = (
@@ -250,13 +253,22 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
         async with sem:
             return await _classify_turn(topic, turn)
 
-    classified = await asyncio.gather(*(_classify_bounded(t) for t in pending))
+    classified = await asyncio.gather(*(_classify_bounded(c) for _nid, c in pending))
 
     dispatched = 0
-    for turn, cls in zip(pending, classified):
+    for (note_id, turn), cls in zip(pending, classified):
         if not cls:
             continue
         outcome = _outcome_for(cls["pattern_type"], cls["evidence_quality"])
+        # Fast path: record the pattern on the note synchronously so the
+        # fingerprint read (session_fingerprint.py) reflects it on the next poll,
+        # without waiting on the slow async cognee→Neo4j write dispatched below.
+        await db.execute(
+            update(VoiceSessionNote)
+            .where(VoiceSessionNote.id == note_id)
+            .values(detected_pattern=cls["pattern_type"], outcome=outcome)
+        )
+        # Durable path: same async Cognee/Neo4j write the text pipeline uses.
         try:
             remember_argument_task.delay(
                 user_id=user_id,
@@ -274,6 +286,8 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
             dispatched += 1
         except Exception:
             logger.exception("remember_argument dispatch failed (voice patterns)")
+
+    await db.commit()
 
     logger.info(
         "voice fingerprint: dispatched %d/%d new patterns for session %s",
