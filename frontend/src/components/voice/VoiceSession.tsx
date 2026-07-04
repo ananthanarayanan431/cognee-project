@@ -376,7 +376,7 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
   const isEnded = status === "ended";
 
   return (
-    <div className="flex flex-col h-full bg-chalk">
+    <div className="flex flex-col flex-1 min-w-0 h-full bg-chalk">
       {/* Header tabs */}
       <div className="bg-white border-b border-border px-5 py-2 flex items-center gap-1">
         <button
