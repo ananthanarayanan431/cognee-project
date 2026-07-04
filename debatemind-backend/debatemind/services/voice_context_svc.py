@@ -12,6 +12,15 @@ before, and when there are fewer than `limit` of them it backfills the
 remaining slots with the tail of the spoken voice transcript — so the opponent
 picks up the conversation with the voice context in hand, whether it is
 re-engaging (/continue) or answering the first typed argument (/message).
+
+The opponent (agents/opponent.py) is a plain LLM call with no history tools, so
+this window is the *only* memory it has of the current debate — anything past it
+is invisible. We therefore hand it the whole session rather than a short tail:
+a full debate is a few thousand tokens against a 100k+ context, so the coherence
+win (no forgetting earlier concessions/contradictions, no repeating counters)
+far outweighs the token cost. MAX_SESSION_TURNS is a safety ceiling so a
+pathologically long session can't blow up the prompt — for any real debate it's
+effectively "everything".
 """
 
 from __future__ import annotations
@@ -21,6 +30,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from debatemind.models.session import Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
+
+# Ceiling on how many most-recent turns of the current session are replayed to
+# the opponent each turn. Well above any normal debate; only a runaway session
+# hits it. Bump freely — it's a token guardrail, not a design constraint.
+MAX_SESSION_TURNS = 50
 
 
 def _pair_transcript(notes: list[VoiceSessionNote]) -> list[dict[str, str]]:

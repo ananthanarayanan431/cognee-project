@@ -52,7 +52,10 @@ from debatemind.schemas.voice import (
     TranscriptLineSavedOut,
     VoiceSessionSummaryOut,
 )
-from debatemind.services.voice_score_svc import score_voice_session_background
+from debatemind.services.voice_score_svc import (
+    derive_voice_session_patterns_background,
+    score_voice_session_background,
+)
 from debatemind.types.responses import SuccessResponse
 from debatemind.voice_agent.session import create_voice_session
 from debatemind.voice_agent.tools import execute_tool
@@ -212,13 +215,22 @@ async def save_transcript_line(
         if not vs:
             raise HTTPException(status_code=404, detail="Voice session not found")
 
+        vs_id = vs.id
         note = VoiceSessionNote(
-            voice_session_id=vs.id,
+            voice_session_id=vs_id,
             note_type=f"transcript_{body.speaker}",
             content=body.text.strip(),
         )
         db.add(note)
         await db.commit()
+
+    # Build the Cognitive Fingerprint live: each user turn is classified into an
+    # argument pattern as soon as it's transcribed, so the graph grows while the
+    # user is still speaking (the frontend polls the graph every few seconds)
+    # instead of only filling in after hang-up. Fire-and-forget; watermark-
+    # idempotent, so it never double-counts with the end-of-session sweep.
+    if body.speaker == "user":
+        asyncio.create_task(derive_voice_session_patterns_background(vs_id))
 
     return SuccessResponse(data=TranscriptLineSavedOut(ok=True))
 

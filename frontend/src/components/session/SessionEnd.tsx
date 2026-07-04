@@ -26,9 +26,14 @@ export default function SessionEnd() {
         .then((s) => {
           if (!live) return;
           setSummary(s);
-          setLoading(false);
-          if (s.score === 0 && attempt < 3) {
+          // Keep the "Loading…" mask up while the score is still 0 and retries
+          // remain, so a not-yet-judged voice session never flashes a 0.0/10.
+          // Reveal the moment a real score arrives, or once retries are spent.
+          const pending = s.score === 0 && attempt < 3;
+          if (pending) {
             timers.push(setTimeout(() => load(attempt + 1), 3000));
+          } else {
+            setLoading(false);
           }
         })
         .catch(() => {

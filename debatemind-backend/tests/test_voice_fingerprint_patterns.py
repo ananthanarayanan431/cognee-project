@@ -38,11 +38,18 @@ def _cls(pattern, evidence, fallacy=None):
     )
 
 
-async def _make_voice_session(db, user_turns: list[str]) -> VoiceSession:
+async def _make_voice_session(
+    db, user_turns: list[str], patterns_derived_count: int = 0
+) -> VoiceSession:
     s = DebateSession(user_id="u1", topic="AI regulation", user_position="against")
     db.add(s)
     await db.flush()
-    vs = VoiceSession(debate_session_id=s.id, user_id="u1", status="ended")
+    vs = VoiceSession(
+        debate_session_id=s.id,
+        user_id="u1",
+        status="ended",
+        patterns_derived_count=patterns_derived_count,
+    )
     db.add(vs)
     await db.flush()
     for t in user_turns:
@@ -110,6 +117,22 @@ async def test_weak_evidence_argument_is_a_weakness(db_session, monkeypatch):
     assert delay_mock.call_args.kwargs["pattern_type"] == "AnecdotalEvidence"
 
 
+async def test_classification_failure_skips_dispatch(db_session, monkeypatch):
+    # One user turn whose extractor call blows up. _classify_turn swallows the
+    # exception (logging it) and returns None, so the turn must be skipped —
+    # no pattern dispatched, no task enqueued — rather than crashing the run.
+    vs = await _make_voice_session(db_session, ["The GDPR precedent shows global uptake."])
+    create_mock = AsyncMock(side_effect=RuntimeError("openrouter exploded"))
+    monkeypatch.setattr(voice_score_svc.openrouter.chat.completions, "create", create_mock)
+    delay_mock = MagicMock()
+    monkeypatch.setattr(voice_score_svc.remember_argument_task, "delay", delay_mock)
+
+    dispatched = await derive_voice_session_patterns(db_session, vs.id)
+
+    assert dispatched == 0
+    delay_mock.assert_not_called()
+
+
 async def test_no_user_turns_dispatches_nothing(db_session, monkeypatch):
     s = DebateSession(user_id="u1", topic="AI regulation")
     db_session.add(s)
@@ -128,3 +151,56 @@ async def test_no_user_turns_dispatches_nothing(db_session, monkeypatch):
 
 async def test_missing_session_returns_zero(db_session):
     assert await derive_voice_session_patterns(db_session, "nope") == 0
+
+
+async def test_only_new_turns_are_processed(db_session, monkeypatch):
+    # Two turns already derived live; only the third (new) turn should be
+    # classified when derivation runs again.
+    vs = await _make_voice_session(
+        db_session,
+        [
+            "The GDPR precedent shows global uptake.",
+            "Studies from the OECD back this up.",
+            "So the regulation is clearly justified.",
+        ],
+        patterns_derived_count=2,
+    )
+    create_mock = AsyncMock(side_effect=[_cls("EvidenceBased", "Strong")])
+    monkeypatch.setattr(voice_score_svc.openrouter.chat.completions, "create", create_mock)
+    delay_mock = MagicMock()
+    monkeypatch.setattr(voice_score_svc.remember_argument_task, "delay", delay_mock)
+
+    dispatched = await derive_voice_session_patterns(db_session, vs.id)
+
+    # Only the single un-derived turn is classified + dispatched.
+    assert create_mock.call_count == 1
+    assert dispatched == 1
+    # Watermark advances to cover every turn seen so far.
+    await db_session.refresh(vs)
+    assert vs.patterns_derived_count == 3
+
+
+async def test_repeated_derivation_does_not_double_count(db_session, monkeypatch):
+    vs = await _make_voice_session(
+        db_session,
+        ["The GDPR precedent shows global uptake.", "Anyone against this hates progress."],
+    )
+    create_mock = AsyncMock(
+        side_effect=[
+            _cls("EvidenceBased", "Strong"),
+            _cls("StrawMan", "Absent", fallacy="Strawman"),
+        ]
+    )
+    monkeypatch.setattr(voice_score_svc.openrouter.chat.completions, "create", create_mock)
+    delay_mock = MagicMock()
+    monkeypatch.setattr(voice_score_svc.remember_argument_task, "delay", delay_mock)
+
+    first = await derive_voice_session_patterns(db_session, vs.id)
+    # A second sweep (e.g. the end-of-session dispatch after the live passes)
+    # sees no new turns and must not re-classify or re-dispatch anything.
+    second = await derive_voice_session_patterns(db_session, vs.id)
+
+    assert first == 2
+    assert second == 0
+    assert create_mock.call_count == 2
+    assert delay_mock.call_count == 2

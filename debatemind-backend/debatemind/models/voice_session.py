@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -29,6 +29,15 @@ class VoiceSession(Base):
     score_logic: Mapped[float] = mapped_column(Float, nullable=True)
     score_evidence: Mapped[float] = mapped_column(Float, nullable=True)
     score_rhetoric: Mapped[float] = mapped_column(Float, nullable=True)
+    # How many of this session's user turns have already been classified into
+    # Cognitive Fingerprint patterns. The fingerprint builds live as the user
+    # speaks: each transcript turn triggers derive_voice_session_patterns, which
+    # only processes turns past this watermark, and the end-of-session dispatch
+    # sweeps up whatever tail arrived too late for a live pass. Keeps the live
+    # per-turn pass and the end pass from double-counting the same turn.
+    patterns_derived_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

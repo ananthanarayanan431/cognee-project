@@ -4,6 +4,17 @@ import { useDebate } from "@/store/debate";
 import { api, handleExpiredSession } from "@/lib/api";
 import { Transcript, VoiceSessionSummary } from "@/types";
 
+// Trigger a client-side file download from an in-memory blob. Shared by the text
+// and voice export paths so the object-URL lifecycle stays in one place.
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function SessionTranscript() {
   const { sessionId, setScreen } = useDebate();
   const token = useDebate((s) => s.token);
@@ -16,22 +27,28 @@ export default function SessionTranscript() {
 
   useEffect(() => {
     if (!sessionId) return;
+    let live = true;
     // A voice session has no text `Exchange` rows — its dialogue lives in the
-    // voice summary. Fetch both; render whichever holds the conversation.
-    Promise.all([
-      api.getTranscript(sessionId),
-      api.getVoiceSummary(sessionId).catch(() => null),
-    ])
+    // voice summary. Fetch both; render whichever holds the conversation. The
+    // summary endpoint returns has_voice_session=false (not an error) for
+    // text-only sessions, so any thrown error here is a real backend/network
+    // failure and should surface rather than be swallowed to null.
+    Promise.all([api.getTranscript(sessionId), api.getVoiceSummary(sessionId)])
       .then(([t, v]) => {
+        if (!live) return;
         setTranscript(t);
         setVoice(v);
         setFetchError(false);
         setLoading(false);
       })
       .catch(() => {
+        if (!live) return;
         setFetchError(true);
         setLoading(false);
       });
+    return () => {
+      live = false;
+    };
   }, [sessionId]);
 
   async function exportTranscript() {
@@ -49,12 +66,7 @@ export default function SessionTranscript() {
       return;
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transcript_${sessionId}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `transcript_${sessionId}.txt`);
   }
 
   // Voice transcripts aren't in the DB export (which reads text exchanges), so
@@ -73,12 +85,7 @@ export default function SessionTranscript() {
       lines.push("", "CLOSING SUMMARY", voice.closing_summary);
     }
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transcript_${sessionId}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `transcript_${sessionId}.txt`);
   }
 
   if (loading) {

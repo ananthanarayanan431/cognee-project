@@ -51,6 +51,9 @@ function nextId() {
   return `vl-${Date.now()}-${_idCounter++}`;
 }
 
+// Bucket for AI transcript deltas that arrive without an item_id.
+const NO_ITEM_KEY = "__no_item__";
+
 export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -62,8 +65,10 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const voiceSessionIdRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  // Accumulates AI transcript deltas so we can persist the full utterance on done.
-  const aiDeltaRef = useRef<string>("");
+  // Accumulates AI transcript deltas per response item so we can persist the
+  // full utterance on done. Keyed by item_id so interleaved response items don't
+  // contaminate each other's fallback text (item-less deltas share one bucket).
+  const aiDeltaRef = useRef<Map<string, string>>(new Map());
   // Set once `end_voice_session` fires; hang up once the AI's closing remarks
   // finish playing (or after a timeout, in case that event never arrives).
   const endingRef = useRef(false);
@@ -126,9 +131,12 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
         strong_arguments: data.strong_arguments,
         concessions: data.concessions,
         position_flips: data.position_flips,
-        score_logic: data.score_logic ?? null,
-        score_evidence: data.score_evidence ?? null,
-        score_rhetoric: data.score_rhetoric ?? null,
+        // Preserve the last non-null score if a later/partial response omits it,
+        // matching the duration/closing_summary fallbacks above — the scorer
+        // lands async, so we never want a stale response to blank a real score.
+        score_logic: data.score_logic ?? prev?.score_logic ?? null,
+        score_evidence: data.score_evidence ?? prev?.score_evidence ?? null,
+        score_rhetoric: data.score_rhetoric ?? prev?.score_rhetoric ?? null,
       }));
     } catch {
       /* transient — the caller retries on a schedule */
@@ -182,7 +190,8 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const delta = (msg.delta as string) ?? "";
       const itemId = msg.item_id as string | undefined;
       if (delta) {
-        aiDeltaRef.current += delta;
+        const key = itemId ?? NO_ITEM_KEY;
+        aiDeltaRef.current.set(key, (aiDeltaRef.current.get(key) ?? "") + delta);
         setTranscript((prev) => {
           const idx = itemId
             ? prev.findIndex((l) => l.speaker === "ai" && l.itemId === itemId)
@@ -209,8 +218,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     if (type === "response.output_audio_transcript.done") {
       const full = (msg.transcript as string) ?? "";
       const itemId = msg.item_id as string | undefined;
-      const text = (full || aiDeltaRef.current).trim();
-      aiDeltaRef.current = "";
+      const key = itemId ?? NO_ITEM_KEY;
+      const text = (full || aiDeltaRef.current.get(key) || "").trim();
+      aiDeltaRef.current.delete(key);
       if (text) {
         setTranscript((prev) => {
           const idx = itemId
@@ -374,7 +384,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setError(null);
     setTranscript([]);
     setSummary(null);
-    aiDeltaRef.current = "";
+    aiDeltaRef.current.clear();
     endingRef.current = false;
     if (endingTimeoutRef.current) {
       clearTimeout(endingTimeoutRef.current);

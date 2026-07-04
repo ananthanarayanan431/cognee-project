@@ -53,6 +53,11 @@ _scoring_in_flight: set[str] = set()
 # comparing the user against the opponent, so we read merit off the turn itself).
 _MERITED_EVIDENCE = {"Strong", "Moderate"}
 
+# Cap on concurrent extractor calls when classifying a voice transcript — a long
+# session has many user turns, and firing one OpenRouter request per turn at once
+# can trip rate limits / overwhelm the provider. Turns still complete in order.
+_MAX_CONCURRENT_CLASSIFICATIONS = 5
+
 
 async def compute_voice_session_score(db, voice_session_id: str) -> dict | None:
     """LLM-judge the voice transcript and persist the three score columns.
@@ -176,16 +181,26 @@ async def _classify_turn(topic: str, argument: str) -> dict | None:
 
 
 async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
-    """Classify the voice transcript into argument patterns and record them.
+    """Classify newly-spoken user turns into argument patterns and record them.
 
-    Reads the user's spoken turns, classifies each with the shared extractor,
-    and dispatches one remember_argument_task per real argument so the
-    Cognitive Fingerprint (Cognee/Neo4j ArgumentRecord nodes, read by
-    session_fingerprint.py) populates for voice sessions the same way it does
-    for text. Returns the number of patterns dispatched.
+    Reads the user's spoken turns past the session's patterns_derived_count
+    watermark, classifies each with the shared extractor, and dispatches one
+    remember_argument_task per real argument so the Cognitive Fingerprint
+    (Cognee/Neo4j ArgumentRecord nodes, read by session_fingerprint.py) builds
+    up live for voice sessions the same way it does turn-by-turn for text.
+
+    Runs both live (per transcript turn, via the background wrapper below) and
+    once more at session end. The watermark makes it idempotent: each turn is
+    classified exactly once no matter how many times this fires. Returns the
+    number of patterns dispatched on this pass.
     """
+    # Lock the row so the live per-turn pass and the end-of-session pass can't
+    # claim the same turns concurrently. SELECT ... FOR UPDATE is a no-op on
+    # SQLite (tests), which is fine — those run single-threaded.
     vs = (
-        await db.execute(select(VoiceSession).where(VoiceSession.id == voice_session_id))
+        await db.execute(
+            select(VoiceSession).where(VoiceSession.id == voice_session_id).with_for_update()
+        )
     ).scalar_one_or_none()
     if not vs:
         return 0
@@ -203,25 +218,49 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
         .all()
     )
     user_turns = [n.content for n in notes if n.content and n.content.strip()]
-    if not user_turns:
+
+    start = vs.patterns_derived_count or 0
+    if start >= len(user_turns):
+        # Nothing new since the last pass — a duplicate dispatch, or the tail was
+        # already handled live. Release the lock without touching Cognee.
+        await db.commit()
         return 0
 
+    pending = user_turns[start:]
+    # Capture scoping before the commit (defensive even under
+    # expire_on_commit=False) and claim these turns by advancing the watermark
+    # now, so the slow LLM classification runs *after* the row lock is released
+    # and a concurrent pass sees them as already taken.
+    user_id = vs.user_id
+    debate_session_id = vs.debate_session_id
+    vs.patterns_derived_count = len(user_turns)
+    await db.commit()
+
     session = (
-        await db.execute(select(DebateSession).where(DebateSession.id == vs.debate_session_id))
+        await db.execute(select(DebateSession).where(DebateSession.id == debate_session_id))
     ).scalar_one_or_none()
     topic = session.topic if session else "the debate topic"
 
-    classified = await asyncio.gather(*(_classify_turn(topic, t) for t in user_turns))
+    # Bound the fan-out: a long transcript would otherwise launch one extractor
+    # call per turn simultaneously. gather() preserves input order regardless of
+    # which turn finishes first, so `zip(pending, classified)` stays aligned.
+    sem = asyncio.Semaphore(_MAX_CONCURRENT_CLASSIFICATIONS)
+
+    async def _classify_bounded(turn: str) -> dict | None:
+        async with sem:
+            return await _classify_turn(topic, turn)
+
+    classified = await asyncio.gather(*(_classify_bounded(t) for t in pending))
 
     dispatched = 0
-    for turn, cls in zip(user_turns, classified):
+    for turn, cls in zip(pending, classified):
         if not cls:
             continue
         outcome = _outcome_for(cls["pattern_type"], cls["evidence_quality"])
         try:
             remember_argument_task.delay(
-                user_id=vs.user_id,
-                session_id=vs.debate_session_id,
+                user_id=user_id,
+                session_id=debate_session_id,
                 topic=topic,
                 claim_text=turn,
                 pattern_type=cls["pattern_type"],
@@ -237,12 +276,27 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
             logger.exception("remember_argument dispatch failed (voice patterns)")
 
     logger.info(
-        "voice fingerprint: dispatched %d/%d patterns for session %s",
+        "voice fingerprint: dispatched %d/%d new patterns for session %s",
         dispatched,
-        len(user_turns),
+        len(pending),
         voice_session_id,
     )
     return dispatched
+
+
+async def derive_voice_session_patterns_background(voice_session_id: str) -> None:
+    """Fire-and-forget wrapper: own DB session, never raises.
+
+    Dispatched per transcript turn from the voice router so the Cognitive
+    Fingerprint fills in live while the user is still speaking, rather than only
+    at hang-up. derive_voice_session_patterns is watermark-idempotent, so
+    overlapping live passes and the end-of-session pass never double-count.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            await derive_voice_session_patterns(db, voice_session_id)
+    except Exception:
+        logger.exception("live voice pattern derivation failed for %s", voice_session_id)
 
 
 async def score_voice_session_background(voice_session_id: str) -> None:
