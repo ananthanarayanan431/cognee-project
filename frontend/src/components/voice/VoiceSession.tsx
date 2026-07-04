@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IconMicrophone,
   IconMicrophoneOff,
@@ -14,8 +14,10 @@ import {
   IconClock,
 } from "@tabler/icons-react";
 import { useVoiceAgent, VoiceSummary, TranscriptLine } from "@/hooks/useVoiceAgent";
-import { SessionConfig } from "@/types";
+import { SessionConfig, GraphData } from "@/types";
 import { debateModeName } from "@/lib/debateModes";
+import { useDebate } from "@/store/debate";
+import { api } from "@/lib/api";
 
 interface Props {
   sessionId: string;
@@ -292,10 +294,57 @@ function TranscriptPanel({ lines }: { lines: TranscriptLine[] }) {
 }
 
 export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props) {
-  const { status, transcript, summary, connect, disconnect, error } = useVoiceAgent(sessionId);
+  const { status, transcript, summary, connect, disconnect, refreshSummary, error } = useVoiceAgent(sessionId);
   const [activeTab, setActiveTab] = useState<Tab>("transcript");
   const startTimeRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Pull the latest session-scoped fingerprint into the shared store so the
+  // Cognitive Fingerprint panel (rendered by DebateView) reflects voice debates.
+  // Voice observations are written to Cognee async (Celery), so the panel has
+  // no live SSE feed like text mode — we poll instead.
+  const refreshGraph = useCallback(async () => {
+    try {
+      const g = await api.getGraph(sessionId);
+      useDebate.getState().setGraph(g as unknown as GraphData);
+    } catch {
+      /* transient — the interval / end-schedule retries */
+    }
+  }, [sessionId]);
+
+  // Poll the fingerprint while the call is live.
+  useEffect(() => {
+    if (status !== "connected") return;
+    refreshGraph();
+    const id = setInterval(refreshGraph, 7000);
+    return () => clearInterval(id);
+  }, [status, refreshGraph]);
+
+  // After the session ends, the last observations + the voice score are still
+  // being written async. Re-fetch a few times on a decay schedule so the graph
+  // and score bar catch up without the user having to reopen the session.
+  useEffect(() => {
+    if (status !== "ended") return;
+    const timers = [1500, 5000, 12000].map((delay) =>
+      setTimeout(() => {
+        refreshGraph();
+        refreshSummary();
+      }, delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [status, refreshGraph, refreshSummary]);
+
+  // Mirror the voice Logic/Evidence/Rhetoric scores into the shared store so the
+  // SessionScoreBar shows them instead of 0/0/0 for voice-only sessions.
+  useEffect(() => {
+    if (summary && summary.score_logic != null) {
+      useDebate.getState().setSessionScores({
+        logic: summary.score_logic ?? 0,
+        evidence: summary.score_evidence ?? 0,
+        rhetoric: summary.score_rhetoric ?? 0,
+      });
+    }
+  }, [summary?.score_logic, summary?.score_evidence, summary?.score_rhetoric]);
 
   // Track elapsed time while connected
   useEffect(() => {

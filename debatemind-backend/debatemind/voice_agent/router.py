@@ -32,6 +32,7 @@ POST /{session_id}/transcript-line Persist a single transcript line (user or AI)
 GET  /{session_id}/summary         Load the most recent voice session's notes + transcript
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -51,6 +52,7 @@ from debatemind.schemas.voice import (
     TranscriptLineSavedOut,
     VoiceSessionSummaryOut,
 )
+from debatemind.services.voice_score_svc import score_voice_session_background
 from debatemind.types.responses import SuccessResponse
 from debatemind.voice_agent.session import create_voice_session
 from debatemind.voice_agent.tools import execute_tool
@@ -169,6 +171,15 @@ async def run_tool(
             result["error"],
         )
 
+    # When the AI ends the session, LLM-judge the spoken transcript for
+    # Logic/Evidence/Rhetoric so the SessionScoreBar reflects voice debates too.
+    # Fire-and-forget on the request loop; the client polls /summary for the
+    # scores once the judge lands. score_voice_session_background de-dupes and
+    # never raises. Voice writes no Exchange rows, so text scoring never covers
+    # this path — hence a dedicated voice scorer.
+    if body.tool == "end_voice_session" and "error" not in result:
+        asyncio.create_task(score_voice_session_background(body.voice_session_id))
+
     return SuccessResponse(data=result)
 
 
@@ -279,5 +290,8 @@ async def get_voice_summary(
             strong_arguments=strong_arguments,
             concessions=concessions,
             position_flips=position_flips,
+            score_logic=vs.score_logic,
+            score_evidence=vs.score_evidence,
+            score_rhetoric=vs.score_rhetoric,
         )
     )

@@ -39,6 +39,7 @@ interface DebateStore {
   setThinking: (v: boolean) => void;
   setCurrentStage: (stage: string | null) => void;
   setGraph: (g: GraphData) => void;
+  setSessionScores: (scores: { logic: number; evidence: number; rhetoric: number }) => void;
   setSessions: (sessions: SessionListItem[]) => void;
   setTopicDetail: (topic: { id?: string | null; title: string; description: string } | null) => void;
   setVoiceMode: (v: boolean) => void;
@@ -142,6 +143,7 @@ export const useDebate = create<DebateStore>((set) => ({
   setThinking: (thinking) => set({ thinking }),
   setCurrentStage: (currentStage) => set({ currentStage }),
   setGraph: (graph) => set({ graph }),
+  setSessionScores: (sessionScores) => set({ sessionScores }),
   setSessions: (sessions) => set({ sessions }),
   setTopicDetail: (topicDetailTopic) => set({ topicDetailTopic, screen: "topic-detail" }),
   setVoiceMode: (voiceMode) => set({ voiceMode }),

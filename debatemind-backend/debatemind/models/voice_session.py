@@ -23,6 +23,12 @@ class VoiceSession(Base):
     # Populated by `end_voice_session` tool
     duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
     closing_summary: Mapped[str] = mapped_column(Text, nullable=True)
+    # Aggregate Logic/Evidence/Rhetoric read over the spoken transcript, written
+    # by services/voice_score_svc.py after the session ends. Voice runs no
+    # per-turn judge, so these stay NULL until the background scorer fills them.
+    score_logic: Mapped[float] = mapped_column(Float, nullable=True)
+    score_evidence: Mapped[float] = mapped_column(Float, nullable=True)
+    score_rhetoric: Mapped[float] = mapped_column(Float, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

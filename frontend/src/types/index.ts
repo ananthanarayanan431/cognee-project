@@ -194,6 +194,11 @@ export interface VoiceSessionSummary {
   strong_arguments: string[];
   concessions: string[];
   position_flips: string[];
+  // Aggregate Logic/Evidence/Rhetoric over the spoken transcript. null until
+  // the backend voice scorer finishes (a few seconds after the session ends).
+  score_logic?: number | null;
+  score_evidence?: number | null;
+  score_rhetoric?: number | null;
 }
 
 export interface TranscriptLineSaved {

@@ -19,6 +19,11 @@ export interface VoiceSummary {
   strong_arguments: string[];
   concessions: string[];
   position_flips: string[];
+  // Populated by the backend voice scorer a few seconds after the session ends;
+  // null until then. Surfaced in the SessionScoreBar via the debate store.
+  score_logic: number | null;
+  score_evidence: number | null;
+  score_rhetoric: number | null;
 }
 
 interface UseVoiceAgentReturn {
@@ -27,6 +32,7 @@ interface UseVoiceAgentReturn {
   summary: VoiceSummary | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  refreshSummary: () => Promise<void>;
   error: string | null;
 }
 
@@ -79,6 +85,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
         strong_arguments: data.strong_arguments,
         concessions: data.concessions,
         position_flips: data.position_flips,
+        score_logic: data.score_logic ?? null,
+        score_evidence: data.score_evidence ?? null,
+        score_rhetoric: data.score_rhetoric ?? null,
       });
 
       if (data.transcript.length > 0) {
@@ -97,6 +106,29 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       live = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debateSessionId]);
+
+  // Re-fetch just the summary (observations + Logic/Evidence/Rhetoric scores)
+  // without disturbing the live transcript. Called after the session ends so
+  // the score bar picks up the backend voice scorer's result once it lands.
+  const refreshSummary = useCallback(async () => {
+    try {
+      const data = await api.getVoiceSummary(debateSessionId);
+      if (!data.has_voice_session) return;
+      setSummary((prev) => ({
+        duration_seconds: data.duration_seconds ?? prev?.duration_seconds ?? null,
+        closing_summary: data.closing_summary ?? prev?.closing_summary ?? null,
+        fallacies: data.fallacies,
+        strong_arguments: data.strong_arguments,
+        concessions: data.concessions,
+        position_flips: data.position_flips,
+        score_logic: data.score_logic ?? null,
+        score_evidence: data.score_evidence ?? null,
+        score_rhetoric: data.score_rhetoric ?? null,
+      }));
+    } catch {
+      /* transient — the caller retries on a schedule */
+    }
   }, [debateSessionId]);
 
   const cleanup = useCallback(() => {
@@ -237,6 +269,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
               strong_arguments: [],
               concessions: [],
               position_flips: [],
+              score_logic: null,
+              score_evidence: null,
+              score_rhetoric: null,
             };
             return {
               ...base,
@@ -257,6 +292,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           strong_arguments: prev?.strong_arguments ?? [],
           concessions: prev?.concessions ?? [],
           position_flips: prev?.position_flips ?? [],
+          // Scores are computed async on the backend after end; the component
+          // polls refreshSummary() to fill these in once the judge lands.
+          score_logic: prev?.score_logic ?? null,
+          score_evidence: prev?.score_evidence ?? null,
+          score_rhetoric: prev?.score_rhetoric ?? null,
         }));
 
         // Hang up once the AI's closing remarks finish playing (see the
@@ -389,5 +429,5 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setStatus("ended");
   }, [status, cleanup]);
 
-  return { status, transcript, summary, connect, disconnect, error };
+  return { status, transcript, summary, connect, disconnect, refreshSummary, error };
 }
