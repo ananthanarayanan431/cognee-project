@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DebateMind — 3-Minute Pitch</title>
+<style>
+  /* ============ TOKENS (matches blog/pitch-deck.html) ============ */
+  :root {
+    --bg: #0E1218;
+    --surface: #161C25;
+    --surface-2: #1D2530;
+    --border: #2A3542;
+    --text: #EAEDF1;
+    --text-dim: #98A4B2;
+    --accent: #E9A94A;       /* amber — insight / a node firing */
+    --accent-soft: rgba(233,169,74,.14);
+    --accent-2: #55BECD;     /* teal — the analytical opponent */
+    --weak: #F0616A;
+    --strong: #35C9A3;
+    --mastered: #7E8896;
+    --shadow: 0 24px 60px -24px rgba(0,0,0,.7);
+    --serif: 'Iowan Old Style','Palatino Linotype','Book Antiqua',Palatino,Georgia,'Times New Roman',serif;
+    --sans: system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono: 'SF Mono','JetBrains Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .deck { position: fixed; inset: 0; display: grid; place-items: center; padding: clamp(12px, 3vw, 44px); }
+  .stage {
+    position: relative;
+    width: min(100%, 1180px);
+    aspect-ratio: 16 / 9;
+    max-height: 100%;
+    background: radial-gradient(120% 140% at 85% -10%, var(--accent-soft), transparent 55%), var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute; inset: 0;
+    padding: clamp(22px, 4.4vw, 64px);
+    display: none; flex-direction: column; justify-content: center;
+    gap: clamp(10px, 1.9vh, 24px);
+    opacity: 0; overflow: auto;
+  }
+  .slide.active { display: flex; }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  }
+  @media (prefers-reduced-motion: reduce) { .slide.active { opacity: 1; } }
+
+  /* ============ TYPE ============ */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: clamp(11px, 1.15vw, 13px);
+    letter-spacing: .22em; text-transform: uppercase;
+    color: var(--accent);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--accent); opacity: .7; }
+  .eyebrow .time { margin-left: auto; color: var(--text-dim); letter-spacing: .1em; }
+
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(34px, 6.4vw, 78px);
+    line-height: 1.02; letter-spacing: -.015em; margin: 0; text-wrap: balance;
+  }
+  h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(26px, 4.4vw, 52px);
+    line-height: 1.06; letter-spacing: -.012em; margin: 0; text-wrap: balance;
+  }
+  .sub {
+    font-size: clamp(15px, 1.7vw, 21px);
+    color: var(--text-dim); line-height: 1.5; max-width: 62ch; margin: 0;
+  }
+  .sub strong { color: var(--text); font-weight: 600; }
+  .accent { color: var(--accent); }
+  .teal { color: var(--accent-2); }
+
+  /* ============ STATS / VALUE CARDS ============ */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(10px, 1.6vw, 20px); margin-top: clamp(4px, 1vh, 10px); }
+  .stat {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: clamp(14px, 2vw, 24px);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .stat .num {
+    font-family: var(--serif);
+    font-size: clamp(30px, 4.6vw, 58px);
+    font-weight: 600; line-height: 1; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .num.weak { color: var(--weak); }
+  .stat .num.amber { color: var(--accent); }
+  .stat .num.strong { color: var(--strong); }
+  .stat .num.teal { color: var(--accent-2); }
+  .stat .kicker {
+    font-family: var(--mono); font-size: clamp(10px, 1vw, 12px);
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent-2);
+  }
+  .stat .head { font-family: var(--serif); font-size: clamp(16px, 1.9vw, 24px); font-weight: 600; line-height: 1.15; }
+  .stat .label { font-size: clamp(12px, 1.25vw, 15px); color: var(--text-dim); line-height: 1.45; }
+  .stat .label b { color: var(--text); font-weight: 600; }
+
+  .src {
+    font-family: var(--mono);
+    font-size: clamp(9.5px, .95vw, 11.5px);
+    color: var(--mastered);
+    letter-spacing: .02em; line-height: 1.6;
+    margin-top: clamp(4px, 1vh, 10px);
+  }
+
+  /* ============ CHIPS / FLOW ============ */
+  .lifecycle { display: flex; align-items: center; gap: clamp(6px, .9vw, 12px); flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono);
+    font-size: clamp(11px, 1.2vw, 14px);
+    letter-spacing: .06em;
+    padding: 9px 15px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .chip.hot { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .chip.cool { border-color: var(--accent-2); color: var(--accent-2); background: rgba(85,190,205,.1); }
+  .chip.del { border-color: var(--weak); color: var(--weak); background: rgba(240,97,106,.1); }
+  .arrow { color: var(--mastered); font-size: clamp(13px, 1.4vw, 17px); }
+
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: linear-gradient(90deg, var(--accent-soft), transparent 70%);
+    border-radius: 0 10px 10px 0;
+    padding: clamp(10px, 1.4vw, 16px) clamp(12px, 1.6vw, 20px);
+    font-size: clamp(14px, 1.6vw, 19px);
+    line-height: 1.5; max-width: 70ch;
+  }
+  .callout b { color: var(--accent); }
+  .callout.crossmodal { border-left-color: var(--accent-2); background: linear-gradient(90deg, rgba(85,190,205,.12), transparent 70%); }
+  .callout.crossmodal b { color: var(--accent-2); }
+
+  /* ============ DEMO SLIDE ============ */
+  .demo-beats { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(8px, 1.3vw, 16px); margin-top: clamp(6px, 1.2vh, 14px); }
+  .beat {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+    padding: clamp(10px, 1.5vw, 18px);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .beat .n { font-family: var(--mono); font-size: clamp(10px, 1vw, 12px); color: var(--accent); letter-spacing: .12em; }
+  .beat .t { font-size: clamp(12px, 1.3vw, 15px); line-height: 1.4; color: var(--text); }
+  .beat .t b { color: var(--accent-2); }
+
+  /* ============ CHROME ============ */
+  .hud {
+    position: absolute; bottom: 14px; right: 18px;
+    font-family: var(--mono); font-size: 12px; color: var(--mastered);
+    display: flex; gap: 14px; align-items: center;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+  }
+  #clock.warn { color: var(--accent); }
+  #clock.over { color: var(--weak); }
+  .notes {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(10,13,18,.94);
+    border-top: 1px solid var(--border);
+    padding: 14px 22px 18px;
+    font-size: 14px; line-height: 1.55; color: var(--text);
+    display: none; max-height: 42%; overflow: auto;
+  }
+  .notes.show { display: block; }
+  .notes .nt { font-family: var(--mono); font-size: 10px; letter-spacing: .18em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+  .clickzone { position: absolute; top: 0; bottom: 56px; width: 30%; cursor: pointer; z-index: 5; }
+  .clickzone.prev { left: 0; } .clickzone.next { right: 0; width: 70%; }
+  .clickzone:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .brand { font-family: var(--mono); font-size: clamp(10px, 1vw, 12px); letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="deck">
+  <div class="stage" id="stage">
+
+    <!-- ============ SLIDE 1 — HOOK (0:00–0:08) ============ -->
+    <section class="slide" data-notes="Quick question: when was the last time an AI told you you were WRONG? [beat] Exactly. That's the problem we built DebateMind to fix.">
+      <div class="eyebrow">Team Avalon · 3-minute pitch <span class="time">0:00 – 0:08</span></div>
+      <h1>Debate<span class="accent">Mind</span></h1>
+      <p class="sub" style="font-family:var(--serif); font-size:clamp(19px,2.4vw,30px); color:var(--text);">
+        The AI that <em>argues back</em> — and <span class="accent">remembers</span>.
+      </p>
+      <p class="sub">Debate practice by text or voice, against an opponent that learns how <strong>you</strong> think.</p>
+    </section>
+
+    <!-- ============ SLIDE 2 — THE PROBLEM (0:08–0:28) ============ -->
+    <section class="slide" data-notes="Today's chatbots are yes-men. Stanford measured it — AI models affirm you even when a consensus of humans says you're wrong, 42 percent of the time. And whatever they learn about your thinking, they forget the moment the tab closes. You cannot grow against a partner that flatters you and forgets you.">
+      <div class="eyebrow">The problem <span class="time">0:08 – 0:28</span></div>
+      <h2>Your AI is a <span style="color:var(--weak)">yes-man</span> with amnesia.</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="num weak">42%</div>
+          <div class="label">of the time, AI <b>affirms you even when humans agree you're wrong</b></div>
+        </div>
+        <div class="stat">
+          <div class="num weak">76% <span style="font-size:.45em;color:var(--text-dim)">vs</span> 22%</div>
+          <div class="label"><b>unconditional validation</b> — AI models vs. real humans</div>
+        </div>
+        <div class="stat">
+          <div class="num amber">0</div>
+          <div class="label">what it remembers about <b>how you think</b> tomorrow</div>
+        </div>
+      </div>
+      <p class="sub"><strong>You can't grow</strong> against a partner that flatters you and forgets you.</p>
+      <div class="src">Cheng et al., Stanford — ELEPHANT (2025) · Science (2026): sycophantic AI increases dependence</div>
+    </section>
+
+    <!-- ============ SLIDE 3 — WHY IT MATTERS (0:28–0:45) ============ -->
+    <section class="slide" data-notes="The skill has never mattered more — analytical thinking is the number-one skill employers want, and debate is the proven way to train it: two-thirds of an extra school year of learning in Boston, three-times higher graduation odds in Chicago. But human sparring partners don't scale, and most people are too afraid to practice in public.">
+      <div class="eyebrow">Why it matters <span class="time">0:28 – 0:45</span></div>
+      <h2>Arguing well is the <span class="accent">#1 skill</span>.<br>Debate is how you train it.</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="num teal">#1</div>
+          <div class="label"><b>analytical thinking</b> — top skill employers demand <b>(WEF 2025)</b></div>
+        </div>
+        <div class="stat">
+          <div class="num strong">+68%</div>
+          <div class="label">of a school year — <b>debaters' learning gains</b> (Boston study)</div>
+        </div>
+        <div class="stat">
+          <div class="num strong">3.1×</div>
+          <div class="label">more likely to <b>graduate</b> — Chicago urban debaters</div>
+        </div>
+      </div>
+      <p class="sub">But coaches don't scale, sparring partners are scarce — and <strong>64% of students fear public speaking</strong>.</p>
+      <div class="src">WEF Future of Jobs 2025 · Schueler &amp; Larned, Boston Public Schools · Anderson &amp; Mezuk 2012 · Ferreira Marinho 2017 · AI-in-education: $5.9B → $32B by 2030 (Grand View Research)</div>
+    </section>
+
+    <!-- ============ SLIDE 4 — THE SOLUTION (0:45–1:02) ============ -->
+    <section class="slide" data-notes="So DebateMind gives everyone a personal sparring partner that remembers you. Every argument you make builds your Cognitive Fingerprint — a living profile of how you argue: your recurring fallacies, your weak topics, your style. The opponent uses it to push your real weak spots, and when you master a weakness, it moves on. No wasted rounds.">
+      <div class="eyebrow">Our solution <span class="time">0:45 – 1:02</span></div>
+      <h2>A sparring partner that <span class="accent">remembers you</span>.</h2>
+      <div class="lifecycle">
+        <span class="chip hot">Learns how you argue</span><span class="arrow">→</span>
+        <span class="chip">Targets your weak spots</span><span class="arrow">→</span>
+        <span class="chip cool">Tracks your progress</span><span class="arrow">→</span>
+        <span class="chip del">Moves on when you master it</span>
+      </div>
+      <div class="callout">Every argument you make builds your <b>Cognitive Fingerprint</b> — a living profile of your recurring fallacies, weak topics, and reasoning style.</div>
+      <p class="sub">One opponent, one memory, tuned to <strong>you</strong> — and it never wastes a round on a weakness you've already beaten.</p>
+      <div class="src">memory engine: Cognee — your fingerprint persists across every session, forever</div>
+    </section>
+
+    <!-- ============ SLIDE 5 — THE PAYOFF (1:02–1:12) ============ -->
+    <section class="slide" data-notes="And it's measurable. Every turn is scored, every session ends with a before-and-after of your weaknesses, and the dashboard tracks your streak and win rate. Practice that finally compounds.">
+      <div class="eyebrow">The payoff <span class="time">1:02 – 1:12</span></div>
+      <h2>Practice that finally <span class="accent">compounds</span>.</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="kicker">Every turn</div>
+          <div class="head">Scored</div>
+          <div class="label">Logic · Evidence · Rhetoric — instant, honest feedback</div>
+        </div>
+        <div class="stat">
+          <div class="kicker">Every session</div>
+          <div class="head">Before / after</div>
+          <div class="label">watch each <b>weakness shrink</b> on your report</div>
+        </div>
+        <div class="stat">
+          <div class="kicker">Every week</div>
+          <div class="head">Progress</div>
+          <div class="label">streaks, win rate, thinking style, <b>mastered patterns</b></div>
+        </div>
+      </div>
+      <p class="sub">You don't just <em>feel</em> sharper — <strong>you watch the data prove it</strong>.</p>
+    </section>
+
+    <!-- ============ SLIDE 6 — MODE 1: TEXT ↔ TEXT (1:12–1:19) ============ -->
+    <section class="slide" data-notes="Two ways to train. In text: you write your argument, it detects the fallacy you just used, counters straight at your known weak spot, and scores you — while your fingerprint graph updates live on screen.">
+      <div class="eyebrow">Mode 1 · Text ↔ Text <span class="time">1:12 – 1:19</span></div>
+      <h2>The <span class="teal">written</span> sparring ring.</h2>
+      <div class="lifecycle">
+        <span class="chip">You argue</span><span class="arrow">→</span>
+        <span class="chip cool">It analyses — pattern · fallacy · evidence</span><span class="arrow">→</span>
+        <span class="chip hot">Counters at your weak spot</span><span class="arrow">→</span>
+        <span class="chip">Scores you, fingerprint updates live</span>
+      </div>
+      <div class="callout">Before every reply, the opponent <b>recalls your history</b> — your past fallacies and lost arguments shape its counterattack.</div>
+      <div class="src">LangGraph grading pipeline · replies streamed live · D3 fingerprint graph · Cognee recall before every counter</div>
+    </section>
+
+    <!-- ============ SLIDE 7 — MODE 2: VOICE ↔ VOICE (1:19–1:25) ============ -->
+    <section class="slide" data-notes="In voice: a real-time spoken opponent — private and judgment-free, which matters when 64 percent of students fear public speaking. And it's the same memory: slip up in voice, and your next text debate gets harder. Let's see it live.">
+      <div class="eyebrow">Mode 2 · Voice ↔ Voice <span class="time">1:19 – 1:25</span></div>
+      <h2>Say it <span class="accent">out loud</span> — it's listening.</h2>
+      <div class="lifecycle">
+        <span class="chip">Real-time spoken debate</span>
+        <span class="chip">Live transcript</span>
+        <span class="chip cool">Private &amp; judgment-free</span>
+        <span class="chip hot">Remembers every slip</span>
+      </div>
+      <div class="callout crossmodal"><b>One memory, two modes:</b> a weakness you reveal by voice gets targeted in your next text debate — and vice versa.</div>
+      <div class="src">OpenAI Realtime API over WebRTC · same Cognitive Fingerprint as text · instant per-turn memory</div>
+    </section>
+
+    <!-- ============ SLIDE 8 — DEMO TRANSITION (1:25) ============ -->
+    <section class="slide" data-notes="[Switch to the browser — app already open and logged in. Beats: 1) generate topic, start text debate. 2) flawed argument → watch it catch the fallacy and counter at your weak spot; scores + red weakness node. 3) VOICE: it already knows the weakness you showed in text — same memory, different mode. 4) session end: weakness bar shrinks; mastered = forgotten.]">
+      <div class="eyebrow">Live demo <span class="time">1:25 – 3:00</span></div>
+      <h1 style="font-size:clamp(30px,5vw,62px);">Watch it <span class="accent">study me</span> in real time.</h1>
+      <div class="demo-beats">
+        <div class="beat"><div class="n">01 · Text</div><div class="t">I argue — it <b>catches my fallacy</b> and counters at my weak spot</div></div>
+        <div class="beat"><div class="n">02 · Fingerprint</div><div class="t">Logic · Evidence · Rhetoric scored, <b>graph updates live</b></div></div>
+        <div class="beat"><div class="n">03 · Voice</div><div class="t">The voice opponent <b>already knows</b> my text weakness</div></div>
+        <div class="beat"><div class="n">04 · Mastery</div><div class="t">Weakness shrinks → mastered → <b>forgotten</b></div></div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 9 — CLOSE (2:52–3:00) ============ -->
+    <section class="slide" data-notes="DebateMind studies you, targets you, and grows with you. A debate coach that finally remembers. Thank you.">
+      <div class="eyebrow">DebateMind <span class="time">2:52 – 3:00</span></div>
+      <h1 style="font-size:clamp(30px,5.4vw,66px);">A debate coach that finally <span class="accent">remembers</span>.</h1>
+      <p class="sub" style="font-family:var(--serif); font-size:clamp(17px,2.1vw,26px); color:var(--text);">
+        It studies you. It targets you. It grows with you.
+      </p>
+      <p class="brand">Team Avalon · github.com/ananthanarayanan431</p>
+    </section>
+
+    <!-- chrome -->
+    <div class="clickzone prev" role="button" tabindex="0" title="Previous slide"></div>
+    <div class="clickzone next" role="button" tabindex="0" title="Next slide"></div>
+    <div class="hud">
+      <span id="clock">0:00</span>
+      <span id="pager">1 / 9</span>
+      <span>← → · N notes · R reset</span>
+    </div>
+    <div class="notes" id="notes"><div class="nt">Speaker notes</div><div id="notesBody"></div></div>
+  </div>
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  const pager = document.getElementById('pager');
+  const notes = document.getElementById('notes');
+  const notesBody = document.getElementById('notesBody');
+  const clock = document.getElementById('clock');
+  let i = 0, t0 = null, tick = null;
+
+  // slide-boundary targets (seconds) — clock turns amber near, red past
+  const targets = [8, 28, 45, 62, 72, 79, 85, 180, 180];
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    pager.textContent = (i + 1) + ' / ' + slides.length;
+    notesBody.textContent = slides[i].dataset.notes || '';
+    if (t0 === null && i > 0) startClock();   // timer starts on first advance
+  }
+  function startClock() {
+    t0 = Date.now();
+    tick = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      clock.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+      const tgt = targets[i];
+      clock.className = s > tgt ? 'over' : (s > tgt - 6 ? 'warn' : '');
+    }, 250);
+  }
+  function resetClock() { clearInterval(tick); t0 = null; clock.textContent = '0:00'; clock.className = ''; }
+
+  addEventListener('keydown', e => {
+    if (['ArrowRight',' ','PageDown'].includes(e.key)) { e.preventDefault(); show(i + 1); }
+    else if (['ArrowLeft','PageUp'].includes(e.key)) { e.preventDefault(); show(i - 1); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key.toLowerCase() === 'n') notes.classList.toggle('show');
+    else if (e.key.toLowerCase() === 'r') resetClock();
+    else if (e.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.();
+  });
+  document.querySelector('.clickzone.next').onclick = () => show(i + 1);
+  document.querySelector('.clickzone.prev').onclick = () => show(i - 1);
+  show(0);
+</script>
+</body>
+</html>
