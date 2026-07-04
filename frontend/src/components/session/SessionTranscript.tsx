@@ -2,23 +2,36 @@
 import { useEffect, useState } from "react";
 import { useDebate } from "@/store/debate";
 import { api, handleExpiredSession } from "@/lib/api";
-import { Transcript } from "@/types";
+import { Transcript, VoiceSessionSummary } from "@/types";
 
 export default function SessionTranscript() {
   const { sessionId, setScreen } = useDebate();
   const token = useDebate((s) => s.token);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [voice, setVoice] = useState<VoiceSessionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
 
   useEffect(() => {
-    if (sessionId) {
-      api.getTranscript(sessionId)
-        .then((t) => { setTranscript(t); setFetchError(false); setLoading(false); })
-        .catch(() => { setFetchError(true); setLoading(false); });
-    }
+    if (!sessionId) return;
+    // A voice session has no text `Exchange` rows — its dialogue lives in the
+    // voice summary. Fetch both; render whichever holds the conversation.
+    Promise.all([
+      api.getTranscript(sessionId),
+      api.getVoiceSummary(sessionId).catch(() => null),
+    ])
+      .then(([t, v]) => {
+        setTranscript(t);
+        setVoice(v);
+        setFetchError(false);
+        setLoading(false);
+      })
+      .catch(() => {
+        setFetchError(true);
+        setLoading(false);
+      });
   }, [sessionId]);
 
   async function exportTranscript() {
@@ -44,6 +57,30 @@ export default function SessionTranscript() {
     URL.revokeObjectURL(url);
   }
 
+  // Voice transcripts aren't in the DB export (which reads text exchanges), so
+  // build the download client-side from the fetched voice summary.
+  function exportVoiceTranscript() {
+    if (!transcript || !voice) return;
+    const lines = [
+      transcript.topic,
+      `${transcript.difficulty} · ${new Date(transcript.started_at).toLocaleString()} · voice session`,
+      "",
+      ...voice.transcript.map(
+        (l) => `${l.speaker === "user" ? "YOU" : "OPPONENT"}: ${l.text}`,
+      ),
+    ];
+    if (voice.closing_summary) {
+      lines.push("", "CLOSING SUMMARY", voice.closing_summary);
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `transcript_${sessionId}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) {
     return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Loading transcript…</div>;
   }
@@ -51,16 +88,49 @@ export default function SessionTranscript() {
     return <div className="max-w-3xl mx-auto px-7 py-12 font-sans text-fog">Failed to load transcript.</div>;
   }
 
-  const ex = transcript.exchanges[cursor];
+  const hasText = transcript.exchanges.length > 0;
+  const hasVoice = !!voice && voice.has_voice_session && voice.transcript.length > 0;
 
   return (
     <div className="max-w-3xl mx-auto px-7 py-12">
       <button onClick={() => setScreen("end")} className="font-sans text-xs font-medium text-ink border border-border rounded-lg px-3 py-1.5 mb-5 hover:bg-fog/10 transition-colors inline-flex items-center gap-1.5">← Back</button>
       <h1 className="font-sans font-bold text-2xl text-ink mb-1">{transcript.topic}</h1>
       <p className="font-sans text-sm text-fog mb-7">
-        {transcript.difficulty} · {new Date(transcript.started_at).toLocaleDateString()} · {transcript.exchanges.length} exchanges
+        {transcript.difficulty} · {new Date(transcript.started_at).toLocaleDateString()}
+        {hasText && ` · ${transcript.exchanges.length} exchanges`}
+        {!hasText && hasVoice && ` · voice · ${voice!.transcript.length} lines`}
       </p>
 
+      {/* ── Text debate: paginated exchange navigator ─────────────────────── */}
+      {hasText && <TextExchangeView transcript={transcript} cursor={cursor} setCursor={setCursor} onExport={exportTranscript} exportError={exportError} />}
+
+      {/* ── Voice debate: full spoken transcript ──────────────────────────── */}
+      {!hasText && hasVoice && <VoiceTranscriptView voice={voice!} onExport={exportVoiceTranscript} />}
+
+      {/* ── Nothing recorded ──────────────────────────────────────────────── */}
+      {!hasText && !hasVoice && (
+        <p className="font-sans text-[15px] text-fog">No transcript was recorded for this session.</p>
+      )}
+    </div>
+  );
+}
+
+function TextExchangeView({
+  transcript,
+  cursor,
+  setCursor,
+  onExport,
+  exportError,
+}: {
+  transcript: Transcript;
+  cursor: number;
+  setCursor: React.Dispatch<React.SetStateAction<number>>;
+  onExport: () => void;
+  exportError: string | null;
+}) {
+  const ex = transcript.exchanges[cursor];
+  return (
+    <>
       {ex && (
         <div key={ex.turn_number}>
           <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-1">
@@ -93,7 +163,7 @@ export default function SessionTranscript() {
           ← Previous exchange
         </button>
         <div className="flex flex-col items-center gap-1">
-          <button onClick={exportTranscript} className="font-sans text-sm text-fog">
+          <button onClick={onExport} className="font-sans text-sm text-fog">
             Export transcript ↓
           </button>
           {exportError && <span className="font-sans text-[11px] text-scarlet">{exportError}</span>}
@@ -106,6 +176,50 @@ export default function SessionTranscript() {
           Next exchange →
         </button>
       </div>
-    </div>
+    </>
+  );
+}
+
+function VoiceTranscriptView({
+  voice,
+  onExport,
+}: {
+  voice: VoiceSessionSummary;
+  onExport: () => void;
+}) {
+  return (
+    <>
+      <div className="flex flex-col gap-5">
+        {voice.transcript.map((line, i) => (
+          <div key={i}>
+            <p
+              className={`font-sans text-[11px] font-semibold uppercase tracking-wide mb-1 ${
+                line.speaker === "user" ? "text-fog" : "text-scarlet"
+              }`}
+            >
+              {line.speaker === "user" ? "YOU" : "OPPONENT"}
+            </p>
+            <p className="font-sans text-[15px] text-ink">{line.text}</p>
+          </div>
+        ))}
+      </div>
+
+      {voice.closing_summary && (
+        <>
+          <div className="h-px bg-border my-7" />
+          <p className="font-sans text-[11px] font-semibold text-fog uppercase tracking-wide mb-2">
+            Closing summary
+          </p>
+          <p className="font-sans text-[15px] text-ink leading-relaxed">{voice.closing_summary}</p>
+        </>
+      )}
+
+      <div className="h-px bg-border my-7" />
+      <div className="flex flex-col items-center gap-1">
+        <button onClick={onExport} className="font-sans text-sm text-fog">
+          Export transcript ↓
+        </button>
+      </div>
+    </>
   );
 }
