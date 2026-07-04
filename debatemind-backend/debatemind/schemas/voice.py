@@ -40,6 +40,11 @@ class VoiceSessionSummaryOut(BaseModel):
     strong_arguments: list[str] = []
     concessions: list[str] = []
     position_flips: list[str] = []
+    # Aggregate Logic/Evidence/Rhetoric over the spoken transcript. NULL until
+    # the background voice scorer finishes (a few seconds after the session ends).
+    score_logic: Optional[float] = None
+    score_evidence: Optional[float] = None
+    score_rhetoric: Optional[float] = None
 
 
 class TranscriptLineSavedOut(BaseModel):

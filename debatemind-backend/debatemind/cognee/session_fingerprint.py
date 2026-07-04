@@ -29,6 +29,7 @@ from debatemind.agents.constants import PATTERN_TYPES
 from debatemind.cognee.graph_view import _node_props
 from debatemind.database import AsyncSessionLocal
 from debatemind.models.session import Exchange
+from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
 from debatemind.schemas.graph import GraphEdge, GraphNode, GraphOut
 
 logger = logging.getLogger(__name__)
@@ -92,15 +93,36 @@ async def session_scoped_fingerprint(user_id: str, session_id: str, topic: str) 
     tallies, neo4j_count = await _neo4j_tallies(user_id, session_id)
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Exchange.detected_pattern, Exchange.outcome)
-            .where(Exchange.session_id == session_id)
-            .where(Exchange.detected_pattern.is_not(None))
-            .order_by(Exchange.created_at)
-        )
-        rows = result.fetchall()
+        # Text turns carry their pattern on the Exchange row; voice turns carry
+        # it on the transcript_user note (written synchronously by
+        # voice_score_svc as the fingerprint's fast path). A session is normally
+        # all-text or all-voice, but we union both and order by created_at so the
+        # neo4j_count watermark slices off exactly the tail Neo4j hasn't synced
+        # regardless — mirroring how the Exchange fast path already works.
+        text_rows = (
+            await db.execute(
+                select(Exchange.detected_pattern, Exchange.outcome, Exchange.created_at)
+                .where(Exchange.session_id == session_id)
+                .where(Exchange.detected_pattern.is_not(None))
+            )
+        ).fetchall()
+        voice_rows = (
+            await db.execute(
+                select(
+                    VoiceSessionNote.detected_pattern,
+                    VoiceSessionNote.outcome,
+                    VoiceSessionNote.created_at,
+                )
+                .join(VoiceSession, VoiceSession.id == VoiceSessionNote.voice_session_id)
+                .where(VoiceSession.debate_session_id == session_id)
+                .where(VoiceSessionNote.detected_pattern.is_not(None))
+            )
+        ).fetchall()
 
-    tallies = _merge_pending_exchanges(tallies, neo4j_count, list(rows))
+    combined = sorted([*text_rows, *voice_rows], key=lambda r: r[2])
+    rows = [(pattern, outcome) for pattern, outcome, _created_at in combined]
+
+    tallies = _merge_pending_exchanges(tallies, neo4j_count, rows)
 
     pattern_counts = Counter({pattern: count for pattern, (count, _wins) in tallies.items()})
     if not pattern_counts:

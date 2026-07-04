@@ -10,6 +10,10 @@ export interface TranscriptLine {
   speaker: "user" | "ai";
   text: string;
   timestamp: number;
+  // Realtime item this line belongs to. AI transcript deltas are grouped by it
+  // so an interleaved user line can't split one utterance across two bubbles,
+  // and the authoritative `...transcript.done` text can be reconciled onto it.
+  itemId?: string;
 }
 
 export interface VoiceSummary {
@@ -19,6 +23,11 @@ export interface VoiceSummary {
   strong_arguments: string[];
   concessions: string[];
   position_flips: string[];
+  // Populated by the backend voice scorer a few seconds after the session ends;
+  // null until then. Surfaced in the SessionScoreBar via the debate store.
+  score_logic: number | null;
+  score_evidence: number | null;
+  score_rhetoric: number | null;
 }
 
 interface UseVoiceAgentReturn {
@@ -27,6 +36,7 @@ interface UseVoiceAgentReturn {
   summary: VoiceSummary | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  refreshSummary: () => Promise<void>;
   error: string | null;
 }
 
@@ -41,6 +51,9 @@ function nextId() {
   return `vl-${Date.now()}-${_idCounter++}`;
 }
 
+// Bucket for AI transcript deltas that arrive without an item_id.
+const NO_ITEM_KEY = "__no_item__";
+
 export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -52,8 +65,10 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const voiceSessionIdRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  // Accumulates AI transcript deltas so we can persist the full utterance on done.
-  const aiDeltaRef = useRef<string>("");
+  // Accumulates AI transcript deltas per response item so we can persist the
+  // full utterance on done. Keyed by item_id so interleaved response items don't
+  // contaminate each other's fallback text (item-less deltas share one bucket).
+  const aiDeltaRef = useRef<Map<string, string>>(new Map());
   // Set once `end_voice_session` fires; hang up once the AI's closing remarks
   // finish playing (or after a timeout, in case that event never arrives).
   const endingRef = useRef(false);
@@ -79,6 +94,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
         strong_arguments: data.strong_arguments,
         concessions: data.concessions,
         position_flips: data.position_flips,
+        score_logic: data.score_logic ?? null,
+        score_evidence: data.score_evidence ?? null,
+        score_rhetoric: data.score_rhetoric ?? null,
       });
 
       if (data.transcript.length > 0) {
@@ -97,6 +115,32 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       live = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debateSessionId]);
+
+  // Re-fetch just the summary (observations + Logic/Evidence/Rhetoric scores)
+  // without disturbing the live transcript. Called after the session ends so
+  // the score bar picks up the backend voice scorer's result once it lands.
+  const refreshSummary = useCallback(async () => {
+    try {
+      const data = await api.getVoiceSummary(debateSessionId);
+      if (!data.has_voice_session) return;
+      setSummary((prev) => ({
+        duration_seconds: data.duration_seconds ?? prev?.duration_seconds ?? null,
+        closing_summary: data.closing_summary ?? prev?.closing_summary ?? null,
+        fallacies: data.fallacies,
+        strong_arguments: data.strong_arguments,
+        concessions: data.concessions,
+        position_flips: data.position_flips,
+        // Preserve the last non-null score if a later/partial response omits it,
+        // matching the duration/closing_summary fallbacks above — the scorer
+        // lands async, so we never want a stale response to blank a real score.
+        score_logic: data.score_logic ?? prev?.score_logic ?? null,
+        score_evidence: data.score_evidence ?? prev?.score_evidence ?? null,
+        score_rhetoric: data.score_rhetoric ?? prev?.score_rhetoric ?? null,
+      }));
+    } catch {
+      /* transient — the caller retries on a schedule */
+    }
   }, [debateSessionId]);
 
   const cleanup = useCallback(() => {
@@ -137,25 +181,63 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
 
     // ── AI speech transcript (streaming delta) ────────────────────────────────
     // GA Realtime renamed this from "response.audio_transcript.delta" (beta).
+    // Group deltas by the response item they belong to (item_id), not by
+    // "is the last line an AI line?": while the AI is speaking, a user
+    // transcription can complete and push a user bubble in between, which would
+    // otherwise start a fresh AI bubble and split one utterance across two,
+    // each showing only part of the sentence.
     if (type === "response.output_audio_transcript.delta") {
       const delta = (msg.delta as string) ?? "";
+      const itemId = msg.item_id as string | undefined;
       if (delta) {
-        aiDeltaRef.current += delta;
+        const key = itemId ?? NO_ITEM_KEY;
+        aiDeltaRef.current.set(key, (aiDeltaRef.current.get(key) ?? "") + delta);
         setTranscript((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.speaker === "ai") {
-            return [...prev.slice(0, -1), { ...last, text: last.text + delta }];
+          const idx = itemId
+            ? prev.findIndex((l) => l.speaker === "ai" && l.itemId === itemId)
+            : prev.reduce((acc, l, i) => (l.speaker === "ai" ? i : acc), -1);
+          if (idx !== -1) {
+            const target = prev[idx];
+            const next = [...prev];
+            next[idx] = { ...target, text: target.text + delta };
+            return next;
           }
-          return [...prev, { id: nextId(), speaker: "ai", text: delta, timestamp: Date.now() }];
+          return [
+            ...prev,
+            { id: nextId(), speaker: "ai", text: delta, timestamp: Date.now(), itemId },
+          ];
         });
       }
     }
 
-    // ── AI speech transcript (complete utterance) — persist to DB ─────────────
+    // ── AI speech transcript (complete utterance) — reconcile + persist ───────
     // GA Realtime renamed this from "response.audio_transcript.done" (beta).
+    // The done event carries the authoritative full transcript. Reconcile the
+    // on-screen line with it so any dropped/split deltas are healed to the
+    // complete sentence, then persist that full text.
     if (type === "response.output_audio_transcript.done") {
-      const text = ((msg.transcript as string) ?? aiDeltaRef.current).trim();
-      aiDeltaRef.current = "";
+      const full = (msg.transcript as string) ?? "";
+      const itemId = msg.item_id as string | undefined;
+      const key = itemId ?? NO_ITEM_KEY;
+      const text = (full || aiDeltaRef.current.get(key) || "").trim();
+      aiDeltaRef.current.delete(key);
+      if (text) {
+        setTranscript((prev) => {
+          const idx = itemId
+            ? prev.findIndex((l) => l.speaker === "ai" && l.itemId === itemId)
+            : prev.reduce((acc, l, i) => (l.speaker === "ai" ? i : acc), -1);
+          if (idx === -1) {
+            return [
+              ...prev,
+              { id: nextId(), speaker: "ai", text, timestamp: Date.now(), itemId },
+            ];
+          }
+          if (prev[idx].text === text) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], text };
+          return next;
+        });
+      }
       const vsId = voiceSessionIdRef.current;
       if (text && vsId) {
         api.saveTranscriptLine(sessionIdRef.current, vsId, "ai", text).catch(() => {});
@@ -237,6 +319,9 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
               strong_arguments: [],
               concessions: [],
               position_flips: [],
+              score_logic: null,
+              score_evidence: null,
+              score_rhetoric: null,
             };
             return {
               ...base,
@@ -257,6 +342,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           strong_arguments: prev?.strong_arguments ?? [],
           concessions: prev?.concessions ?? [],
           position_flips: prev?.position_flips ?? [],
+          // Scores are computed async on the backend after end; the component
+          // polls refreshSummary() to fill these in once the judge lands.
+          score_logic: prev?.score_logic ?? null,
+          score_evidence: prev?.score_evidence ?? null,
+          score_rhetoric: prev?.score_rhetoric ?? null,
         }));
 
         // Hang up once the AI's closing remarks finish playing (see the
@@ -294,7 +384,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setError(null);
     setTranscript([]);
     setSummary(null);
-    aiDeltaRef.current = "";
+    aiDeltaRef.current.clear();
     endingRef.current = false;
     if (endingTimeoutRef.current) {
       clearTimeout(endingTimeoutRef.current);
@@ -389,5 +479,5 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setStatus("ended");
   }, [status, cleanup]);
 
-  return { status, transcript, summary, connect, disconnect, error };
+  return { status, transcript, summary, connect, disconnect, refreshSummary, error };
 }

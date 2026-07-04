@@ -32,6 +32,7 @@ POST /{session_id}/transcript-line Persist a single transcript line (user or AI)
 GET  /{session_id}/summary         Load the most recent voice session's notes + transcript
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -50,6 +51,10 @@ from debatemind.schemas.voice import (
     TranscriptLineOut,
     TranscriptLineSavedOut,
     VoiceSessionSummaryOut,
+)
+from debatemind.services.voice_score_svc import (
+    derive_voice_session_patterns_background,
+    score_voice_session_background,
 )
 from debatemind.types.responses import SuccessResponse
 from debatemind.voice_agent.session import create_voice_session
@@ -169,6 +174,15 @@ async def run_tool(
             result["error"],
         )
 
+    # When the AI ends the session, LLM-judge the spoken transcript for
+    # Logic/Evidence/Rhetoric so the SessionScoreBar reflects voice debates too.
+    # Fire-and-forget on the request loop; the client polls /summary for the
+    # scores once the judge lands. score_voice_session_background de-dupes and
+    # never raises. Voice writes no Exchange rows, so text scoring never covers
+    # this path — hence a dedicated voice scorer.
+    if body.tool == "end_voice_session" and "error" not in result:
+        asyncio.create_task(score_voice_session_background(body.voice_session_id))
+
     return SuccessResponse(data=result)
 
 
@@ -201,13 +215,22 @@ async def save_transcript_line(
         if not vs:
             raise HTTPException(status_code=404, detail="Voice session not found")
 
+        vs_id = vs.id
         note = VoiceSessionNote(
-            voice_session_id=vs.id,
+            voice_session_id=vs_id,
             note_type=f"transcript_{body.speaker}",
             content=body.text.strip(),
         )
         db.add(note)
         await db.commit()
+
+    # Build the Cognitive Fingerprint live: each user turn is classified into an
+    # argument pattern as soon as it's transcribed, so the graph grows while the
+    # user is still speaking (the frontend polls the graph every few seconds)
+    # instead of only filling in after hang-up. Fire-and-forget; watermark-
+    # idempotent, so it never double-counts with the end-of-session sweep.
+    if body.speaker == "user":
+        asyncio.create_task(derive_voice_session_patterns_background(vs_id))
 
     return SuccessResponse(data=TranscriptLineSavedOut(ok=True))
 
@@ -279,5 +302,8 @@ async def get_voice_summary(
             strong_arguments=strong_arguments,
             concessions=concessions,
             position_flips=position_flips,
+            score_logic=vs.score_logic,
+            score_evidence=vs.score_evidence,
+            score_rhetoric=vs.score_rhetoric,
         )
     )

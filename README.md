@@ -1,4 +1,27 @@
-# DebateMind
+<p align="center">
+  <img src="docs/assets/hero.jpg" alt="DebateMind — an AI opponent that remembers how you think" width="100%" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python 3.12+" />
+  <img src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-frontend-000000?logo=nextdotjs&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/LangGraph-text%20bot-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph" />
+  <img src="https://img.shields.io/badge/OpenAI%20Realtime-voice%20bot-412991?logo=openai&logoColor=white" alt="OpenAI Realtime" />
+  <img src="https://img.shields.io/badge/Cognee-memory%20layer-4F8CFF" alt="Cognee" />
+  <img src="https://img.shields.io/badge/Neo4j-knowledge%20graph-4581C3?logo=neo4j&logoColor=white" alt="Neo4j" />
+  <img src="https://img.shields.io/badge/pgvector-embeddings-336791?logo=postgresql&logoColor=white" alt="pgvector" />
+</p>
+
+<p align="center">
+  <a href="#why-a-memory-layer"><b>Why</b></a> ·
+  <a href="#cognee-as-the-memory-layer--knowledge-graph"><b>Memory Layer</b></a> ·
+  <a href="#one-memory-two-bots-text--voice"><b>Text + Voice</b></a> ·
+  <a href="#architecture"><b>Architecture</b></a> ·
+  <a href="#setup"><b>Quick Start</b></a>
+</p>
+
+---
 
 An AI-powered debate trainer that sharpens your argumentation through adversarial practice. You debate an adaptive AI opponent — by **text** or by **voice** — and it learns your logical weaknesses, recurring fallacies, and thinking style over time, then targets them with counterarguments tuned to *you*.
 

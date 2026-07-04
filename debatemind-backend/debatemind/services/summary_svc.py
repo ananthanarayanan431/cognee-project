@@ -2,6 +2,7 @@ from sqlalchemy import select
 
 from debatemind.models.mastery import MasteryLog
 from debatemind.models.session import DebateSession, Exchange
+from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
 from debatemind.schemas.session import SessionSummaryOut, WeaknessChange
 from debatemind.services.weight_calc import compute_weight
 
@@ -98,13 +99,61 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
             )
         )
 
+    exchanges_count = len(exchanges)
+    weaknesses_exposed = len(weakness_patterns)
+    rounds_won = won
+
+    # Voice-only debates write no Exchange rows, so every text-derived stat above
+    # is zero. Fold in the most recent voice session for this debate so the
+    # Session Complete screen reflects spoken debates too. A mixed session keeps
+    # its richer text stats; voice only fills in when there were no text turns.
+    if not exchanges:
+        voice = (
+            await db.execute(
+                select(VoiceSession)
+                .where(
+                    VoiceSession.debate_session_id == session_id,
+                    VoiceSession.user_id == user_id,
+                )
+                .order_by(VoiceSession.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if voice:
+            note_types = (
+                (
+                    await db.execute(
+                        select(VoiceSessionNote.note_type).where(
+                            VoiceSessionNote.voice_session_id == voice.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            # "Exchanges" → the user's spoken turns; "weak spots" → fallacies,
+            # concessions and position flips the AI flagged; "rounds won" →
+            # strong arguments it credited.
+            exchanges_count = sum(1 for t in note_types if t == "transcript_user")
+            weaknesses_exposed = sum(
+                1 for t in note_types if t in ("fallacy", "concession", "position_flip")
+            )
+            rounds_won = sum(1 for t in note_types if t == "strong_argument")
+            v_scores = [
+                s
+                for s in (voice.score_logic, voice.score_evidence, voice.score_rhetoric)
+                if s is not None
+            ]
+            if v_scores:
+                overall_score = round(sum(v_scores) / len(v_scores), 2)
+
     return SessionSummaryOut(
         topic=session_row.topic,
         difficulty=session_row.difficulty,
         score=overall_score,
-        exchanges=len(exchanges),
-        weaknesses_exposed=len(weakness_patterns),
+        exchanges=exchanges_count,
+        weaknesses_exposed=weaknesses_exposed,
         mastered_count=sum(1 for p in mastered_in_session if p in patterns_seen),
-        rounds_won=won,
+        rounds_won=rounds_won,
         patterns=pattern_changes,
     )
