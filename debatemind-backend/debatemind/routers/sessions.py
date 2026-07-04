@@ -35,6 +35,7 @@ from debatemind.services.session_score_svc import score_session_background
 from debatemind.services.summary_svc import get_session_summary
 from debatemind.services.title_svc import generate_session_title
 from debatemind.services.transcript_svc import format_transcript_text
+from debatemind.services.voice_context_svc import recent_exchanges_with_voice
 from debatemind.types import (
     NotFoundError,
     SuccessResponse,
@@ -201,17 +202,10 @@ async def send_message(
     turn = (count_result.scalar() or 0) + 1
 
     # Last 3 exchanges, chronological — gives the opponent real in-session memory
-    # of what's already been argued, matching the pattern used by /continue.
-    history_result = await db.execute(
-        select(Exchange)
-        .where(Exchange.session_id == session_id)
-        .order_by(Exchange.turn_number.desc())
-        .limit(3)
-    )
-    recent_exchanges = [
-        {"user_message": ex.user_message, "opponent_response": ex.opponent_response}
-        for ex in reversed(history_result.scalars().all())
-    ]
+    # of what's already been argued. Backfilled with the voice transcript when
+    # there aren't enough text turns yet, so a session argued by voice and then
+    # reopened in text continues with that context rather than from scratch.
+    recent_exchanges = await recent_exchanges_with_voice(db, session_id, limit=13)
 
     initial_state = DebateState(
         user_id=user_id,
@@ -411,17 +405,10 @@ async def session_continue(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    exchanges_result = await db.execute(
-        select(Exchange)
-        .where(Exchange.session_id == session_id)
-        .order_by(Exchange.turn_number.desc())
-        .limit(3)
-    )
-    exchanges = list(reversed(exchanges_result.scalars().all()))
-    last_exchanges = [
-        {"user_message": ex.user_message, "opponent_response": ex.opponent_response}
-        for ex in exchanges
-    ]
+    # Text exchanges, backfilled with the voice transcript when the session was
+    # argued by voice — so the re-engagement message picks up what was actually
+    # discussed instead of opening cold on a session that looks empty in text.
+    last_exchanges = await recent_exchanges_with_voice(db, session_id, limit=13)
 
     async def event_stream():
         try:

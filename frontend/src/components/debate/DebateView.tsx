@@ -88,6 +88,27 @@ export default function DebateView() {
           // Fresh session (just created) — the AI opponent streams the opening.
           // Reopened empty sessions skip this: the user just starts arguing.
           streamOpening(sessionId);
+        } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
+          // Reopened session with no text history — it may have been argued by
+          // voice. Rather than dropping the user onto an empty screen, replay
+          // the spoken transcript as chat history and let the opponent pick the
+          // debate back up in text (the /continue call is voice-aware server-side).
+          api
+            .getVoiceSummary(sessionId)
+            .then((voice) => {
+              if (!voice.has_voice_session || voice.transcript.length === 0) return;
+              if (useDebate.getState().messages.length > 0) return; // user already started typing
+              const voiceMsgs: Message[] = voice.transcript.map((line, i) => ({
+                id: `voice-${i}`,
+                role: line.speaker === "ai" ? "opponent" : "user",
+                text: line.text,
+              }));
+              setMessages(voiceMsgs);
+              streamContinuation(sessionId);
+            })
+            .catch(() => {
+              /* no voice history either — leave the user to open a fresh argument */
+            });
         }
       }
 
