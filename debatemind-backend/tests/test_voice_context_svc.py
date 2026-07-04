@@ -7,6 +7,7 @@ from debatemind.database import Base
 from debatemind.models.session import DebateSession, Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
 from debatemind.services.voice_context_svc import (
+    MAX_SESSION_TURNS,
     recent_exchanges_with_voice,
     voice_transcript_exchanges,
 )
@@ -138,3 +139,44 @@ async def test_no_voice_no_text_is_empty(db_session):
     s = await _session(db_session)
     assert await recent_exchanges_with_voice(db_session, s.id, limit=3) == []
     assert await voice_transcript_exchanges(db_session, s.id, limit=3) == []
+
+
+async def test_default_returns_whole_session_not_just_last_three(db_session):
+    s = await _session(db_session)
+    for i in range(1, 6):
+        db_session.add(
+            Exchange(
+                session_id=s.id,
+                turn_number=i,
+                user_message=f"typed {i}",
+                opponent_response=f"reply {i}",
+            )
+        )
+    await db_session.commit()
+
+    got = await recent_exchanges_with_voice(db_session, s.id)
+
+    # No explicit limit → the opponent sees every turn of the session, not a tail.
+    assert [g["user_message"] for g in got] == [f"typed {i}" for i in range(1, 6)]
+
+
+async def test_ceiling_caps_a_runaway_session_to_most_recent(db_session):
+    s = await _session(db_session)
+    total = MAX_SESSION_TURNS + 5
+    for i in range(1, total + 1):
+        db_session.add(
+            Exchange(
+                session_id=s.id,
+                turn_number=i,
+                user_message=f"typed {i}",
+                opponent_response=f"reply {i}",
+            )
+        )
+    await db_session.commit()
+
+    got = await recent_exchanges_with_voice(db_session, s.id)
+
+    assert len(got) == MAX_SESSION_TURNS
+    # The most recent MAX_SESSION_TURNS turns, chronological.
+    assert got[-1]["user_message"] == f"typed {total}"
+    assert got[0]["user_message"] == f"typed {total - MAX_SESSION_TURNS + 1}"

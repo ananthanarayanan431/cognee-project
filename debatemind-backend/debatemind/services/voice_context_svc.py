@@ -103,11 +103,13 @@ async def voice_transcript_exchanges(
 
 
 async def recent_exchanges_with_voice(
-    db: AsyncSession, session_id: str, limit: int = 3
+    db: AsyncSession, session_id: str, limit: int = MAX_SESSION_TURNS
 ) -> list[dict[str, str]]:
-    """Last `limit` exchanges for the opponent's in-session memory: text
-    Exchange rows, backfilled with the tail of the voice transcript when there
-    aren't enough text turns yet (e.g. a voice session just reopened in text)."""
+    """The current session's exchanges for the opponent's in-session memory: the
+    text Exchange rows (most recent `limit`), backfilled with the tail of the
+    voice transcript when there aren't enough text turns to fill the window
+    (e.g. a voice session just reopened in text). Defaults to the whole session
+    up to MAX_SESSION_TURNS."""
     text_rows = (
         (
             await db.execute(

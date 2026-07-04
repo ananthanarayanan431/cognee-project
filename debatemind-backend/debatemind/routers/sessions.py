@@ -201,11 +201,11 @@ async def send_message(
     )
     turn = (count_result.scalar() or 0) + 1
 
-    # Last 3 exchanges, chronological — gives the opponent real in-session memory
-    # of what's already been argued. Backfilled with the voice transcript when
-    # there aren't enough text turns yet, so a session argued by voice and then
-    # reopened in text continues with that context rather than from scratch.
-    recent_exchanges = await recent_exchanges_with_voice(db, session_id, limit=13)
+    # The whole session so far, chronological — the opponent has no history tool,
+    # so this window is all the in-session memory it gets. Backfilled with the
+    # voice transcript when there aren't enough text turns yet, so a session
+    # argued by voice and reopened in text continues with that context in hand.
+    recent_exchanges = await recent_exchanges_with_voice(db, session_id)
 
     initial_state = DebateState(
         user_id=user_id,
@@ -405,10 +405,10 @@ async def session_continue(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Text exchanges, backfilled with the voice transcript when the session was
-    # argued by voice — so the re-engagement message picks up what was actually
-    # discussed instead of opening cold on a session that looks empty in text.
-    last_exchanges = await recent_exchanges_with_voice(db, session_id, limit=13)
+    # The whole session, backfilled with the voice transcript when it was argued
+    # by voice — so the re-engagement message picks up everything that was
+    # actually discussed instead of opening cold on a session that looks empty.
+    last_exchanges = await recent_exchanges_with_voice(db, session_id)
 
     async def event_stream():
         try:
