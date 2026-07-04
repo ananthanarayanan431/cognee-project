@@ -12,11 +12,37 @@ export default function SessionEnd() {
   const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    if (sessionId) {
+    if (!sessionId) return;
+    let live = true;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // A voice session's Logic/Evidence/Rhetoric score is judged async on the
+    // backend and lands a few seconds after the session ends, so the first
+    // fetch can arrive with score 0. Re-fetch a couple of times on a decay
+    // schedule until a score shows up. Text sessions score 1–10 and stop
+    // immediately; the extra fetches only fire while the score is still 0.
+    const load = (attempt: number) => {
       api.getSessionSummary(sessionId)
-        .then((s) => { setSummary(s); setLoading(false); })
-        .catch(() => { setFetchError(true); setLoading(false); });
-    }
+        .then((s) => {
+          if (!live) return;
+          setSummary(s);
+          setLoading(false);
+          if (s.score === 0 && attempt < 3) {
+            timers.push(setTimeout(() => load(attempt + 1), 3000));
+          }
+        })
+        .catch(() => {
+          if (!live) return;
+          setFetchError(true);
+          setLoading(false);
+        });
+    };
+    load(0);
+
+    return () => {
+      live = false;
+      timers.forEach(clearTimeout);
+    };
   }, [sessionId]);
 
   if (loading) {
