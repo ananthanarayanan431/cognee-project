@@ -93,12 +93,8 @@ async def session_scoped_fingerprint(user_id: str, session_id: str, topic: str) 
     tallies, neo4j_count = await _neo4j_tallies(user_id, session_id)
 
     async with AsyncSessionLocal() as db:
-        # Text turns carry their pattern on the Exchange row; voice turns carry
-        # it on the transcript_user note (written synchronously by
-        # voice_score_svc as the fingerprint's fast path). A session is normally
-        # all-text or all-voice, but we union both and order by created_at so the
-        # neo4j_count watermark slices off exactly the tail Neo4j hasn't synced
-        # regardless — mirroring how the Exchange fast path already works.
+        # Union text (Exchange) and voice (transcript_user note) patterns, ordered
+        # by created_at so the neo4j_count watermark slices off the unsynced tail.
         text_rows = (
             await db.execute(
                 select(Exchange.detected_pattern, Exchange.outcome, Exchange.created_at)

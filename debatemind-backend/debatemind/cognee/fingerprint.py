@@ -164,9 +164,7 @@ async def remember_argument(
         },
     )
 
-    # Typed node: gives forget() a precise node to delete and the
-    # knowledge-graph view a stable node to render, independent of what
-    # cognify's LLM extraction infers from the prose above.
+    # Typed node: gives forget() a precise node to delete, independent of cognify.
     try:
         owner = UserProfile(id=user_profile_id(user_id), user_id=user_id)
         topic_node = Topic(id=topic_id(user_id, topic), user_id=user_id, name=topic)
@@ -230,9 +228,6 @@ async def remember_session_summary(
     )
     if coaching_note:
         text += f"CoachingNote: {coaching_note}\n"
-    # Prose sentence weaving topic (-> KnowledgeDomain), thinking style, and weak
-    # patterns so cognify can extract domain-linked, typed nodes rather than
-    # scoring the terse markers alone.
     summary = (
         f'Over {rounds_played} rounds debating "{topic}" in {mode} mode at '
         f"{difficulty} difficulty, the user won {win_rate:.0%} of exchanges. "

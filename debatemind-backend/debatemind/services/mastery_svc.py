@@ -47,10 +47,7 @@ async def reactivate_pattern(db: AsyncSession, user_id: str, pattern_type: str) 
     if row is None:
         return False
 
-    # Only clears the Postgres gate so the opponent resumes targeting this
-    # pattern — forget_pattern() already permanently deleted its ArgumentRecord
-    # evidence from Cognee, and reactivation does not restore it. New evidence
-    # accumulates fresh from here.
+    # Only clears the Postgres gate — the deleted Cognee evidence is not restored.
     row.reactivated_at = datetime.now(timezone.utc)
     await db.commit()
     return True

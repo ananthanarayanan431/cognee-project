@@ -115,12 +115,8 @@ async def clerk_exchange(body: ClerkExchangeIn, db: AsyncSession = Depends(get_d
                     r.status_code,
                 )
     except Exception:
-        # Network/parse failure — degrade to a synthetic email but make it visible,
-        # otherwise a Clerk outage silently creates users with @clerk.user addresses.
-        # Don't log the raw clerk_user_id — it's a stable external identifier for the user.
         logger.exception("clerk user lookup failed; proceeding without email")
 
-    # 1. Look up by clerk_id (sso_id column)
     result = await db.execute(select(User).where(User.sso_id == clerk_user_id))
     user = result.scalar_one_or_none()
 

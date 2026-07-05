@@ -45,19 +45,14 @@ from debatemind.worker.tasks import finalize_session_fingerprint_task
 
 router = APIRouter()
 
-# In-memory consecutive-wins counter per session (resets on server restart).
-# Bounded TTLCache rather than a plain dict: the entry is popped when a session
-# ends or is deleted, but sessions the user simply abandons would otherwise
-# accumulate one counter each forever. A day-long TTL comfortably outlives any
-# real debate session.
+# In-memory consecutive-wins counter per session; TTL-bounded so abandoned
+# sessions don't leak counters.
 _session_wins: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 logger = logging.getLogger(__name__)
 
 
-# User-meaningful pipeline nodes, in execution order. remember/prune are
-# internal bookkeeping (memory-graph writes, mastery pruning) with no
-# user-facing meaning and are intentionally not surfaced as stage events.
+# User-facing pipeline stages, in order (remember/prune are internal and not surfaced).
 STAGE_ORDER = ["extract", "opponent", "judge", "mastery"]
 
 
@@ -91,10 +86,8 @@ async def list_sessions(
     )
     rows = result.all()
 
-    # Self-heal: ended sessions with exchanges but no persisted score (sessions
-    # ended before session-level scoring existed, or whose scoring task died)
-    # get judged in the background; the score shows up on the next list fetch.
-    # score_session_background de-duplicates in-flight sessions itself.
+    # Self-heal: ended sessions with exchanges but no persisted score get judged
+    # in the background; the score shows up on the next list fetch.
     for session, cnt, _ in rows:
         if session.status == "ended" and session.overall_score <= 0 and (cnt or 0) > 0:
             asyncio.create_task(score_session_background(user_id, session.id))
@@ -201,10 +194,8 @@ async def send_message(
     )
     turn = (count_result.scalar() or 0) + 1
 
-    # The whole session so far, chronological — the opponent has no history tool,
-    # so this window is all the in-session memory it gets. Backfilled with the
-    # voice transcript when there aren't enough text turns yet, so a session
-    # argued by voice and reopened in text continues with that context in hand.
+    # Full session history, backfilled with the voice transcript when needed —
+    # this window is all the in-session memory the opponent gets.
     recent_exchanges = await recent_exchanges_with_voice(db, session_id)
 
     initial_state = DebateState(
@@ -405,9 +396,7 @@ async def session_continue(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # The whole session, backfilled with the voice transcript when it was argued
-    # by voice — so the re-engagement message picks up everything that was
-    # actually discussed instead of opening cold on a session that looks empty.
+    # Backfilled with the voice transcript so a voice-argued session isn't cold.
     last_exchanges = await recent_exchanges_with_voice(db, session_id)
 
     async def event_stream():
@@ -462,11 +451,7 @@ async def end_session(
     if not session or session.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Idempotent: the frontend POSTs /end from three paths — the "End session"
-    # button, the "← Back" nav, and the beforeunload beacon — so one session can
-    # reach here more than once. Finalize exactly once; a repeat call must not
-    # re-dispatch the summary write + cognify re-index, which would duplicate the
-    # session-summary node and burn a redundant (expensive) cognify pass.
+    # Idempotent: /end is POSTed from several frontend paths — finalize exactly once.
     if session.status == "ended":
         return SuccessResponse(data=EndSessionOut(status="ended"))
 
@@ -479,16 +464,10 @@ async def end_session(
 
     _session_wins.pop(session_id, None)
 
-    # Session-level LLM judge: score the full transcript and persist
-    # overall_score, so the session list stops showing "—". Fire-and-forget
-    # (same pattern as the /start title write) so /end stays fast — it is also
-    # called from the beforeunload beacon.
+    # Score the full transcript in the background so /end stays fast.
     asyncio.create_task(score_session_background(user_id, session_id))
 
-    # Finalize the fingerprint in one ordered Celery task: write the session
-    # summary first, THEN re-index. A single task (rather than two independent
-    # dispatches) guarantees the summary is captured before the consolidating
-    # cognify pass — see fingerprint_finalize_svc.finalize_session_fingerprint.
+    # One ordered Celery task: write the session summary first, THEN re-index.
     try:
         finalize_session_fingerprint_task.delay(user_id, session_id)
     except Exception:

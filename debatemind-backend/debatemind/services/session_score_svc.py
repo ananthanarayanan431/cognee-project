@@ -25,9 +25,7 @@ from debatemind.models.session import DebateSession, Exchange
 
 logger = logging.getLogger(__name__)
 
-# Sessions currently being scored by a background task in this process —
-# prevents list_sessions from dispatching duplicate judges for the same
-# session while one is already in flight.
+# Sessions currently being scored, to dedupe concurrent dispatches.
 _scoring_in_flight: set[str] = set()
 
 

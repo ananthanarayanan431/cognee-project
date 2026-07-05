@@ -31,9 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from debatemind.models.session import Exchange
 from debatemind.models.voice_session import VoiceSession, VoiceSessionNote
 
-# Ceiling on how many most-recent turns of the current session are replayed to
-# the opponent each turn. Well above any normal debate; only a runaway session
-# hits it. Bump freely — it's a token guardrail, not a design constraint.
+# Ceiling on recent turns replayed to the opponent — a token guardrail, not a design constraint.
 MAX_SESSION_TURNS = 50
 
 

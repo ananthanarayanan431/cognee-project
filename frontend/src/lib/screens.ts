@@ -1,14 +1,5 @@
-// ── Screen ↔ URL routing (single source of truth) ────────────────────────────
-//
-// The app is a single Next.js route ("/") whose visible screen is driven by
-// Zustand state and mirrored into the URL via the History API. All screen↔URL
-// mapping lives here so hydrate (URL→screen), the URL-sync effect (screen→URL),
-// and the popstate handler (URL→screen) can never drift out of sync.
-//
-// "landing" is the public marketing home and owns the clean root URL ("/").
-// Every in-app screen lives under "/?screen=<name>" (the topic list is the app
-// home at "/?screen=topic"). "calibration" is an auth-gated interstitial with no
-// addressable URL.
+// Screen ↔ URL routing (single source of truth). "landing" owns "/", every
+// other screen lives under "/?screen=<name>".
 
 export type Screen =
   | "landing"
@@ -33,10 +24,7 @@ const ADDRESSABLE: ReadonlySet<Screen> = new Set<Screen>([
   "settings",
 ]);
 
-// Subset safe to restore on a COLD load (refresh / direct link). These need no
-// ephemeral in-memory state. debate/topic-detail/end/transcript require a live
-// sessionId or a selected topic that isn't persisted, so a cold load of those
-// falls back to the app home (topic list) instead of rendering a blank screen.
+// Screens safe to restore on a cold load — they need no ephemeral in-memory state.
 const COLD_RESTORABLE: ReadonlySet<Screen> = new Set<Screen>([
   "landing",
   "topic",
@@ -44,10 +32,7 @@ const COLD_RESTORABLE: ReadonlySet<Screen> = new Set<Screen>([
   "settings",
 ]);
 
-// Screens bound to a specific debate session. These carry the session id in the
-// URL (`&session=<id>`) so an active session is traceable from the address bar
-// and logs. The id is display/trace-only — cold loads still fall back per
-// COLD_RESTORABLE and do not resume the session.
+// Screens that carry the active session id in the URL (display/trace-only).
 const SESSION_SCOPED: ReadonlySet<Screen> = new Set<Screen>([
   "debate",
   "end",

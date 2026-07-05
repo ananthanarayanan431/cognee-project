@@ -112,14 +112,6 @@ async def _remember_node(state: DebateState) -> DebateState:
 
 
 async def _mastery_prune_node(state: DebateState) -> DebateState:
-    # `mastery_events` is read downstream (routers/sessions.py) to persist
-    # MasteryLog rows and to notify the frontend. The Cognee write below is a
-    # best-effort supplementary fact — Postgres is the source of truth for
-    # gating (see get_active_mastered_patterns) — so a dispatch failure here
-    # must not erase the achieved-mastery list, or the feature only ever
-    # "fires" when Cognee happens to be down. Mirrors voice_agent/tools.py,
-    # which writes MasteryLog unconditionally regardless of the dispatched
-    # forget_pattern task's outcome.
     for pattern in state.get("mastery_events", []):
         try:
             forget_pattern_task.delay(state["user_id"], pattern)

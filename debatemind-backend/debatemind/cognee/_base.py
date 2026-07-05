@@ -44,13 +44,6 @@ def result_text(r) -> str:
     return getattr(r, "text", str(r))
 
 
-# --------------------------------------------------------------------------
-# Ontology vocabulary — the controlled entity names cognify() links argument
-# records to (see ontology/debate_domain.owl). recall.py walks one graph hop
-# out from each owned ArgumentRecord and classifies neighbour entities against
-# these sets to surface the cognitive signal (biases, reasoning style, evidence
-# type) that lives ONLY in the LLM-derived graph, not on the record's own
-# fields. Kept in sync with the .owl by tests/test_ontology.py — edit both.
 FALLACIES: frozenset[str] = frozenset(
     {
         "AppealToAuthority",

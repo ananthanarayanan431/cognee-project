@@ -2,10 +2,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-# ---------------------------------------------------------------------------
-# Requests
-# ---------------------------------------------------------------------------
-
 
 class TranscriptLineIn(BaseModel):
     voice_session_id: str
@@ -17,11 +13,6 @@ class ToolCallIn(BaseModel):
     voice_session_id: str
     tool: str
     arguments: dict = {}
-
-
-# ---------------------------------------------------------------------------
-# Responses
-# ---------------------------------------------------------------------------
 
 
 class TranscriptLineOut(BaseModel):
@@ -40,8 +31,7 @@ class VoiceSessionSummaryOut(BaseModel):
     strong_arguments: list[str] = []
     concessions: list[str] = []
     position_flips: list[str] = []
-    # Aggregate Logic/Evidence/Rhetoric over the spoken transcript. NULL until
-    # the background voice scorer finishes (a few seconds after the session ends).
+    # NULL until the background voice scorer finishes.
     score_logic: Optional[float] = None
     score_evidence: Optional[float] = None
     score_rhetoric: Optional[float] = None

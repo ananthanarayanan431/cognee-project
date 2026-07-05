@@ -119,9 +119,7 @@ async def test_weak_evidence_argument_is_a_weakness(db_session, monkeypatch):
 
 
 async def test_classification_failure_skips_dispatch(db_session, monkeypatch):
-    # One user turn whose extractor call blows up. _classify_turn swallows the
-    # exception (logging it) and returns None, so the turn must be skipped —
-    # no pattern dispatched, no task enqueued — rather than crashing the run.
+    # Extractor call blows up; the turn should be skipped, not crash the run.
     vs = await _make_voice_session(db_session, ["The GDPR precedent shows global uptake."])
     create_mock = AsyncMock(side_effect=RuntimeError("openrouter exploded"))
     monkeypatch.setattr(voice_score_svc.openrouter.chat.completions, "create", create_mock)

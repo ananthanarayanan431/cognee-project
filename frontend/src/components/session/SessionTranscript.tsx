@@ -28,11 +28,8 @@ export default function SessionTranscript() {
   useEffect(() => {
     if (!sessionId) return;
     let live = true;
-    // A voice session has no text `Exchange` rows — its dialogue lives in the
-    // voice summary. Fetch both; render whichever holds the conversation. The
-    // summary endpoint returns has_voice_session=false (not an error) for
-    // text-only sessions, so any thrown error here is a real backend/network
-    // failure and should surface rather than be swallowed to null.
+    // Voice sessions have no text Exchange rows — fetch both transcripts and
+    // render whichever holds the conversation.
     Promise.all([api.getTranscript(sessionId), api.getVoiceSummary(sessionId)])
       .then(([t, v]) => {
         if (!live) return;

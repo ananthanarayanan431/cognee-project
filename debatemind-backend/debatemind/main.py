@@ -23,14 +23,8 @@ class _CogneeNoDataFilter(logging.Filter):
 
 
 def setup_logging() -> None:
-    # Most modules (cognee/fingerprint.py, routers, agents, voice_agent, worker) log
-    # via plain `logging.getLogger(__name__).info(msg, extra={...})`, not
-    # `structlog.get_logger()`. A bare `basicConfig(format="%(message)s")` handler
-    # renders only the message and silently drops every `extra` field — including
-    # the results_raw/results_owned/elapsed_ms fields cognee's search/add/cognify
-    # logging relies on to show whether memory recall actually found anything.
-    # Route stdlib records through the same structlog processor chain so `extra`
-    # fields make it into the rendered output for both logger types.
+    # Route stdlib log records through the structlog processor chain so `extra`
+    # fields render for both logger types.
     shared_processors = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_logger_name,
@@ -42,9 +36,6 @@ def setup_logging() -> None:
     ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
-        # ExtraAdder pulls `extra={...}` kwargs off the stdlib LogRecord into the
-        # event dict — without it, ProcessorFormatter only keeps `record.getMessage()`
-        # and every extra field (results_raw, elapsed_ms, ...) is silently dropped.
         foreign_pre_chain=[*shared_processors, structlog.stdlib.ExtraAdder()],
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,

@@ -249,11 +249,8 @@ _COGNEE_NOTE_MAP: dict[str, tuple[str, str, str]] = {
 # single voice session signals the user has mastered that pattern in live debate.
 _VOICE_MASTERY_THRESHOLD = 3
 
-# In-memory strong-argument counter per voice session, keyed by voice_session_id.
-# Same lifecycle risk as _session_wins in sessions.py (resets on restart),
-# which is acceptable since sessions are short-lived. Bounded TTLCache so voice
-# sessions that never reach the end_voice_session tool (dropped connection,
-# closed tab) don't leak their counter for the life of the process.
+# In-memory strong-argument counter per voice session; TTL-bounded so dropped
+# sessions don't leak counters.
 _voice_strong_arg_counts: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 
@@ -452,9 +449,6 @@ async def _get_knowledge_context(
     tasks = [recall_topic_weaknesses(user_id, topic, exclude_patterns=excluded)] if topic else []
     if include_generic:
         tasks.append(recall_weaknesses(user_id, exclude_patterns=excluded))
-    # Graph-aware cognitive profile (cross-topic trait): same typed signal the
-    # chat opponent now gets — recurring fallacies, biases, reasoning style,
-    # weak domains — so voice and chat sharpen strategy off the same graph.
     tasks.append(recall_cognitive_profile(user_id))
     profile_idx = len(tasks) - 1
 
@@ -503,8 +497,6 @@ async def _save_debate_observation(
     await db.commit()
     await db.refresh(note)
 
-    # Write semantically meaningful observations into the Cognee fingerprint so
-    # future sessions (chat or voice) can recall patterns identified during voice.
     if note_type in _COGNEE_NOTE_MAP:
         pattern_type, evidence_quality, outcome = _COGNEE_NOTE_MAP[note_type]
         session_row = await db.execute(
@@ -526,18 +518,12 @@ async def _save_debate_observation(
             op_name="remember_argument",
         )
 
-        # Mirror chat mastery: when the user lands enough strong arguments in a
-        # single voice session, mark that pattern as mastered in both Cognee and
-        # MasteryLog SQL — same as pipeline's _mastery_prune_node + record_mastery_events.
         if note_type == "strong_argument":
             count = _voice_strong_arg_counts.get(voice_session_id, 0) + 1
             _voice_strong_arg_counts[voice_session_id] = count
             if count >= _VOICE_MASTERY_THRESHOLD:
                 _voice_strong_arg_counts[voice_session_id] = 0
-                # 1. Cognee: mark pattern as mastered in the knowledge graph
                 _dispatch(forget_pattern_task, user_id, pattern_type, op_name="forget_pattern")
-                # 2. SQL: write MasteryLog row so brain graph, reactivate API,
-                #    and get_session_context tool all see the mastery
                 db.add(
                     MasteryLog(
                         user_id=user_id,
@@ -610,25 +596,19 @@ async def _end_voice_session(
     )
     note_count = note_count_row.scalar() or 0
 
-    # Load observations to compute voice session summary stats for Cognee.
     notes_row = await db.execute(
         select(VoiceSessionNote).where(VoiceSessionNote.voice_session_id == voice_session_id)
     )
     notes = notes_row.scalars().all()
 
-    # Load debate session for topic + difficulty.
     session_row = await db.execute(
         select(DebateSession).where(DebateSession.id == debate_session_id)
     )
     debate_session = session_row.scalar_one_or_none()
 
     await db.commit()
-
-    # Clean up the in-memory mastery counter for this session.
     _voice_strong_arg_counts.pop(voice_session_id, None)
 
-    # Write voice session summary + coaching note to Cognee so future sessions
-    # on the same topic can recall voice-mode performance and coaching insights.
     if debate_session:
         strong = sum(1 for n in notes if n.note_type == "strong_argument")
         fallacies = sum(1 for n in notes if n.note_type == "fallacy")
@@ -638,9 +618,7 @@ async def _end_voice_session(
             :3
         ]
 
-        # Ordered: write the summary before re-indexing, in one dispatched
-        # task, so the summary is captured by the same consolidating cognify
-        # pass (previously these were two independent, unordered tasks).
+        # Write the summary before re-indexing, in one dispatched task.
         _dispatch(
             finalize_voice_session_fingerprint_task,
             user_id=user_id,
@@ -654,8 +632,6 @@ async def _end_voice_session(
             op_name="finalize_voice_session_fingerprint",
         )
     else:
-        # No debate session to summarize, but still re-index any observations
-        # already written during the session.
         _dispatch(improve_fingerprint_task, user_id, op_name="improve_fingerprint")
 
     return {

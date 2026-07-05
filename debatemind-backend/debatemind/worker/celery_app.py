@@ -36,13 +36,7 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
-    # Recycle each child process after a single task. The cognee tasks call
-    # asyncio.run() per task, but cognee's async DB engines are process-global
-    # and bind to the FIRST event loop a child uses — so a long-lived child's
-    # second task onward fails ("asyncpg: another operation is in progress").
-    # Respawning per task means every task runs on a fresh loop with a fresh
-    # engine; the ~1-2s fork cost is negligible beside a ~30s cognify pass.
-    # Safe because @worker_init only sets cognee CONFIG (no live connection in
-    # the parent to inherit across fork).
+    # Recycle each child after one task: cognee's async DB engines bind to the
+    # first event loop a child uses, so a reused child fails on its second task.
     worker_max_tasks_per_child=1,
 )

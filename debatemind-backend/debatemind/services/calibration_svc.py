@@ -1,8 +1,6 @@
 from cachetools import TTLCache
 
-# Bounded: calibration is a short guided flow, so per-user progress that hasn't
-# been touched in a day is safe to forget. An unbounded dict here would grow by
-# one entry per user forever (reset() only fires when a flow completes).
+# TTL-bounded so abandoned calibration flows don't leak progress entries forever.
 _progress: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 

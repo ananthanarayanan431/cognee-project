@@ -115,9 +115,7 @@ async def test_edges_only_included_when_both_endpoints_present():
     with _patched(nodes, edges):
         result = await user_graph_view("u1")
 
-    # b is not owned and not reachable from an owned node via any OTHER edge,
-    # but this edge itself makes b adjacent to a — so b is included, and the
-    # edge is included too (adjacency inheritance is intentionally one-hop-open).
+    # b is adjacent to owned node a via this edge, so both are included.
     assert {n["id"] for n in result["nodes"]} == {"a", "b"}
     assert result["edges"] == [{"source": "a", "target": "b", "label": "unrelated_edge"}]
 

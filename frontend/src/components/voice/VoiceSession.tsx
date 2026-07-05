@@ -301,10 +301,8 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
   const startTimeRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Pull the latest session-scoped fingerprint into the shared store so the
-  // Cognitive Fingerprint panel (rendered by DebateView) reflects voice debates.
-  // Voice observations are written to Cognee async (Celery), so the panel has
-  // no live SSE feed like text mode — we poll instead.
+  // Pull the latest fingerprint into the shared store — voice has no live SSE
+  // feed like text mode, so we poll.
   const refreshGraph = useCallback(async () => {
     try {
       const g = await api.getGraph(sessionId);
@@ -322,12 +320,8 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
     return () => clearInterval(id);
   }, [status, refreshGraph]);
 
-  // After the session ends, the score and the fingerprint patterns are still
-  // being written async — the score lands in-process within a second or two,
-  // but each derived argument pattern is a separate Celery→Neo4j write, so the
-  // graph can take longer to fill in. Re-fetch on a decay schedule that runs
-  // out past those writes so the graph and score bar catch up without the user
-  // having to reopen the session.
+  // Score and fingerprint are still being written async after the session ends —
+  // re-fetch on a decay schedule so the UI catches up.
   useEffect(() => {
     if (status !== "ended") return;
     const timers = [1500, 5000, 12000, 20000, 30000].map((delay) =>

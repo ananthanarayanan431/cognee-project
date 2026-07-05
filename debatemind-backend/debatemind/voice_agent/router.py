@@ -64,11 +64,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-
 @router.post(
     "/{session_id}/token",
     summary="Mint voice session token",
@@ -174,12 +169,8 @@ async def run_tool(
             result["error"],
         )
 
-    # When the AI ends the session, LLM-judge the spoken transcript for
-    # Logic/Evidence/Rhetoric so the SessionScoreBar reflects voice debates too.
-    # Fire-and-forget on the request loop; the client polls /summary for the
-    # scores once the judge lands. score_voice_session_background de-dupes and
-    # never raises. Voice writes no Exchange rows, so text scoring never covers
-    # this path — hence a dedicated voice scorer.
+    # On session end, LLM-judge the spoken transcript for Logic/Evidence/Rhetoric.
+    # Fire-and-forget; the client polls /summary for the scores.
     if body.tool == "end_voice_session" and "error" not in result:
         asyncio.create_task(score_voice_session_background(body.voice_session_id))
 
@@ -224,11 +215,8 @@ async def save_transcript_line(
         db.add(note)
         await db.commit()
 
-    # Build the Cognitive Fingerprint live: each user turn is classified into an
-    # argument pattern as soon as it's transcribed, so the graph grows while the
-    # user is still speaking (the frontend polls the graph every few seconds)
-    # instead of only filling in after hang-up. Fire-and-forget; watermark-
-    # idempotent, so it never double-counts with the end-of-session sweep.
+    # Classify each user turn into an argument pattern as it's transcribed so
+    # the fingerprint graph grows live. Watermark-idempotent, never double-counts.
     if body.speaker == "user":
         asyncio.create_task(derive_voice_session_patterns_background(vs_id))
 

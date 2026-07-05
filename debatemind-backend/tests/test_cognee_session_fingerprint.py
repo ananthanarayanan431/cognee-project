@@ -217,12 +217,8 @@ async def test_excludes_other_sessions_from_postgres_and_neo4j(seed):
 
 
 async def test_caps_pattern_nodes_at_eight(seed):
-    # _neo4j_tallies() doesn't filter by _VALID_PATTERNS (Neo4j's ArgumentRecord
-    # nodes are trusted, same as brain_view.user_brain_graph) -- these 10
-    # synthetic pattern names are fine to exercise the most_common(8) cap.
-    # No Postgres rows are seeded, so neo4j_count (10) exceeds len(rows) (0)
-    # and _merge_pending_exchanges's rows[10:] slice is empty: every count
-    # comes straight from Neo4j.
+    # Neo4j pattern names aren't filtered by _VALID_PATTERNS, so these synthetic
+    # names are fine to exercise the most_common(8) cap.
     neo4j_nodes = [_record(f"n{i}", "u1", "s1", f"Pattern{i}", "Won") for i in range(10)]
     await seed("s1", "u1", "UBI", [])
     with _patched(neo4j_nodes):

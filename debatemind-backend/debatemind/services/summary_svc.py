@@ -103,10 +103,8 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
     weaknesses_exposed = len(weakness_patterns)
     rounds_won = won
 
-    # Voice-only debates write no Exchange rows, so every text-derived stat above
-    # is zero. Fold in the most recent voice session for this debate so the
-    # Session Complete screen reflects spoken debates too. A mixed session keeps
-    # its richer text stats; voice only fills in when there were no text turns.
+    # Voice-only debates write no Exchange rows — fold in the most recent voice
+    # session so the Session Complete screen reflects spoken debates too.
     if not exchanges:
         voice = (
             await db.execute(
@@ -131,9 +129,6 @@ async def get_session_summary(db, user_id: str, session_id: str) -> SessionSumma
                 .scalars()
                 .all()
             )
-            # "Exchanges" → the user's spoken turns; "weak spots" → fallacies,
-            # concessions and position flips the AI flagged; "rounds won" →
-            # strong arguments it credited.
             exchanges_count = sum(1 for t in note_types if t == "transcript_user")
             weaknesses_exposed = sum(
                 1 for t in note_types if t in ("fallacy", "concession", "position_flip")
