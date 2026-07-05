@@ -15,10 +15,7 @@ LLM_MODEL = "openai/gpt-4.1-mini"
 # via OPENAI_BASE_URL below, not through OpenRouter's "vendor/model" scheme.
 EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072
-# Embeddings MUST hit OpenAI directly, not OpenRouter: OpenRouter is a
-# chat-completions gateway and does not expose an /embeddings endpoint, so
-# routing text-embedding-3-large through it 404s and silently disables the
-# entire memory layer (cognify fails in the background, recall returns []).
+# Embeddings must hit OpenAI directly — OpenRouter has no /embeddings endpoint.
 OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
@@ -60,9 +57,7 @@ def configure_cognee(settings: Settings) -> None:
             }
         )
 
-    # Embeddings are configured independently of the LLM: they must reach
-    # api.openai.com, never OpenRouter (see OPENAI_BASE_URL note above). Cognee
-    # has no public set_embedding_config(), so we mutate the singleton directly.
+    # Cognee has no public set_embedding_config(), so mutate the singleton directly.
     if settings.openai_api_key:
         embedding_config = get_embedding_config()
         object.__setattr__(embedding_config, "embedding_provider", "openai")

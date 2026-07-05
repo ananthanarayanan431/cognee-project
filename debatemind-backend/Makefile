@@ -6,14 +6,7 @@ debatemind-backend:
 frontend:
 	cd ../frontend && npm run dev
 
-# --pool=solo avoids os.fork(): on macOS, forking a process that then makes its
-# own network calls (DNS resolution via Network.framework) reliably SIGSEGVs in
-# forked children — see the WorkerLostError crashes this replaced. Prod runs the
-# prefork pool on Linux instead, per the celery_app.py module docstring.
-#
-# OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES is also set as a belt-and-suspenders
-# guard: Apple's Objective-C runtime refuses to initialize in a forked child
-# that already loaded ObjC code in the parent; this env var disables that check.
+# --pool=solo avoids macOS fork SIGSEGVs; prod uses prefork on Linux instead.
 celery worker:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run celery -A debatemind.worker.celery_app worker --loglevel=info --pool=solo
 

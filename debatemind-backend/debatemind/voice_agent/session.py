@@ -1,17 +1,5 @@
-"""
-OpenAI Realtime API ephemeral-key minter.
-
-WebRTC + ephemeral-key pattern (recommended by OpenAI for browser clients):
-  1. Backend calls POST /v1/realtime/client_secrets with the full session config
-     (system prompt, voice, turn-detection, tool definitions) using the standard API key.
-  2. OpenAI returns a short-lived ephemeral key (valid ~60 seconds).
-  3. Backend creates a VoiceSession row in the DB, then returns the ephemeral key
-     and the voice_session_id to the browser.
-  4. Browser uses the ephemeral key to open a WebRTC peer connection directly
-     with OpenAI — the backend is not in the audio media path at all.
-  5. When OpenAI calls a tool, the browser POSTs to /api/voice/{id}/tools, our
-     backend executes it, and the browser relays the result back via data-channel.
-"""
+"""OpenAI Realtime API ephemeral-key minter. The browser uses the key to open a
+WebRTC connection directly with OpenAI; the backend is not in the audio path."""
 
 import asyncio
 import hashlib
@@ -38,38 +26,14 @@ from debatemind.voice_agent.tools import TOOL_DEFINITIONS
 logger = logging.getLogger(__name__)
 
 _SESSIONS_URL = "https://api.openai.com/v1/realtime/client_secrets"
-# GA Realtime model. The client_secrets API went GA and now requires the new
-# session schema (session.type + nested audio block); the old preview payload
-# 400s with "Missing required parameter: 'session.type'".
 _MODEL = "gpt-realtime"
 _VOICE = "shimmer"
 _AUDIO_FORMAT = {"type": "audio/pcm", "rate": 24000}
 
 
 async def create_voice_session(session: DebateSession, user_id: str) -> dict:
-    """
-    Mint a short-lived ephemeral key from OpenAI, create a VoiceSession DB row,
-    and return a combined dict:
-
-        {
-          # everything OpenAI returned:
-          "client_secret": {"value": "ek_...", "expires_at": <unix ts>},
-          "id": "sess_...",
-          "model": "gpt-4o-realtime-preview",
-          ...
-          # our addition:
-          "voice_session_id": "<uuid>"
-        }
-
-    The browser extracts:
-      - client_secret.value  → ephemeral Bearer token for WebRTC
-      - voice_session_id     → passed to POST /api/voice/{sid}/tools
-    """
-    # Fetch the user's full cross-session memory from Cognee — the same context
-    # the chat opponent injects every turn (opponent.py): weakness patterns
-    # (generic + topic-specific), personal facts, and the graph-derived
-    # cognitive profile. Each recall degrades independently to "no memory"
-    # rather than blocking the session.
+    """Mint an ephemeral key from OpenAI, create a VoiceSession row, and return
+    both merged (client_secret.value for WebRTC, voice_session_id for tool calls)."""
     cognee_weaknesses: list[str] = []
     personal_facts: list[str] = []
     profile_line = ""
@@ -84,7 +48,7 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
             return_exceptions=True,
         )
         seen: set[str] = set()
-        for items in (topic_items, generic_items):  # topic context first — more specific
+        for items in (topic_items, generic_items):  # topic-specific first
             if isinstance(items, Exception):
                 continue
             for w in items:
@@ -109,9 +73,6 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
         cognitive_profile=profile_line,
     )
 
-    # GA Realtime session schema: audio config is nested under audio.input /
-    # audio.output (was flat input_audio_format/output_audio_format/voice in the
-    # preview API), and session.type is required.
     payload = {
         "session": {
             "type": "realtime",
@@ -121,10 +82,7 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
                 "input": {
                     "format": _AUDIO_FORMAT,
                     "transcription": {"model": "whisper-1"},
-                    # server_vad: OpenAI handles silence detection automatically.
-                    # 800 ms silence gives debaters more thinking time than the
-                    # 500 ms default. create_response + interrupt_response are
-                    # required for conversational turn-taking.
+                    # 800 ms silence gives debaters more thinking time than the default.
                     "turn_detection": {
                         "type": "server_vad",
                         "threshold": 0.5,
@@ -164,10 +122,6 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
         response.raise_for_status()
 
     openai_data = response.json()
-
-    # GA response shape: {"value": "ek_...", "expires_at": <ts>, "session": {...}}.
-    # The ephemeral key is top-level "value" (was "client_secret.value") and the
-    # session id lives under "session.id" (was top-level "id").
     ga_session = openai_data.get("session") or {}
     openai_session_id = ga_session.get("id") or openai_data.get("id")
     async with AsyncSessionLocal() as db:
@@ -189,8 +143,6 @@ async def create_voice_session(session: DebateSession, user_id: str) -> dict:
         openai_session_id,
     )
 
-    # Normalize to the shape the browser expects (client_secret.value + id +
-    # model), while still passing through the raw GA fields.
     ephemeral_value = openai_data.get("value")
     expires_at = openai_data.get("expires_at") or ga_session.get("expires_at")
     return {

@@ -1,20 +1,9 @@
 """Celery app for cognee fingerprint writes (see debatemind/worker/tasks.py).
 
-Locally, `make dev` / `make start` already runs this worker alongside the API
-(see the Makefile's `celery`/`dev`/`start` targets) — no extra setup needed.
-
-For a cloud deployment: this worker must run as a SECOND process from the
-same image as the API (the Dockerfile needs no changes — celery[redis] is
-already an installed dependency). Point the platform's second service/process
-at the same image with this start command instead of the API's default CMD:
-
-    celery -A debatemind.worker.celery_app worker --loglevel=info --concurrency=2
-
-Give it the same environment variables as the API service — in particular
-REDIS_URL (the broker/backend, must point at the same Redis both processes
-share) and every COGNEE_*/OPENAI_*/OPENROUTER_* variable configure_cognee()
-reads, since @worker_init.connect below configures cognee independently in
-this process, never sharing state with the API process's cognee engine.
+In production this must run as a second process from the same image, started
+with `celery -A debatemind.worker.celery_app worker --concurrency=2` and the
+same env vars as the API (REDIS_URL plus every COGNEE_*/OPENAI_*/OPENROUTER_*
+var, since @worker_init.connect configures cognee independently per process).
 """
 
 from celery import Celery
@@ -36,13 +25,7 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
-    # Recycle each child process after a single task. The cognee tasks call
-    # asyncio.run() per task, but cognee's async DB engines are process-global
-    # and bind to the FIRST event loop a child uses — so a long-lived child's
-    # second task onward fails ("asyncpg: another operation is in progress").
-    # Respawning per task means every task runs on a fresh loop with a fresh
-    # engine; the ~1-2s fork cost is negligible beside a ~30s cognify pass.
-    # Safe because @worker_init only sets cognee CONFIG (no live connection in
-    # the parent to inherit across fork).
+    # Recycle each child after one task: cognee's async DB engines bind to the
+    # first event loop a child uses, so a reused child fails on its second task.
     worker_max_tasks_per_child=1,
 )

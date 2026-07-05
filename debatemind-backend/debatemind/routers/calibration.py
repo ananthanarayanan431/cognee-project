@@ -81,11 +81,8 @@ async def answer(
 
     state = await extract_argument({"topic": topic, "user_message": body.text, "description": ""})
 
-    # Fire-and-forget via Celery: remember_argument runs add()+cognify() which
-    # can take many seconds and, if run in-process, blocks every other
-    # concurrent request on this server's event loop (dlt's sqlalchemy
-    # destination opens a synchronous psycopg2 connection). Dispatch it to
-    # the worker so the user advances immediately without freezing anyone else.
+    # Dispatch to Celery — cognify takes many seconds and would block the event
+    # loop if run in-process.
     try:
         remember_argument_task.delay(
             user_id=user_id,

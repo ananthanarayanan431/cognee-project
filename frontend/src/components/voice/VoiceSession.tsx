@@ -282,9 +282,11 @@ function TranscriptPanel({ lines }: { lines: TranscriptLine[] }) {
               ${line.speaker === "ai"
                 ? "bg-white border border-border text-ink rounded-tl-sm"
                 : "bg-ink text-white rounded-tr-sm"
-              }`}
+              }
+              ${!line.text ? "opacity-60 italic" : ""}`}
           >
-            {line.text}
+            {/* Empty text = slot reserved at end-of-speech, transcription still in flight */}
+            {line.text || "…"}
           </div>
         </div>
       ))}
@@ -294,15 +296,13 @@ function TranscriptPanel({ lines }: { lines: TranscriptLine[] }) {
 }
 
 export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props) {
-  const { status, transcript, summary, connect, disconnect, refreshSummary, error } = useVoiceAgent(sessionId);
+  const { status, transcript, summary, connect, disconnect, refreshSummary, muted, toggleMute, error } = useVoiceAgent(sessionId);
   const [activeTab, setActiveTab] = useState<Tab>("transcript");
   const startTimeRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Pull the latest session-scoped fingerprint into the shared store so the
-  // Cognitive Fingerprint panel (rendered by DebateView) reflects voice debates.
-  // Voice observations are written to Cognee async (Celery), so the panel has
-  // no live SSE feed like text mode — we poll instead.
+  // Pull the latest fingerprint into the shared store — voice has no live SSE
+  // feed like text mode, so we poll.
   const refreshGraph = useCallback(async () => {
     try {
       const g = await api.getGraph(sessionId);
@@ -320,12 +320,8 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
     return () => clearInterval(id);
   }, [status, refreshGraph]);
 
-  // After the session ends, the score and the fingerprint patterns are still
-  // being written async — the score lands in-process within a second or two,
-  // but each derived argument pattern is a separate Celery→Neo4j write, so the
-  // graph can take longer to fill in. Re-fetch on a decay schedule that runs
-  // out past those writes so the graph and score bar catch up without the user
-  // having to reopen the session.
+  // Score and fingerprint are still being written async after the session ends —
+  // re-fetch on a decay schedule so the UI catches up.
   useEffect(() => {
     if (status !== "ended") return;
     const timers = [1500, 5000, 12000, 20000, 30000].map((delay) =>
@@ -460,9 +456,20 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
           {isConnected && (
             <>
               <div className="flex items-center gap-1.5 text-emerald-600 font-sans text-xs font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live
+                <span className={`w-2 h-2 rounded-full ${muted ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`} />
+                {muted ? <span className="text-amber-600">Muted</span> : "Live"}
               </div>
+              <button
+                onClick={toggleMute}
+                title={muted ? "Unmute microphone" : "Mute microphone"}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-sans text-sm font-semibold transition-colors border
+                  ${muted
+                    ? "bg-amber-500 border-amber-500 text-white hover:bg-amber-600"
+                    : "bg-white border-border text-ink hover:bg-fog/10"}`}
+              >
+                {muted ? <IconMicrophoneOff size={15} stroke={2} /> : <IconMicrophone size={15} stroke={2} />}
+                {muted ? "Unmute" : "Mute"}
+              </button>
               <button
                 onClick={handleDisconnect}
                 className="flex items-center gap-2 bg-ink text-white px-5 py-2.5 rounded-full font-sans text-sm font-semibold hover:bg-red-700 transition-colors"
@@ -491,7 +498,9 @@ export default function VoiceSession({ sessionId, sessionConfig, onEnd }: Props)
 
         {isConnected && (
           <p className="text-center font-sans text-[10px] text-fog mt-2">
-            Speak naturally — the AI opponent will respond automatically
+            {muted
+              ? "Microphone muted — the opponent can't hear you"
+              : "Speak naturally — the AI opponent will respond automatically"}
           </p>
         )}
       </div>

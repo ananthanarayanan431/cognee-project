@@ -16,19 +16,13 @@ export default function SessionEnd() {
     let live = true;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // A voice session's Logic/Evidence/Rhetoric score is judged async on the
-    // backend and lands a few seconds after the session ends, so the first
-    // fetch can arrive with score 0. Re-fetch a couple of times on a decay
-    // schedule until a score shows up. Text sessions score 1–10 and stop
-    // immediately; the extra fetches only fire while the score is still 0.
+    // Voice scores land async — re-fetch on a decay schedule while the score is 0.
     const load = (attempt: number) => {
       api.getSessionSummary(sessionId)
         .then((s) => {
           if (!live) return;
           setSummary(s);
-          // Keep the "Loading…" mask up while the score is still 0 and retries
-          // remain, so a not-yet-judged voice session never flashes a 0.0/10.
-          // Reveal the moment a real score arrives, or once retries are spent.
+          // Keep the loading mask up until a real score arrives or retries run out.
           const pending = s.score === 0 && attempt < 3;
           if (pending) {
             timers.push(setTimeout(() => load(attempt + 1), 3000));

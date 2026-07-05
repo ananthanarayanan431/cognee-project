@@ -1,7 +1,5 @@
-// Debate opponent modes ("difficulty"). Shared across the settings page,
-// topic screens, and session badges so the list stays in one place.
-// Keys must match the backend's _DIFFICULTY_INSTRUCTIONS in
-// debatemind/agents/prompts/opponent.py.
+// Debate opponent modes ("difficulty"). Keys must match the backend's
+// _DIFFICULTY_INSTRUCTIONS in debatemind/agents/prompts/opponent.py.
 
 export type DebateMode =
   | "gentle"

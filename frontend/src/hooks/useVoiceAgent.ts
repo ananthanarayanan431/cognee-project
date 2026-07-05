@@ -10,9 +10,7 @@ export interface TranscriptLine {
   speaker: "user" | "ai";
   text: string;
   timestamp: number;
-  // Realtime item this line belongs to. AI transcript deltas are grouped by it
-  // so an interleaved user line can't split one utterance across two bubbles,
-  // and the authoritative `...transcript.done` text can be reconciled onto it.
+  // Realtime item id — groups AI deltas so one utterance stays in one bubble.
   itemId?: string;
 }
 
@@ -23,8 +21,7 @@ export interface VoiceSummary {
   strong_arguments: string[];
   concessions: string[];
   position_flips: string[];
-  // Populated by the backend voice scorer a few seconds after the session ends;
-  // null until then. Surfaced in the SessionScoreBar via the debate store.
+  // Filled by the backend voice scorer after the session ends; null until then.
   score_logic: number | null;
   score_evidence: number | null;
   score_rhetoric: number | null;
@@ -37,13 +34,12 @@ interface UseVoiceAgentReturn {
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshSummary: () => Promise<void>;
+  muted: boolean;
+  toggleMute: () => void;
   error: string | null;
 }
 
-// GA Realtime WebRTC SDP-exchange endpoint. The old beta endpoint
-// (/v1/realtime?model=...) is disabled and returns beta_api_shape_disabled.
-// In GA the model is bound to the ephemeral key from /client_secrets, so it is
-// NOT passed as a query param (adding ?model= to /calls yields an empty 400).
+// GA Realtime endpoint — the model is bound to the ephemeral key, not a query param.
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
 
 let _idCounter = 0;
@@ -58,6 +54,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [summary, setSummary] = useState<VoiceSummary | null>(null);
+  const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -65,12 +62,14 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const voiceSessionIdRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  // Accumulates AI transcript deltas per response item so we can persist the
-  // full utterance on done. Keyed by item_id so interleaved response items don't
-  // contaminate each other's fallback text (item-less deltas share one bucket).
+  // AI transcript deltas per response item, persisted in full on done.
   const aiDeltaRef = useRef<Map<string, string>>(new Map());
-  // Set once `end_voice_session` fires; hang up once the AI's closing remarks
-  // finish playing (or after a timeout, in case that event never arrives).
+  // Ordered persist queue: user transcription lags the AI reply, so lines
+  // flush to the DB in conversation order once their text resolves.
+  const persistQueueRef = useRef<Array<{ key: string; speaker: "user" | "ai"; text: string | null }>>([]);
+  const persistChainRef = useRef<Promise<void>>(Promise.resolve());
+  const persistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Set when end_voice_session fires; hang up after closing remarks (or timeout).
   const endingRef = useRef(false);
   const endingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep debateSessionId in a ref so the data-channel handler never goes stale.
@@ -117,9 +116,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debateSessionId]);
 
-  // Re-fetch just the summary (observations + Logic/Evidence/Rhetoric scores)
-  // without disturbing the live transcript. Called after the session ends so
-  // the score bar picks up the backend voice scorer's result once it lands.
+  // Re-fetch just the summary without disturbing the live transcript.
   const refreshSummary = useCallback(async () => {
     try {
       const data = await api.getVoiceSummary(debateSessionId);
@@ -131,9 +128,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
         strong_arguments: data.strong_arguments,
         concessions: data.concessions,
         position_flips: data.position_flips,
-        // Preserve the last non-null score if a later/partial response omits it,
-        // matching the duration/closing_summary fallbacks above — the scorer
-        // lands async, so we never want a stale response to blank a real score.
+        // Keep the last non-null score if a partial response omits it.
         score_logic: data.score_logic ?? prev?.score_logic ?? null,
         score_evidence: data.score_evidence ?? prev?.score_evidence ?? null,
         score_rhetoric: data.score_rhetoric ?? prev?.score_rhetoric ?? null,
@@ -142,6 +137,17 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       /* transient — the caller retries on a schedule */
     }
   }, [debateSessionId]);
+
+  // Mute disables the local mic track — server VAD then hears only silence.
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      streamRef.current?.getAudioTracks().forEach((t) => {
+        t.enabled = !next;
+      });
+      return next;
+    });
+  }, []);
 
   const cleanup = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -157,6 +163,48 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     audioElRef.current = null;
   }, []);
 
+  // Flush resolved lines one at a time so DB order matches conversation order.
+  const flushPersistQueue = useCallback(() => {
+    const q = persistQueueRef.current;
+    while (q.length > 0 && q[0].text !== null) {
+      const { speaker, text } = q.shift()!;
+      const vsId = voiceSessionIdRef.current;
+      if (text && vsId) {
+        const sid = sessionIdRef.current;
+        persistChainRef.current = persistChainRef.current
+          .then(() => api.saveTranscriptLine(sid, vsId, speaker, text))
+          .then(() => undefined, () => undefined);
+      }
+    }
+  }, []);
+
+  // Resolve a pending entry's text (empty = skippable), then flush.
+  const resolvePersist = useCallback((key: string | undefined, speaker: "user" | "ai", text: string) => {
+    const q = persistQueueRef.current;
+    const entry = key ? q.find((e) => e.key === key && e.speaker === speaker && e.text === null) : undefined;
+    if (entry) {
+      entry.text = text;
+      const timer = key ? persistTimersRef.current.get(key) : undefined;
+      if (timer) {
+        clearTimeout(timer);
+        persistTimersRef.current.delete(key!);
+      }
+    } else if (text) {
+      q.push({ key: key ?? nextId(), speaker, text });
+    }
+    flushPersistQueue();
+  }, [flushPersistQueue]);
+
+  // Reserve a slot whose text isn't known yet; resolved empty after 10s if lost.
+  const enqueuePendingPersist = useCallback((key: string, speaker: "user" | "ai") => {
+    if (persistQueueRef.current.some((e) => e.key === key && e.speaker === speaker)) return;
+    persistQueueRef.current.push({ key, speaker, text: null });
+    persistTimersRef.current.set(
+      key,
+      setTimeout(() => resolvePersist(key, speaker, ""), 10000)
+    );
+  }, [resolvePersist]);
+
   const handleMessage = useCallback(async (event: MessageEvent) => {
     let msg: Record<string, unknown>;
     try {
@@ -167,25 +215,51 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
 
     const type = msg.type as string;
 
-    // ── User speech transcript (final) ────────────────────────────────────────
-    if (type === "conversation.item.input_audio_transcription.completed") {
-      const text = ((msg.transcript as string) ?? "").trim();
-      if (text) {
-        setTranscript((prev) => [...prev, { id: nextId(), speaker: "user", text, timestamp: Date.now() }]);
-        const vsId = voiceSessionIdRef.current;
-        if (vsId) {
-          api.saveTranscriptLine(sessionIdRef.current, vsId, "user", text).catch(() => {});
-        }
+    // User finished speaking — reserve their transcript slot now (transcription
+    // lags the AI reply), fill the text in place when it resolves.
+    if (type === "input_audio_buffer.committed") {
+      const itemId = msg.item_id as string | undefined;
+      if (itemId) {
+        setTranscript((prev) =>
+          prev.some((l) => l.speaker === "user" && l.itemId === itemId)
+            ? prev
+            : [...prev, { id: nextId(), speaker: "user", text: "", timestamp: Date.now(), itemId }]
+        );
+        enqueuePendingPersist(itemId, "user");
       }
     }
 
-    // ── AI speech transcript (streaming delta) ────────────────────────────────
-    // GA Realtime renamed this from "response.audio_transcript.delta" (beta).
-    // Group deltas by the response item they belong to (item_id), not by
-    // "is the last line an AI line?": while the AI is speaking, a user
-    // transcription can complete and push a user bubble in between, which would
-    // otherwise start a fresh AI bubble and split one utterance across two,
-    // each showing only part of the sentence.
+    // User speech transcript (final) — fill the reserved slot in place.
+    if (type === "conversation.item.input_audio_transcription.completed") {
+      const text = ((msg.transcript as string) ?? "").trim();
+      const itemId = msg.item_id as string | undefined;
+      setTranscript((prev) => {
+        const idx = itemId ? prev.findIndex((l) => l.speaker === "user" && l.itemId === itemId) : -1;
+        if (idx !== -1) {
+          const next = [...prev];
+          if (text) next[idx] = { ...next[idx], text };
+          else next.splice(idx, 1); // silence / noise — drop the reserved slot
+          return next;
+        }
+        // No placeholder (commit event missed) — append as before.
+        return text
+          ? [...prev, { id: nextId(), speaker: "user", text, timestamp: Date.now(), itemId }]
+          : prev;
+      });
+      resolvePersist(itemId, "user", text);
+    }
+
+    // User speech transcription failed — clear the reserved slot.
+    if (type === "conversation.item.input_audio_transcription.failed") {
+      const itemId = msg.item_id as string | undefined;
+      if (itemId) {
+        setTranscript((prev) => prev.filter((l) => !(l.speaker === "user" && l.itemId === itemId && !l.text)));
+        resolvePersist(itemId, "user", "");
+      }
+    }
+
+    // AI transcript delta — grouped by item_id so an interleaved user bubble
+    // can't split one utterance across two AI bubbles.
     if (type === "response.output_audio_transcript.delta") {
       const delta = (msg.delta as string) ?? "";
       const itemId = msg.item_id as string | undefined;
@@ -210,11 +284,8 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       }
     }
 
-    // ── AI speech transcript (complete utterance) — reconcile + persist ───────
-    // GA Realtime renamed this from "response.audio_transcript.done" (beta).
-    // The done event carries the authoritative full transcript. Reconcile the
-    // on-screen line with it so any dropped/split deltas are healed to the
-    // complete sentence, then persist that full text.
+    // AI transcript done — reconcile the on-screen line with the authoritative
+    // full text, then persist it.
     if (type === "response.output_audio_transcript.done") {
       const full = (msg.transcript as string) ?? "";
       const itemId = msg.item_id as string | undefined;
@@ -238,13 +309,13 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           return next;
         });
       }
-      const vsId = voiceSessionIdRef.current;
-      if (text && vsId) {
-        api.saveTranscriptLine(sessionIdRef.current, vsId, "ai", text).catch(() => {});
+      // Persist via the ordered queue, behind any pending user transcription.
+      if (text) {
+        resolvePersist(itemId ?? nextId(), "ai", text);
       }
     }
 
-    // ── Tool call ─────────────────────────────────────────────────────────────
+    // Tool call
     if (type === "response.function_call_arguments.done") {
       const toolName = msg.name as string;
       const callId = msg.call_id as string;
@@ -256,15 +327,8 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const vsId = voiceSessionIdRef.current;
       if (!vsId) return;
 
-      // Disable barge-in the instant we know the session is ending, before
-      // awaiting the tool round-trip below — otherwise continued input audio
-      // (background noise, the user talking again) keeps clearing the AI's
-      // closing response via interrupt_response, it never reaches
-      // "output_audio_buffer.stopped", and hangup falls back to the 15s timer
-      // instead of ending right after the closing line. Values mirror the
-      // turn_detection block in voice_agent/session.py except the two flipped
-      // flags: this is the session's last response, so let it play out and
-      // don't spawn any more from further detected speech.
+      // Session is ending — disable barge-in so the AI's closing line plays out
+      // instead of being interrupted by further input audio.
       if (toolName === "end_voice_session" && dcRef.current?.readyState === "open") {
         dcRef.current.send(
           JSON.stringify({
@@ -342,16 +406,13 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           strong_arguments: prev?.strong_arguments ?? [],
           concessions: prev?.concessions ?? [],
           position_flips: prev?.position_flips ?? [],
-          // Scores are computed async on the backend after end; the component
-          // polls refreshSummary() to fill these in once the judge lands.
+          // Scores land async; refreshSummary() polls them in.
           score_logic: prev?.score_logic ?? null,
           score_evidence: prev?.score_evidence ?? null,
           score_rhetoric: prev?.score_rhetoric ?? null,
         }));
 
-        // Hang up once the AI's closing remarks finish playing (see the
-        // "output_audio_buffer.stopped" handler below). Fall back to a fixed
-        // delay in case that event never arrives, so the call never hangs open.
+        // Hang up once closing audio drains, with a fallback timer.
         endingRef.current = true;
         if (endingTimeoutRef.current) clearTimeout(endingTimeoutRef.current);
         endingTimeoutRef.current = setTimeout(() => {
@@ -364,9 +425,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       }
     }
 
-    // ── AI finished speaking — if this was the end-of-session response, hang up ──
-    // WebRTC-only event (undocumented but widely relied on) signalling the
-    // assistant's audio output has fully drained on the client side.
+    // Assistant audio fully drained — if the session is ending, hang up now.
     if (type === "output_audio_buffer.stopped" && endingRef.current) {
       endingRef.current = false;
       if (endingTimeoutRef.current) {
@@ -376,7 +435,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       cleanup();
       setStatus("ended");
     }
-  }, [cleanup]);
+  }, [cleanup, enqueuePendingPersist, resolvePersist]);
 
   const connect = useCallback(async () => {
     if (status === "connecting" || status === "connected") return;
@@ -385,6 +444,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setTranscript([]);
     setSummary(null);
     aiDeltaRef.current.clear();
+    persistQueueRef.current = [];
+    persistTimersRef.current.forEach((t) => clearTimeout(t));
+    persistTimersRef.current.clear();
+    persistChainRef.current = Promise.resolve();
+    setMuted(false); // fresh mic tracks start enabled
     endingRef.current = false;
     if (endingTimeoutRef.current) {
       clearTimeout(endingTimeoutRef.current);
@@ -430,8 +494,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // 8. POST offer to OpenAI Realtime (GA /calls endpoint; model is bound to
-      // the ephemeral key server-side, so no ?model= query param).
+      // 8. POST offer to OpenAI Realtime
       const sdpResp = await fetch(OPENAI_REALTIME_URL, {
         method: "POST",
         headers: {
@@ -459,9 +522,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   }, [status, debateSessionId, handleMessage, cleanup]);
 
   const disconnect = useCallback(() => {
-    // If the call was live and the AI hasn't already finalized it, tell the
-    // backend so duration/summary get persisted instead of leaving the voice
-    // session open server-side.
+    // Tell the backend to finalize if the AI hasn't already done so.
     if (status === "connected" && !endingRef.current) {
       const vsId = voiceSessionIdRef.current;
       if (vsId) {
@@ -479,5 +540,5 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setStatus("ended");
   }, [status, cleanup]);
 
-  return { status, transcript, summary, connect, disconnect, refreshSummary, error };
+  return { status, transcript, summary, connect, disconnect, refreshSummary, muted, toggleMute, error };
 }

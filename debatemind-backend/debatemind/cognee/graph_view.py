@@ -17,11 +17,8 @@ logger = logging.getLogger(__name__)
 
 _LABEL_FIELDS = ("summary", "name", "fact_text", "claim_text", "user_id")
 _TYPED_TYPES = {"UserProfile", "Topic", "ArgumentRecord", "SessionSummary", "PersonalFact"}
-# Node types cognee's prose pipeline (add() -> cognify()) writes. Historically
-# these carried NO user_id property, so the ownership filter below matched none
-# of them and the panel rendered empty even after many sessions. They are
-# rendered as themselves (not folded to a generic "Node") so the explorer can
-# color the LLM-derived entity web distinctly from the typed anchors.
+# Node types cognee's prose pipeline writes — rendered as themselves so the
+# explorer can color the LLM-derived web distinctly from the typed anchors.
 _COGNIFY_TYPES = {"Entity", "EntityType", "DocumentChunk", "TextDocument", "TextSummary"}
 _RENDERED_TYPES = _TYPED_TYPES | _COGNIFY_TYPES
 
@@ -131,9 +128,8 @@ async def user_graph_view(user_id: str, limit: int = 400) -> dict:
     marker = f"User: {user_id}"
     owned_ids = {nid for nid, props in all_nodes.items() if _owns(props, user_id, marker)}
 
-    # Expand only outward from owned seeds (never from the neighbours), so shared
-    # cognify hubs — a common EntityType, an entity named "none" — can be shown
-    # but can't bridge back into another user's chunks. Keeps isolation intact.
+    # Expand only outward from owned seeds so shared cognify hubs can be shown
+    # without bridging back into another user's chunks.
     edges = [_edge_parts(e) for e in raw_edges]
     adjacent_ids: set[str] = set()
     for src, tgt, _lbl in edges:

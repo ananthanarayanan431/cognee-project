@@ -1,30 +1,5 @@
-"""Voice-session end-of-call analysis: scoring + Cognitive Fingerprint patterns.
-
-Text debates score every turn via agents/judge.py and classify every turn via
-agents/extractor.py — the first feeds the live SessionScoreBar, the second
-feeds the Cognitive Fingerprint (ArgumentRecord nodes in Cognee/Neo4j, read
-back by cognee/session_fingerprint.py). Voice debates run neither per turn:
-the realtime AI only *optionally* logs observations via the
-`save_debate_observation` tool, which in practice it rarely does, so the score
-bar stayed 0/0/0 and the fingerprint stayed empty for voice-only sessions.
-
-This service closes both gaps deterministically off the spoken transcript,
-which IS captured reliably every session:
-
-  * compute_voice_session_score() feeds the user's turns vs. the AI's to the
-    same judge rubric a text turn gets and persists an aggregate
-    logic/evidence/rhetoric read on the VoiceSession row (exposed by
-    GET /api/voice/{id}/summary).
-  * derive_voice_session_patterns() classifies each user turn with the same
-    extractor a text turn gets and writes an ArgumentRecord per real argument,
-    so the fingerprint graph populates for voice exactly as it does for text.
-
-Dispatched fire-and-forget from voice_agent/router.py via asyncio.create_task —
-same in-process pattern as session_score_svc.score_session_background. The
-Cognee writes are still handed to Celery (remember_argument_task) rather than
-awaited in-process, matching the text pipeline and side-stepping the asyncpg
-loop-binding pitfalls the Cognee tasks work around.
-"""
+"""Voice-session end-of-call scoring and Cognitive Fingerprint pattern derivation,
+computed off the spoken transcript since voice debates run no per-turn judge."""
 
 import asyncio
 import json
@@ -43,19 +18,13 @@ from debatemind.worker.tasks import remember_argument_task
 
 logger = logging.getLogger(__name__)
 
-# Voice sessions currently being scored in this process — prevents a double
-# dispatch (e.g. end_voice_session tool + a client disconnect) from running two
-# judges for the same session.
+# Voice sessions currently being scored, to dedupe concurrent dispatches.
 _scoring_in_flight: set[str] = set()
 
-# Evidence tiers that count as "the turn actually stood on something" — used to
-# decide Won vs. Lost when tallying the fingerprint (voice has no per-turn judge
-# comparing the user against the opponent, so we read merit off the turn itself).
+# Evidence tiers that count as a merited (Won) turn for the fingerprint.
 _MERITED_EVIDENCE = {"Strong", "Moderate"}
 
-# Cap on concurrent extractor calls when classifying a voice transcript — a long
-# session has many user turns, and firing one OpenRouter request per turn at once
-# can trip rate limits / overwhelm the provider. Turns still complete in order.
+# Cap on concurrent extractor calls per transcript, to avoid rate limits.
 _MAX_CONCURRENT_CLASSIFICATIONS = 5
 
 
@@ -85,8 +54,6 @@ async def compute_voice_session_score(db, voice_session_id: str) -> dict | None:
     user_turns = [n.content for n in notes if n.note_type == "transcript_user"]
     ai_turns = [n.content for n in notes if n.note_type == "transcript_ai"]
     if not user_turns:
-        # No spoken argument from the user — nothing to score. Leaving the
-        # columns NULL keeps the bar at 0/0/0, which is truthful.
         return None
 
     session = (
@@ -94,8 +61,6 @@ async def compute_voice_session_score(db, voice_session_id: str) -> dict | None:
     ).scalar_one_or_none()
     topic = session.topic if session else "the debate topic"
 
-    # Aggregate the whole spoken debate into one exchange: all the user's turns
-    # vs. all the opponent's, judged against the same rubric a text turn gets.
     user_argument = "\n\n".join(user_turns)
     opponent_argument = "\n\n".join(ai_turns) or "(no opponent turns recorded)"
 
@@ -132,25 +97,14 @@ async def compute_voice_session_score(db, voice_session_id: str) -> dict | None:
 
 
 def _outcome_for(pattern_type: str, evidence_quality: str) -> str:
-    """Won vs. Lost for a single voice turn's argument pattern.
-
-    Mirrors the intent of _COGNEE_NOTE_MAP in voice_agent/tools.py: an
-    evidence-backed argument is a strength, everything else (fallacies,
-    concessions, bare assertions) a weakness. This is what colours the
-    fingerprint node green vs. red via the win-rate in session_fingerprint.py.
-    """
+    """Won vs. Lost for a single voice turn's argument pattern."""
     if pattern_type == "EvidenceBased" and evidence_quality in _MERITED_EVIDENCE:
         return "Won"
     return "Lost"
 
 
 async def _classify_turn(topic: str, argument: str) -> dict | None:
-    """Run one user turn through the same extractor a text turn gets.
-
-    Returns the classification dict, or None when the turn is not a real
-    argument (small talk, a bare question) so it never pollutes the graph —
-    the extractor flags these as EvidenceBased / Absent / no-fallacy.
-    """
+    """Classify one user turn; returns None for non-arguments (small talk)."""
     try:
         msg = await openrouter.chat.completions.create(
             model=settings.fast_model,
@@ -166,8 +120,7 @@ async def _classify_turn(topic: str, argument: str) -> dict | None:
     pattern_type = data.get("pattern_type", "EvidenceBased")
     evidence_quality = data.get("evidence_quality", "Absent")
     fallacy = data.get("fallacy")
-    # Neutral small-talk default the extractor emits for non-arguments — skip so
-    # "Yes." / "cut the call" don't show up as EvidenceBased nodes.
+    # Extractor's neutral default for non-arguments (e.g. "Yes.") — skip these.
     if pattern_type == "EvidenceBased" and evidence_quality == "Absent" and not fallacy:
         return None
     return {
@@ -181,22 +134,8 @@ async def _classify_turn(topic: str, argument: str) -> dict | None:
 
 
 async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
-    """Classify newly-spoken user turns into argument patterns and record them.
-
-    Reads the user's spoken turns past the session's patterns_derived_count
-    watermark, classifies each with the shared extractor, and dispatches one
-    remember_argument_task per real argument so the Cognitive Fingerprint
-    (Cognee/Neo4j ArgumentRecord nodes, read by session_fingerprint.py) builds
-    up live for voice sessions the same way it does turn-by-turn for text.
-
-    Runs both live (per transcript turn, via the background wrapper below) and
-    once more at session end. The watermark makes it idempotent: each turn is
-    classified exactly once no matter how many times this fires. Returns the
-    number of patterns dispatched on this pass.
-    """
-    # Lock the row so the live per-turn pass and the end-of-session pass can't
-    # claim the same turns concurrently. SELECT ... FOR UPDATE is a no-op on
-    # SQLite (tests), which is fine — those run single-threaded.
+    """Classify user turns past the watermark into argument patterns; idempotent."""
+    # Row lock so a live pass and the end-of-session pass can't claim the same turns.
     vs = (
         await db.execute(
             select(VoiceSession).where(VoiceSession.id == voice_session_id).with_for_update()
@@ -217,23 +156,15 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
         .scalars()
         .all()
     )
-    # Keep note ids alongside content: the fingerprint fast path writes each
-    # turn's classified pattern back onto its note row (see below), and the id is
-    # what lets us target that specific turn.
     turns = [(n.id, n.content) for n in notes if n.content and n.content.strip()]
 
     start = vs.patterns_derived_count or 0
     if start >= len(turns):
-        # Nothing new since the last pass — a duplicate dispatch, or the tail was
-        # already handled live. Release the lock without touching Cognee.
         await db.commit()
         return 0
 
     pending = turns[start:]
-    # Capture scoping before the commit (defensive even under
-    # expire_on_commit=False) and claim these turns by advancing the watermark
-    # now, so the slow LLM classification runs *after* the row lock is released
-    # and a concurrent pass sees them as already taken.
+    # Advance the watermark before classification so a concurrent pass can't claim these.
     user_id = vs.user_id
     debate_session_id = vs.debate_session_id
     vs.patterns_derived_count = len(turns)
@@ -244,9 +175,6 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
     ).scalar_one_or_none()
     topic = session.topic if session else "the debate topic"
 
-    # Bound the fan-out: a long transcript would otherwise launch one extractor
-    # call per turn simultaneously. gather() preserves input order regardless of
-    # which turn finishes first, so `zip(pending, classified)` stays aligned.
     sem = asyncio.Semaphore(_MAX_CONCURRENT_CLASSIFICATIONS)
 
     async def _classify_bounded(turn: str) -> dict | None:
@@ -260,15 +188,13 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
         if not cls:
             continue
         outcome = _outcome_for(cls["pattern_type"], cls["evidence_quality"])
-        # Fast path: record the pattern on the note synchronously so the
-        # fingerprint read (session_fingerprint.py) reflects it on the next poll,
-        # without waiting on the slow async cognee→Neo4j write dispatched below.
+        # Fast path: write the pattern onto the note so the fingerprint reflects
+        # it immediately, without waiting on the async Cognee/Neo4j write below.
         await db.execute(
             update(VoiceSessionNote)
             .where(VoiceSessionNote.id == note_id)
             .values(detected_pattern=cls["pattern_type"], outcome=outcome)
         )
-        # Durable path: same async Cognee/Neo4j write the text pipeline uses.
         try:
             remember_argument_task.delay(
                 user_id=user_id,
@@ -299,13 +225,7 @@ async def derive_voice_session_patterns(db, voice_session_id: str) -> int:
 
 
 async def derive_voice_session_patterns_background(voice_session_id: str) -> None:
-    """Fire-and-forget wrapper: own DB session, never raises.
-
-    Dispatched per transcript turn from the voice router so the Cognitive
-    Fingerprint fills in live while the user is still speaking, rather than only
-    at hang-up. derive_voice_session_patterns is watermark-idempotent, so
-    overlapping live passes and the end-of-session pass never double-count.
-    """
+    """Fire-and-forget wrapper: own DB session, never raises."""
     try:
         async with AsyncSessionLocal() as db:
             await derive_voice_session_patterns(db, voice_session_id)
@@ -314,13 +234,7 @@ async def derive_voice_session_patterns_background(voice_session_id: str) -> Non
 
 
 async def score_voice_session_background(voice_session_id: str) -> None:
-    """Fire-and-forget wrapper: own DB session, never raises, de-duplicates.
-
-    Runs both the aggregate score and the fingerprint pattern derivation. Guards
-    on the persisted score so a second dispatch (the AI's end_voice_session tool
-    plus the client's disconnect both fire it) doesn't re-run the classifier and
-    double-write ArgumentRecord nodes.
-    """
+    """Fire-and-forget wrapper: scores + derives patterns, deduped, never raises."""
     if voice_session_id in _scoring_in_flight:
         return
     _scoring_in_flight.add(voice_session_id)
@@ -330,7 +244,6 @@ async def score_voice_session_background(voice_session_id: str) -> None:
                 await db.execute(select(VoiceSession).where(VoiceSession.id == voice_session_id))
             ).scalar_one_or_none()
             if vs is None or vs.score_logic is not None:
-                # Missing, or already processed by an earlier dispatch.
                 return
             await compute_voice_session_score(db, voice_session_id)
             await derive_voice_session_patterns(db, voice_session_id)

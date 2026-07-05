@@ -89,10 +89,8 @@ export default function DebateView() {
           // Reopened empty sessions skip this: the user just starts arguing.
           streamOpening(sessionId);
         } else if (transcript.exchanges.length === 0 && currentMessages.length === 0) {
-          // Reopened session with no text history — it may have been argued by
-          // voice. Rather than dropping the user onto an empty screen, replay
-          // the spoken transcript as chat history and let the opponent pick the
-          // debate back up in text (the /continue call is voice-aware server-side).
+          // Reopened session with no text history — replay any spoken transcript
+          // as chat history so the debate continues in text.
           api
             .getVoiceSummary(sessionId)
             .then((voice) => {

@@ -35,9 +35,7 @@ logger = logging.getLogger(__name__)
 
 _DATASET_RE = re.compile(r"^user_(?P<uid>.+)_fingerprint$")
 
-# Per-class vector collections (pgvector tables in the cognee DB). A class
-# missing here only leaves harmless unranked rows behind — recall filters by
-# graph ownership, never by vector rows alone.
+# Per-class vector collections (pgvector tables in the cognee DB).
 _VECTOR_COLLECTIONS = (
     "ArgumentRecord_summary",
     "DocumentChunk_text",
@@ -109,9 +107,8 @@ async def _graph_cleanup(test_uids: list[str], dry_run: bool) -> list[str]:
     if doomed:
         await engine.query("MATCH (n) WHERE n.id IN $ids DETACH DELETE n", {"ids": sorted(doomed)})
 
-    # Entities/EntityTypes only reachable from deleted test prose are now
-    # stranded: no surviving DocumentChunk within 3 hops means no recall path
-    # (recall.py walks out from chunks) and no real-owned anchor.
+    # Entities only reachable from deleted test prose are now stranded (no
+    # surviving DocumentChunk within 3 hops).
     orphan_entities = await engine.query(
         """
         MATCH (e:Entity)

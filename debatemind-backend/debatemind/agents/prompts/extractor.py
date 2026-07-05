@@ -1,9 +1,7 @@
 from debatemind.agents.constants import PATTERN_TYPE_DESCRIPTIONS, PATTERN_TYPES
 from debatemind.cognee._base import COGNITIVE_BIASES, REASONING_APPROACHES
 
-# Ordered enum values for the structured-output schema (the ontology individuals
-# from debate_domain.owl, kept in sync by tests/test_ontology.py). null is a
-# valid value: a message with no real argument exhibits neither.
+# Ontology individuals (debate_domain.owl); null is valid for non-arguments.
 _REASONING_ENUM = sorted(REASONING_APPROACHES) + [None]
 _BIAS_ENUM = sorted(COGNITIVE_BIASES) + [None]
 

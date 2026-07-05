@@ -22,25 +22,8 @@ from debatemind.config import settings
 from debatemind.database import AsyncSessionLocal
 from debatemind.services.mastery_svc import get_active_mastered_patterns
 
-# Bounded TTL cache: max 1024 users, entries expire after 1 hour.
-# Holds the *raw* (unfiltered) recall so mastered-pattern exclusion can be
-# re-applied per turn against the live mastery state instead of being frozen
-# into the cache — mastering a pattern takes effect on the very next turn.
-# The 1-hour TTL is just a safety net for idle users; freshness within an
-# active session comes from invalidate_weakness_cache(), called once each
-# background remember_argument() write completes (see pipeline.py).
 _weakness_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
-
-# Same shape as _weakness_cache: the raw (unfiltered) graph-aware cognitive
-# profile — recurring fallacies, biases, reasoning style, weak domains. Cached
-# raw so mastered-pattern exclusion is re-applied per turn (below), same as the
-# weakness cache. Invalidated alongside it, since a new argument write reshapes
-# the profile too.
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
-
-# Same shape as _weakness_cache, but for personal facts (name, likes, etc.)
-# recalled via recall_user_facts(). Kept separate since it's invalidated
-# independently, by remember_personal_fact() writes rather than argument writes.
 _facts_cache: TTLCache = TTLCache(maxsize=1024, ttl=3600)
 
 
@@ -71,10 +54,6 @@ async def generate_opponent(state: DebateState) -> DebateState:
     if user_id not in _weakness_cache:
         _weakness_cache[user_id] = await recall_weaknesses(user_id)
 
-    # Exclude patterns the user has already mastered so the opponent stops
-    # exploiting beaten weaknesses (the behavioural payoff of forget()). This
-    # DB read is best-effort — a transient failure shouldn't abort the turn,
-    # it just means mastered patterns aren't filtered out this time.
     try:
         async with AsyncSessionLocal() as db:
             mastered = await get_active_mastered_patterns(db, user_id)
@@ -87,11 +66,6 @@ async def generate_opponent(state: DebateState) -> DebateState:
         or "No prior weaknesses recorded — probe broadly."
     )
 
-    # Graph-aware cognitive profile: the typed signal (recurring fallacies,
-    # biases, reasoning style, weak domains) cognify built but the prose
-    # summaries above drop. Cached raw, mastered patterns filtered per turn.
-    # Cross-topic trait (not scoped to this debate's topic), so the user-keyed
-    # cache is correct and the fingerprint reflects the whole of their history.
     if user_id not in _profile_cache:
         _profile_cache[user_id] = await recall_cognitive_profile(user_id)
     profile = filter_profile_patterns(_profile_cache[user_id], mastered)

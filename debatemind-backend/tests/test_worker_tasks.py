@@ -56,9 +56,7 @@ def test_litellm_logging_worker_queue_rebinds_across_event_loops():
     with pytest.raises(RuntimeError, match="different event loop"):
         asyncio.run(_drain_worker_queue())
 
-    # With a reset before each task (as _run_cognee does), every loop gets a
-    # fresh queue, so the cross-loop error never happens — the drain just times
-    # out on its own empty queue instead of raising.
+    # A reset before each task gives every loop a fresh queue — no cross-loop error.
     worker_tasks._reset_litellm_logging_worker()
     asyncio.run(_bind_worker_queue_to_current_loop())
     worker_tasks._reset_litellm_logging_worker()

@@ -6,10 +6,7 @@ from debatemind.config import settings
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    # Production resilience: managed Postgres / pgbouncer often drop idle
-    # connections. pool_pre_ping validates a connection before use, and
-    # pool_recycle proactively refreshes connections older than 30 minutes,
-    # preventing intermittent "server closed the connection" errors.
+    # Managed Postgres drops idle connections — validate before use and recycle.
     pool_pre_ping=True,
     pool_recycle=1800,
 )

@@ -59,13 +59,8 @@ export default function Home() {
     });
   }, [isLoaded, isSignedIn, token, getToken, setAuth]);
 
-  // Mirror the active screen into the URL. "calibration" is an auth-gated
-  // interstitial with no addressable URL, so it is skipped. Every other screen
-  // maps to a path via screenToPath ("topic" → "/", else "/?screen=<name>").
-  // Session-scoped screens also carry the active session id (&session=<id>) so
-  // the session is traceable from the URL. A push only happens when the URL
-  // actually differs, so popstate-driven screen changes (which already updated
-  // the URL) never create a duplicate entry.
+  // Mirror the active screen into the URL; only push when the URL actually
+  // differs so popstate-driven changes don't create duplicate entries.
   useEffect(() => {
     if (!token || screen === "calibration") return;
     const target = screenToPath(screen, sessionId);

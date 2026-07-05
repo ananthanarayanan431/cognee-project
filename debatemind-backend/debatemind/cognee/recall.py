@@ -28,11 +28,8 @@ from debatemind.cognee._base import (
 
 logger = logging.getLogger(__name__)
 
-# Fetched from the GLOBAL per-class vector collection, then filtered down to
-# this user's owned nodes — a generous limit so this user's own records are
-# likely present in the ranked set even when many other users share the same
-# collection. This is a ranking aid only; ownership filtering (below) is what
-# actually enforces isolation.
+# Generous limit over the global vector collection — a ranking aid only;
+# ownership filtering below is what enforces isolation.
 _VECTOR_TOP_K = 100
 
 
@@ -137,9 +134,7 @@ async def _rank_and_build(
             ordered.append(to_record(nid, owned[nid]))
             seen.add(nid)
     if not ordered:
-        # Vector search's global top_k didn't surface any of this user's ids
-        # (crowded out by other users' records) — fall back to the owned set
-        # unranked rather than returning nothing.
+        # Vector top_k didn't surface any of this user's ids — fall back unranked.
         ordered = [to_record(nid, props) for nid, props in owned.items()]
     return ordered[:top_k]
 
@@ -247,27 +242,9 @@ async def recall_user_facts(user_id: str, topic: str = "") -> list[dict]:
     return items
 
 
-# --------------------------------------------------------------------------
-# Cognitive profile — the graph-aware layer. recall_weaknesses() above returns
-# the prose summaries; this aggregates the *typed* signal across all of a
-# user's records. Two sources, same user_id ownership filter as the rest of
-# this module:
-#
-#   Layer 1 (structured fields on the owned ArgumentRecord: fallacy, outcome,
-#     topic_name) — always available. This is what powers recurring_fallacies
-#     and weak_domains today.
-#
-#   Layer 2 (the chunk bridge): the ontology entities cognify() extracts
-#     (CognitiveBias, ReasoningApproach, EvidenceType, extra fallacies) live in
-#     a SEPARATE subgraph from the typed ArgumentRecord nodes — the record's
-#     only edges are its typed Topic/UserProfile links, so a walk straight out
-#     of the record reaches nothing. cognify's entities ARE reachable through
-#     the DocumentChunk that carries the argument's prose, and that prose embeds
-#     the "User: {id}" marker remember_argument() writes. So Layer 2 attributes
-#     an entity to a user only by reaching it THROUGH one of that user's own
-#     chunks (_chunk_entity_signal) — never by matching a globally-shared entity
-#     node directly. This supplements Layer 1 with anything cognify inferred
-#     that the structured fields didn't already capture.
+# Cognitive profile — aggregates structured ArgumentRecord fields (Layer 1) and
+# cognify entities reached through the user's own DocumentChunks (Layer 2, the
+# chunk bridge: attribution via the "User: {id}" marker, never global matching).
 
 
 def _neighbour_ids(edges: list[tuple[str, str]], anchor_ids: set[str]) -> dict[str, set[str]]:
