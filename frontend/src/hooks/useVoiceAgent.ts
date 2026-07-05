@@ -37,6 +37,8 @@ interface UseVoiceAgentReturn {
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshSummary: () => Promise<void>;
+  muted: boolean;
+  toggleMute: () => void;
   error: string | null;
 }
 
@@ -58,6 +60,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [summary, setSummary] = useState<VoiceSummary | null>(null);
+  const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -69,6 +72,16 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
   // full utterance on done. Keyed by item_id so interleaved response items don't
   // contaminate each other's fallback text (item-less deltas share one bucket).
   const aiDeltaRef = useRef<Map<string, string>>(new Map());
+  // Persist queue: transcript lines are written to the DB strictly in
+  // conversation order. The user's transcription text resolves seconds AFTER
+  // the AI's reply transcript (Whisper lags the turn), so persisting on
+  // arrival would store the answer before the question — and the summary
+  // endpoint replays notes by created_at, baking the disorder into history.
+  // Lines enter the queue when their slot is known (user: on commit; AI: on
+  // done) and flush from the head only once their text has resolved.
+  const persistQueueRef = useRef<Array<{ key: string; speaker: "user" | "ai"; text: string | null }>>([]);
+  const persistChainRef = useRef<Promise<void>>(Promise.resolve());
+  const persistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Set once `end_voice_session` fires; hang up once the AI's closing remarks
   // finish playing (or after a timeout, in case that event never arrives).
   const endingRef = useRef(false);
@@ -143,6 +156,20 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     }
   }, [debateSessionId]);
 
+  // Mute = disable the local mic track. WebRTC then transmits silence, so
+  // server VAD hears nothing: no turns are detected, nothing is transcribed,
+  // and the opponent can't respond to (or be interrupted by) the user while
+  // muted. Purely client-side — no session.update round-trip needed.
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      streamRef.current?.getAudioTracks().forEach((t) => {
+        t.enabled = !next;
+      });
+      return next;
+    });
+  }, []);
+
   const cleanup = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     dcRef.current?.close();
@@ -157,6 +184,53 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     audioElRef.current = null;
   }, []);
 
+  // Flush persistable lines from the queue head, chaining the API calls so
+  // rows are committed one at a time — created_at order in the DB then matches
+  // conversation order exactly.
+  const flushPersistQueue = useCallback(() => {
+    const q = persistQueueRef.current;
+    while (q.length > 0 && q[0].text !== null) {
+      const { speaker, text } = q.shift()!;
+      const vsId = voiceSessionIdRef.current;
+      if (text && vsId) {
+        const sid = sessionIdRef.current;
+        persistChainRef.current = persistChainRef.current
+          .then(() => api.saveTranscriptLine(sid, vsId, speaker, text))
+          .then(() => undefined, () => undefined);
+      }
+    }
+  }, []);
+
+  // Resolve a pending queue entry's text (or enqueue it ready-made if its slot
+  // was never reserved), then flush. Empty text marks the entry as skippable
+  // so it can't block lines behind it.
+  const resolvePersist = useCallback((key: string | undefined, speaker: "user" | "ai", text: string) => {
+    const q = persistQueueRef.current;
+    const entry = key ? q.find((e) => e.key === key && e.speaker === speaker && e.text === null) : undefined;
+    if (entry) {
+      entry.text = text;
+      const timer = key ? persistTimersRef.current.get(key) : undefined;
+      if (timer) {
+        clearTimeout(timer);
+        persistTimersRef.current.delete(key!);
+      }
+    } else if (text) {
+      q.push({ key: key ?? nextId(), speaker, text });
+    }
+    flushPersistQueue();
+  }, [flushPersistQueue]);
+
+  // Reserve a queue slot whose text isn't known yet. The stall guard resolves
+  // it empty after 10s so one lost transcription event can't dam the queue.
+  const enqueuePendingPersist = useCallback((key: string, speaker: "user" | "ai") => {
+    if (persistQueueRef.current.some((e) => e.key === key && e.speaker === speaker)) return;
+    persistQueueRef.current.push({ key, speaker, text: null });
+    persistTimersRef.current.set(
+      key,
+      setTimeout(() => resolvePersist(key, speaker, ""), 10000)
+    );
+  }, [resolvePersist]);
+
   const handleMessage = useCallback(async (event: MessageEvent) => {
     let msg: Record<string, unknown>;
     try {
@@ -167,15 +241,51 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
 
     const type = msg.type as string;
 
-    // ── User speech transcript (final) ────────────────────────────────────────
+    // ── User finished speaking — reserve their transcript slot ───────────────
+    // Server VAD commits the audio buffer the instant the user stops talking,
+    // BEFORE the assistant starts its reply. The transcription of that audio
+    // ("...transcription.completed") lags by seconds and routinely lands AFTER
+    // the AI's reply transcript — appending on completion is what put user
+    // bubbles below the answer to them. So: claim the slot now with an empty
+    // placeholder (rendered as "…"), fill the text in place when it resolves.
+    if (type === "input_audio_buffer.committed") {
+      const itemId = msg.item_id as string | undefined;
+      if (itemId) {
+        setTranscript((prev) =>
+          prev.some((l) => l.speaker === "user" && l.itemId === itemId)
+            ? prev
+            : [...prev, { id: nextId(), speaker: "user", text: "", timestamp: Date.now(), itemId }]
+        );
+        enqueuePendingPersist(itemId, "user");
+      }
+    }
+
+    // ── User speech transcript (final) — fill the reserved slot in place ─────
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = ((msg.transcript as string) ?? "").trim();
-      if (text) {
-        setTranscript((prev) => [...prev, { id: nextId(), speaker: "user", text, timestamp: Date.now() }]);
-        const vsId = voiceSessionIdRef.current;
-        if (vsId) {
-          api.saveTranscriptLine(sessionIdRef.current, vsId, "user", text).catch(() => {});
+      const itemId = msg.item_id as string | undefined;
+      setTranscript((prev) => {
+        const idx = itemId ? prev.findIndex((l) => l.speaker === "user" && l.itemId === itemId) : -1;
+        if (idx !== -1) {
+          const next = [...prev];
+          if (text) next[idx] = { ...next[idx], text };
+          else next.splice(idx, 1); // silence / noise — drop the reserved slot
+          return next;
         }
+        // No placeholder (commit event missed) — append as before.
+        return text
+          ? [...prev, { id: nextId(), speaker: "user", text, timestamp: Date.now(), itemId }]
+          : prev;
+      });
+      resolvePersist(itemId, "user", text);
+    }
+
+    // ── User speech transcription failed — clear the reserved slot ───────────
+    if (type === "conversation.item.input_audio_transcription.failed") {
+      const itemId = msg.item_id as string | undefined;
+      if (itemId) {
+        setTranscript((prev) => prev.filter((l) => !(l.speaker === "user" && l.itemId === itemId && !l.text)));
+        resolvePersist(itemId, "user", "");
       }
     }
 
@@ -238,9 +348,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
           return next;
         });
       }
-      const vsId = voiceSessionIdRef.current;
-      if (text && vsId) {
-        api.saveTranscriptLine(sessionIdRef.current, vsId, "ai", text).catch(() => {});
+      // Persist via the ordered queue: if the user's transcription for the
+      // preceding turn is still pending, this AI line waits behind it so the
+      // DB (and any replay) keeps true conversation order.
+      if (text) {
+        resolvePersist(itemId ?? nextId(), "ai", text);
       }
     }
 
@@ -376,7 +488,7 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
       cleanup();
       setStatus("ended");
     }
-  }, [cleanup]);
+  }, [cleanup, enqueuePendingPersist, resolvePersist]);
 
   const connect = useCallback(async () => {
     if (status === "connecting" || status === "connected") return;
@@ -385,6 +497,11 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setTranscript([]);
     setSummary(null);
     aiDeltaRef.current.clear();
+    persistQueueRef.current = [];
+    persistTimersRef.current.forEach((t) => clearTimeout(t));
+    persistTimersRef.current.clear();
+    persistChainRef.current = Promise.resolve();
+    setMuted(false); // fresh mic tracks start enabled
     endingRef.current = false;
     if (endingTimeoutRef.current) {
       clearTimeout(endingTimeoutRef.current);
@@ -479,5 +596,5 @@ export function useVoiceAgent(debateSessionId: string): UseVoiceAgentReturn {
     setStatus("ended");
   }, [status, cleanup]);
 
-  return { status, transcript, summary, connect, disconnect, refreshSummary, error };
+  return { status, transcript, summary, connect, disconnect, refreshSummary, muted, toggleMute, error };
 }
