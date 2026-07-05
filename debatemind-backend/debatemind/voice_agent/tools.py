@@ -1,17 +1,5 @@
-"""
-Debate voice-agent tools.
-
-Two layers:
-  1. TOOL_DEFINITIONS  — JSON schema fed to OpenAI Realtime session config so
-                          the AI knows which tools exist and when to call them.
-  2. execute_tool()    — dispatches an AI tool-call to the appropriate handler,
-                          runs the DB query, and returns a JSON-serialisable dict.
-
-Flow (WebRTC):
-  OpenAI (data-channel) → browser → POST /api/voice/{id}/tools → execute_tool()
-                                  ← JSON result                ←
-  browser sends conversation.item.create with result → OpenAI continues speaking
-"""
+"""Debate voice-agent tools: TOOL_DEFINITIONS (schema sent to OpenAI Realtime)
+and execute_tool() (dispatches an AI tool-call to its DB-backed handler)."""
 
 from __future__ import annotations
 
@@ -43,9 +31,7 @@ from debatemind.worker.tasks import (
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# 1. Tool definitions (sent to OpenAI in session.update)
-# ---------------------------------------------------------------------------
+# Tool definitions sent to OpenAI in session.update.
 
 TOOL_DEFINITIONS: list[dict] = [
     {
@@ -232,12 +218,6 @@ TOOL_DEFINITIONS: list[dict] = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# 2. Tool handlers
-# ---------------------------------------------------------------------------
-
-# Maps voice note_type → (pattern_type, evidence_quality, outcome) for Cognee writes.
-# "observation" is intentionally excluded — too generic for the fingerprint.
 _COGNEE_NOTE_MAP: dict[str, tuple[str, str, str]] = {
     "fallacy": ("FallacyUsed", "Weak", "Lost"),
     "concession": ("Concession", "Weak", "Lost"),
@@ -245,12 +225,7 @@ _COGNEE_NOTE_MAP: dict[str, tuple[str, str, str]] = {
     "strong_argument": ("StrongArgument", "Strong", "Won"),
 }
 
-# Mirrors the MASTERY_THRESHOLD in agents/mastery.py — 3 strong arguments in a
-# single voice session signals the user has mastered that pattern in live debate.
 _VOICE_MASTERY_THRESHOLD = 3
-
-# In-memory strong-argument counter per voice session; TTL-bounded so dropped
-# sessions don't leak counters.
 _voice_strong_arg_counts: TTLCache = TTLCache(maxsize=4096, ttl=86400)
 
 
@@ -289,9 +264,6 @@ async def execute_tool(
     except Exception:
         logger.exception("Tool %s failed (voice_session=%s)", tool_name, voice_session_id)
         return {"error": f"Tool '{tool_name}' failed — see server logs."}
-
-
-# --- individual handlers ----------------------------------------------------
 
 
 async def _get_session_context(
