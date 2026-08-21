@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.jpg" alt="DebateMind — an AI opponent that remembers how you think" width="100%" />
+  <img src=".github/assets/hero.jpg" alt="DebateMind — an AI opponent that remembers how you think" width="100%" />
 </p>
 
 <p align="center">
