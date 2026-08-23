@@ -14,6 +14,8 @@ Create Date: 2026-07-03 19:00:00.000000
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "b3c4d5e6f7a8"
@@ -23,10 +25,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint(
-        "uq_user_facts_user_id_fact_text", "user_facts", ["user_id", "fact_text"]
-    )
+    # On a fresh database, a2b3c4d5e6f7 already creates this constraint inline
+    # via create_table(); this migration only needs to add it on deployments
+    # where that constraint failed to apply the first time around.
+    inspector = sa.inspect(op.get_bind())
+    existing = {uc["name"] for uc in inspector.get_unique_constraints("user_facts")}
+    if "uq_user_facts_user_id_fact_text" not in existing:
+        op.create_unique_constraint(
+            "uq_user_facts_user_id_fact_text", "user_facts", ["user_id", "fact_text"]
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_user_facts_user_id_fact_text", "user_facts", type_="unique")
+    # On a fresh database this constraint was created inline by a2b3c4d5e6f7,
+    # not by this migration's upgrade() — dropping it here would strip a
+    # predecessor-owned constraint and revert record_user_facts()'s ON CONFLICT
+    # to the broken state this migration exists to fix. No-op is intentional.
+    pass

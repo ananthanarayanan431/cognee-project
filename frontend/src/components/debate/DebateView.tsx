@@ -8,8 +8,9 @@ import { debateModeName } from "@/lib/debateModes";
 import MessageBubble from "./MessageBubble";
 import InputArea from "./InputArea";
 import { useStreamContinuation, useStreamOpening } from "@/hooks/useDebateSSE";
-import FingerprintGraph from "@/components/graph/FingerprintGraph";
-import SessionScoreBar from "./SessionScoreBar";
+// Cognitive Fingerprint panel is temporarily hidden (see below) — imports kept for re-enable
+// import FingerprintGraph from "@/components/graph/FingerprintGraph";
+// import SessionScoreBar from "./SessionScoreBar";
 import VoiceSession from "@/components/voice/VoiceSession";
 
 const STAGE_LABELS: Record<string, string> = {
@@ -20,6 +21,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export default function DebateView() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- graph/sessionScores feed the Cognitive Fingerprint panel, temporarily hidden below
   const { messages, thinking, currentStage, graph, sessionId, sessionConfig, sessionScores, setScreen, setMessages, setGraph, voiceMode, setVoiceMode } = useDebate();
   const scrollRef    = useRef<HTMLDivElement>(null);
   const hydratedRef  = useRef<string | null>(null);
@@ -301,6 +303,7 @@ export default function DebateView() {
         </div>
 
         {/* Graph panel — hidden on mobile, shown on large screens */}
+        {/* Cognitive Fingerprint panel — temporarily hidden, keep code for later re-enable
         <aside className="w-80 min-w-[280px] max-w-[360px] bg-white border-l border-border flex-col text-ink overflow-y-auto hidden lg:flex">
           <div className="px-5 pt-4 pb-2 flex items-center justify-between">
             <div>
@@ -325,6 +328,7 @@ export default function DebateView() {
             ))}
           </div>
         </aside>
+        */}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
-import { SignInButton } from "@clerk/nextjs";
+import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
+import { useClerkExchange } from "@/hooks/useClerkExchange";
 
 const CARDS = [
   {
@@ -48,9 +49,57 @@ const FALLACIES = [
   "Post Hoc", "Bandwagon", "False Equivalence", "Appeal to Ignorance",
 ];
 
+// Renders the "get into the app" CTA for all three auth states:
+// signed out (Clerk sign-up/sign-in), signed in with Clerk but the backend
+// token exchange hasn't landed yet (retry — never re-enter OAuth here, Clerk
+// rejects a second sign-up/sign-in attempt for an already-signed-in session),
+// and fully authenticated (go straight into the app).
+function AuthAwareCta({
+  isAuthenticated,
+  isSignedIn,
+  exchangePending,
+  onRetry,
+  onOpen,
+  openLabel,
+  signInLabel,
+  className,
+}: {
+  isAuthenticated: boolean;
+  isSignedIn: boolean;
+  exchangePending: boolean;
+  onRetry: () => void;
+  onOpen: () => void;
+  openLabel: string;
+  signInLabel: string;
+  className: string;
+}) {
+  if (isAuthenticated) {
+    return (
+      <button onClick={onOpen} className={className}>
+        {openLabel}
+      </button>
+    );
+  }
+  if (isSignedIn) {
+    return (
+      <button onClick={onRetry} disabled={exchangePending} className={`${className} disabled:opacity-60`}>
+        {exchangePending ? "Signing you in…" : "Continue →"}
+      </button>
+    );
+  }
+  return (
+    <SignInButton mode="redirect">
+      <button className={className}>{signInLabel}</button>
+    </SignInButton>
+  );
+}
+
 export default function LandingPage() {
   const { token, setScreen } = useDebate();
+  const { user } = useUser();
+  const { isSignedIn, exchangeStatus, retry } = useClerkExchange();
   const isAuthenticated = !!token;
+  const exchangePending = exchangeStatus === "pending";
 
   function goToApp() {
     setScreen("topic");
@@ -76,13 +125,23 @@ export default function LandingPage() {
             <a href="#research" className="hover:text-ink transition-colors">Research</a>
             <a href="#cognee" className="hover:text-ink transition-colors">Memory</a>
           </nav>
-          {isAuthenticated ? (
-            <button
-              onClick={goToApp}
-              className="bg-scarlet text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-scarlet/90 transition-colors"
-            >
-              Open app →
-            </button>
+          {isSignedIn ? (
+            <div className="flex items-center gap-3">
+              <AuthAwareCta
+                isAuthenticated={isAuthenticated}
+                isSignedIn={isSignedIn}
+                exchangePending={exchangePending}
+                onRetry={retry}
+                onOpen={goToApp}
+                openLabel="Open app →"
+                signInLabel="Sign in"
+                className="bg-scarlet text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-scarlet/90 transition-colors"
+              />
+              <span className="hidden sm:inline text-xs text-fog">
+                {user?.primaryEmailAddress?.emailAddress ?? user?.fullName}
+              </span>
+              <UserButton />
+            </div>
           ) : (
             <SignInButton mode="redirect">
               <button className="bg-scarlet text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-scarlet/90 transition-colors">
@@ -115,20 +174,16 @@ export default function LandingPage() {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
-            {isAuthenticated ? (
-              <button
-                onClick={goToApp}
-                className="bg-scarlet text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-scarlet/90 transition-colors"
-              >
-                Open DebateMind →
-              </button>
-            ) : (
-              <SignInButton mode="redirect">
-                <button className="bg-scarlet text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-scarlet/90 transition-colors">
-                  Start arguing for free →
-                </button>
-              </SignInButton>
-            )}
+            <AuthAwareCta
+              isAuthenticated={isAuthenticated}
+              isSignedIn={isSignedIn}
+              exchangePending={exchangePending}
+              onRetry={retry}
+              onOpen={goToApp}
+              openLabel="Open DebateMind →"
+              signInLabel="Start arguing for free →"
+              className="bg-scarlet text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-scarlet/90 transition-colors"
+            />
             <a
               href="#how-it-works"
               className="bg-white border border-border text-ink text-sm font-medium px-6 py-2.5 rounded-lg hover:bg-border/30 transition-colors"
@@ -171,17 +226,16 @@ export default function LandingPage() {
                 <h3 className="font-semibold text-ink text-sm">{c.title}</h3>
                 <p className="text-fog text-sm leading-relaxed flex-1">{c.body}</p>
                 <p className="text-[11px] text-scarlet font-semibold">{c.stat}</p>
-                {isAuthenticated ? (
-                  <button onClick={goToApp} className="text-scarlet text-sm font-medium text-left hover:underline">
-                    Open app →
-                  </button>
-                ) : (
-                  <SignInButton mode="redirect">
-                    <button className="text-scarlet text-sm font-medium text-left hover:underline">
-                      Get started →
-                    </button>
-                  </SignInButton>
-                )}
+                <AuthAwareCta
+                  isAuthenticated={isAuthenticated}
+                  isSignedIn={isSignedIn}
+                  exchangePending={exchangePending}
+                  onRetry={retry}
+                  onOpen={goToApp}
+                  openLabel="Open app →"
+                  signInLabel="Get started →"
+                  className="text-scarlet text-sm font-medium text-left hover:underline"
+                />
               </div>
             ))}
           </div>
@@ -361,7 +415,7 @@ export default function LandingPage() {
           <h2 className="text-2xl font-bold text-ink mb-8">Up and arguing in two minutes</h2>
           <div className="grid sm:grid-cols-3 gap-8">
             {[
-              { n: "1", heading: "Create your account", body: "Sign up free and complete a 3-question calibration so DebateMind can baseline your argument style and set the AI's initial difficulty." },
+              { n: "1", heading: "Create your account", body: "Sign up free and jump straight into a topic — DebateMind learns your argument style and adjusts the AI's difficulty as you go." },
               { n: "2", heading: "Pick a topic and a side", body: "Browse curated topics by domain — policy, ethics, technology, society — or enter your own. Take a side or let the AI assign one." },
               { n: "3", heading: "Debate, score, and compound", body: "Exchange arguments in real time. Each session deepens your Cognee graph, tightens the AI's model of your weaknesses, and makes you sharper." },
             ].map((g) => (
@@ -392,20 +446,16 @@ export default function LandingPage() {
           <p className="text-fog text-base mb-8">
             Start your first debate today. Every session builds the memory graph that makes the next one harder.
           </p>
-          {isAuthenticated ? (
-            <button
-              onClick={goToApp}
-              className="bg-scarlet text-white text-sm font-semibold px-8 py-3 rounded-lg hover:bg-scarlet/90 transition-colors"
-            >
-              Open DebateMind →
-            </button>
-          ) : (
-            <SignInButton mode="redirect">
-              <button className="bg-scarlet text-white text-sm font-semibold px-8 py-3 rounded-lg hover:bg-scarlet/90 transition-colors">
-                Start arguing for free →
-              </button>
-            </SignInButton>
-          )}
+          <AuthAwareCta
+            isAuthenticated={isAuthenticated}
+            isSignedIn={isSignedIn}
+            exchangePending={exchangePending}
+            onRetry={retry}
+            onOpen={goToApp}
+            openLabel="Open DebateMind →"
+            signInLabel="Start arguing for free →"
+            className="bg-scarlet text-white text-sm font-semibold px-8 py-3 rounded-lg hover:bg-scarlet/90 transition-colors"
+          />
           <p className="text-xs text-fog mt-4">
             Debate participation improves critical thinking by up to 44% — meta-analysis of debate studies
           </p>

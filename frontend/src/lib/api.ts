@@ -1,4 +1,4 @@
-import { ProgressData, CalibrationStatus, CalibrationAnswerResult, SessionSummary, Transcript, SessionListItem, VoiceSessionSummary, TranscriptLineSaved } from "@/types";
+import { ProgressData, SessionSummary, Transcript, SessionListItem, VoiceSessionSummary, TranscriptLineSaved } from "@/types";
 import { useDebate } from "@/store/debate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
@@ -6,7 +6,6 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 export function handleExpiredSession() {
   localStorage.removeItem("dm_token");
   localStorage.removeItem("dm_uid");
-  localStorage.removeItem("dm_calibration");
   // Clear token only — page.tsx's exchange effect detects isSignedIn && !token
   // and automatically fetches a fresh backend token from Clerk. No redirect needed.
   useDebate.setState({ token: null, userId: null });
@@ -118,12 +117,6 @@ export const api = {
     apiFetch<{ source_status: string }>(`/api/sessions/${sessionId}/source-status`),
   getSourceFile: (sessionId: string) =>
     apiFetch<{ url: string }>(`/api/sessions/${sessionId}/source-file`),
-  getCalibrationStatus: () => apiFetch<CalibrationStatus>("/api/calibration/status"),
-  submitCalibrationAnswer: (text: string) =>
-    apiFetch<CalibrationAnswerResult>("/api/calibration/answer", {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    }),
   getSessionSummary: (sessionId: string) =>
     apiFetch<SessionSummary>(`/api/sessions/${sessionId}/summary`),
   getTranscript: (sessionId: string) =>

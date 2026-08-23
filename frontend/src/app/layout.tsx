@@ -17,7 +17,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${inter.variable} ${spectral.variable} ${mono.variable} ${display.variable} bg-chalk text-ink`}>
-        <AuthProvider>
+        <AuthProvider
+          afterSignOutUrl="/"
+          appearance={{
+            layout: { unsafe_disableDevelopmentModeWarnings: true },
+            variables: {
+              colorPrimary: "#0D9488",
+              colorText: "#1e293b",
+              colorTextSecondary: "#64748B",
+              colorBackground: "#ffffff",
+              colorInputBackground: "#ffffff",
+              colorInputText: "#1e293b",
+              borderRadius: "0.75rem",
+              fontFamily: "var(--font-inter), system-ui, sans-serif",
+            },
+            elements: {
+              footer: "hidden",
+              userButtonPopoverFooter: "hidden",
+            },
+          }}
+        >
           {children}
         </AuthProvider>
       </body>

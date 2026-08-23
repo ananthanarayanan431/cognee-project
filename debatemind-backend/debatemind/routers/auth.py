@@ -83,6 +83,7 @@ async def clerk_exchange(body: ClerkExchangeIn, db: AsyncSession = Depends(get_d
     try:
         payload = await verify_sso_jwt(body.clerk_token)
     except Exception:
+        logger.exception("Clerk token verification failed during clerk-exchange")
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
     clerk_user_id: str = payload.get("sub", "")

@@ -8,7 +8,6 @@ interface DebateStore {
   topicDetailTopic: { id?: string | null; title: string; description: string } | null;
   token: string | null;
   userId: string | null;
-  calibrationDone: boolean;
   sessionId: string | null;
   sessionConfig: SessionConfig | null;
   // True only for a just-created session (so the AI opening streams once).
@@ -24,13 +23,17 @@ interface DebateStore {
   judgeModel: string | null;
   debateMode: DebateMode;
   voiceMode: boolean;
+  // Tracks the Clerk-session -> backend-token exchange (see useClerkExchange).
+  // "pending" while in flight, "failed" if it errored so the UI can offer a retry.
+  exchangeStatus: "idle" | "pending" | "failed";
 
   hydrate: (urlScreen?: string) => void;
+  setExchangeStatus: (status: DebateStore["exchangeStatus"]) => void;
   setMainModel: (model: string) => void;
   setJudgeModel: (model: string) => void;
   setDebateMode: (mode: DebateMode) => void;
   setScreen: (s: DebateStore["screen"]) => void;
-  setAuth: (token: string, userId: string, calibrationDone: boolean) => void;
+  setAuth: (token: string, userId: string) => void;
   setSession: (id: string, config: SessionConfig, fresh?: boolean) => void;
   addMessage: (m: Message) => void;
   setMessages: (msgs: Message[]) => void;
@@ -51,7 +54,6 @@ export const useDebate = create<DebateStore>((set) => ({
   topicDetailTopic: null,
   token: null,
   userId: null,
-  calibrationDone: false,
   sessionId: null,
   sessionConfig: null,
   isFreshSession: false,
@@ -65,21 +67,21 @@ export const useDebate = create<DebateStore>((set) => ({
   judgeModel: null,
   debateMode: DEFAULT_DEBATE_MODE,
   voiceMode: false,
+  exchangeStatus: "idle",
 
+  setExchangeStatus: (exchangeStatus) => set({ exchangeStatus }),
   hydrate: (urlScreen?: string) => {
     const token = localStorage.getItem("dm_token");
-    const calibrationDone = localStorage.getItem("dm_calibration") === "1";
     set({
       token,
       userId: localStorage.getItem("dm_uid"),
-      calibrationDone,
       mainModel: localStorage.getItem("dm_model"),
       judgeModel: localStorage.getItem("dm_judge_model"),
       debateMode: (() => {
         const m = localStorage.getItem("dm_mode");
         return isDebateMode(m) ? m : DEFAULT_DEBATE_MODE;
       })(),
-      screen: resolveInitialScreen(urlScreen, { token, calibrationDone }),
+      screen: resolveInitialScreen(urlScreen, { token }),
     });
   },
   setMainModel: (model) => {
@@ -95,15 +97,13 @@ export const useDebate = create<DebateStore>((set) => ({
     set({ debateMode: mode });
   },
   setScreen: (screen) => set({ screen }),
-  setAuth: (token, userId, calibrationDone) => {
+  setAuth: (token, userId) => {
     localStorage.setItem("dm_token", token);
     localStorage.setItem("dm_uid", userId);
-    localStorage.setItem("dm_calibration", calibrationDone ? "1" : "0");
     set({
       token,
       userId,
-      calibrationDone,
-      screen: calibrationDone ? "topic" : "calibration",
+      screen: "topic",
     });
   },
   setSession: (sessionId, sessionConfig, fresh = true) =>
