@@ -1,4 +1,4 @@
-.PHONY: debatemind-backend frontend celery worker dev infra-up infra-down infra-build infra-logs start
+.PHONY: debatemind-backend frontend worker dev infra-up infra-down infra-build infra-logs start
 
 debatemind-backend:
 	uv run uvicorn debatemind.main:app --reload --port 8001
@@ -7,11 +7,11 @@ frontend:
 	cd ../frontend && npm run dev
 
 # --pool=solo avoids macOS fork SIGSEGVs; prod uses prefork on Linux instead.
-celery worker:
+worker:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run celery -A debatemind.worker.celery_app worker --loglevel=info --pool=solo
 
 dev:
-	make -j3 debatemind-backend frontend celery
+	make -j3 debatemind-backend frontend worker
 
 # Infra: postgres, cognee-db (pgvector), redis, neo4j
 infra-build:

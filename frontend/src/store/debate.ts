@@ -24,8 +24,12 @@ interface DebateStore {
   judgeModel: string | null;
   debateMode: DebateMode;
   voiceMode: boolean;
+  // Tracks the Clerk-session -> backend-token exchange (see useClerkExchange).
+  // "pending" while in flight, "failed" if it errored so the UI can offer a retry.
+  exchangeStatus: "idle" | "pending" | "failed";
 
   hydrate: (urlScreen?: string) => void;
+  setExchangeStatus: (status: DebateStore["exchangeStatus"]) => void;
   setMainModel: (model: string) => void;
   setJudgeModel: (model: string) => void;
   setDebateMode: (mode: DebateMode) => void;
@@ -65,7 +69,9 @@ export const useDebate = create<DebateStore>((set) => ({
   judgeModel: null,
   debateMode: DEFAULT_DEBATE_MODE,
   voiceMode: false,
+  exchangeStatus: "idle",
 
+  setExchangeStatus: (exchangeStatus) => set({ exchangeStatus }),
   hydrate: (urlScreen?: string) => {
     const token = localStorage.getItem("dm_token");
     const calibrationDone = localStorage.getItem("dm_calibration") === "1";

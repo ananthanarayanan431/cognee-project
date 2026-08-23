@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { useDebate } from "@/store/debate";
+import { useClerkExchange } from "@/hooks/useClerkExchange";
 import { screenToPath, resolveNavScreen } from "@/lib/screens";
 import LandingPage from "@/components/auth/LandingPage";
 import TopicSelection from "@/components/topic/TopicSelection";
@@ -30,34 +30,18 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function Home() {
-  const { isSignedIn, isLoaded, getToken } = useAuth();
+  useClerkExchange();
   const screen = useDebate((s) => s.screen);
   const sessionId = useDebate((s) => s.sessionId);
   const token = useDebate((s) => s.token);
   const hydrate = useDebate((s) => s.hydrate);
   const setScreen = useDebate((s) => s.setScreen);
-  const setAuth = useDebate((s) => s.setAuth);
 
   // Pass the current URL screen param into hydrate so refreshing restores the right screen
   useEffect(() => {
     const urlScreen = new URLSearchParams(window.location.search).get("screen") ?? undefined;
     hydrate(urlScreen);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Exchange SSO session token for a backend token once the user is signed in
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || token) return;
-    getToken().then(async (authToken) => {
-      if (!authToken) return;
-      try {
-        const { api } = await import("@/lib/api");
-        const res = await api.exchangeToken(authToken);
-        setAuth(res.access_token, res.user_id, res.calibration_done);
-      } catch {
-        // Exchange failed — user will see landing page and can retry
-      }
-    });
-  }, [isLoaded, isSignedIn, token, getToken, setAuth]);
 
   // Mirror the active screen into the URL; only push when the URL actually
   // differs so popstate-driven changes don't create duplicate entries.
