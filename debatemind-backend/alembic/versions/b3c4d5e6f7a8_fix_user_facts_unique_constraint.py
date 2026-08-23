@@ -37,4 +37,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_user_facts_user_id_fact_text", "user_facts", type_="unique")
+    # On a fresh database this constraint was created inline by a2b3c4d5e6f7,
+    # not by this migration's upgrade() — dropping it here would strip a
+    # predecessor-owned constraint and revert record_user_facts()'s ON CONFLICT
+    # to the broken state this migration exists to fix. No-op is intentional.
+    pass
