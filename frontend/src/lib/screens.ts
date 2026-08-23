@@ -4,7 +4,6 @@
 export type Screen =
   | "landing"
   | "topic"
-  | "calibration"
   | "debate"
   | "end"
   | "transcript"
@@ -12,8 +11,7 @@ export type Screen =
   | "topic-detail"
   | "settings";
 
-// Screens addressable via `?screen=X`. "landing" owns "/" so it is absent here;
-// "calibration" is an auth-gated interstitial and is never URL-addressable.
+// Screens addressable via `?screen=X`. "landing" owns "/" so it is absent here.
 const ADDRESSABLE: ReadonlySet<Screen> = new Set<Screen>([
   "topic",
   "topic-detail",
@@ -40,11 +38,7 @@ const SESSION_SCOPED: ReadonlySet<Screen> = new Set<Screen>([
 ]);
 
 export function isScreen(s: string): s is Screen {
-  return (
-    s === "landing" ||
-    s === "calibration" ||
-    ADDRESSABLE.has(s as Screen)
-  );
+  return s === "landing" || ADDRESSABLE.has(s as Screen);
 }
 
 /**
@@ -68,10 +62,9 @@ export function screenToPath(screen: Screen, sessionId?: string | null): string 
  */
 export function resolveInitialScreen(
   urlScreen: string | null | undefined,
-  auth: { token: string | null; calibrationDone: boolean },
+  auth: { token: string | null },
 ): Screen {
   if (!auth.token) return "landing";
-  if (!auth.calibrationDone) return "calibration";
   if (urlScreen && COLD_RESTORABLE.has(urlScreen as Screen)) {
     return urlScreen as Screen;
   }

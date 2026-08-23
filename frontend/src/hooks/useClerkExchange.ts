@@ -25,7 +25,7 @@ export function useClerkExchange() {
       if (!authToken) throw new Error("No Clerk session token");
       const { api } = await import("@/lib/api");
       const res = await api.exchangeToken(authToken);
-      setAuth(res.access_token, res.user_id, res.calibration_done);
+      setAuth(res.access_token, res.user_id);
       setExchangeStatus("idle");
     } catch (err) {
       // eslint-disable-next-line no-console

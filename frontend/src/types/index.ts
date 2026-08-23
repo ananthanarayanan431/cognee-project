@@ -95,20 +95,6 @@ export interface ProgressData {
   weakness_trend: WeaknessTrendItem[];
 }
 
-export interface CalibrationStatus {
-  needed: boolean;
-  topic?: string;
-  index: number;
-  total: number;
-}
-
-export interface CalibrationAnswerResult {
-  done: boolean;
-  next_topic?: string;
-  index: number;
-  total: number;
-}
-
 export interface WeaknessChange {
   pattern: string;
   before: number;

@@ -12,7 +12,6 @@ import dynamic from "next/dynamic";
 const DebateView = dynamic(() => import("@/components/debate/DebateView"), { ssr: false });
 const SessionEnd = dynamic(() => import("@/components/session/SessionEnd"), { ssr: false });
 const ProgressDashboard = dynamic(() => import("@/components/progress/ProgressDashboard"), { ssr: false });
-const CalibrationSession = dynamic(() => import("@/components/calibration/CalibrationSession"), { ssr: false });
 const SessionTranscript = dynamic(() => import("@/components/session/SessionTranscript"), { ssr: false });
 const SettingsPage = dynamic(() => import("@/components/settings/SettingsPage"), { ssr: false });
 
@@ -46,7 +45,7 @@ export default function Home() {
   // Mirror the active screen into the URL; only push when the URL actually
   // differs so popstate-driven changes don't create duplicate entries.
   useEffect(() => {
-    if (!token || screen === "calibration") return;
+    if (!token) return;
     const target = screenToPath(screen, sessionId);
     const current = window.location.pathname + window.location.search;
     if (current === target) return;
@@ -71,8 +70,6 @@ export default function Home() {
   if (!token || screen === "landing") {
     return <LandingPage />;
   }
-  if (screen === "calibration") return <CalibrationSession />;
-
   return (
     <AuthenticatedShell>
       {screen === "topic" && <TopicSelection />}
@@ -82,7 +79,7 @@ export default function Home() {
       {screen === "progress" && <ProgressDashboard />}
       {screen === "transcript" && <SessionTranscript />}
       {screen === "settings" && <SettingsPage />}
-      {!["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings", "calibration"].includes(screen) && <TopicSelection />}
+      {!["topic", "topic-detail", "debate", "end", "progress", "transcript", "settings"].includes(screen) && <TopicSelection />}
     </AuthenticatedShell>
   );
 }

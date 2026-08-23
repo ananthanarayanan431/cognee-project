@@ -415,7 +415,7 @@ export default function LandingPage() {
           <h2 className="text-2xl font-bold text-ink mb-8">Up and arguing in two minutes</h2>
           <div className="grid sm:grid-cols-3 gap-8">
             {[
-              { n: "1", heading: "Create your account", body: "Sign up free and complete a 3-question calibration so DebateMind can baseline your argument style and set the AI's initial difficulty." },
+              { n: "1", heading: "Create your account", body: "Sign up free and jump straight into a topic — DebateMind learns your argument style and adjusts the AI's difficulty as you go." },
               { n: "2", heading: "Pick a topic and a side", body: "Browse curated topics by domain — policy, ethics, technology, society — or enter your own. Take a side or let the AI assign one." },
               { n: "3", heading: "Debate, score, and compound", body: "Exchange arguments in real time. Each session deepens your Cognee graph, tightens the AI's model of your weaknesses, and makes you sharper." },
             ].map((g) => (

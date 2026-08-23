@@ -20,6 +20,7 @@ import { useDebate } from "@/store/debate";
 import { api } from "@/lib/api";
 import { GraphData, KnowledgeGraphData, SessionListItem } from "@/types";
 import type { DebateMode } from "@/lib/debateModes";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by the Brain Map tab, temporarily hidden below
 import BrainGraph from "@/components/graph/BrainGraph";
 import KnowledgeGraphView from "@/components/graph/KnowledgeGraphView";
 
@@ -146,6 +147,7 @@ function SessionCard({
 
 // ── Brain Map Modal ───────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by the Brain Map legend, temporarily hidden below
 const LEGEND = [
   { color: "#1e3a5f", border: "#3b82f6aa", label: "Topic" },
   { color: "#C0392B", border: "#C0392B88", label: "Weakness" },
@@ -162,7 +164,9 @@ function BrainMapModal({
   winRate: number | null;
   totalSessions: number;
 }) {
-  const [tab, setTab] = useState<"brain" | "knowledge">("brain");
+  // Brain Map tab is temporarily hidden — defaulting straight to Knowledge Graph
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setTab used by the tab switcher, temporarily hidden below
+  const [tab, setTab] = useState<"brain" | "knowledge">("knowledge");
 
   // The modal is fullscreen, so the sidebar's "Describe me" button is hidden
   // behind it — the modal owns its own profile generation.
@@ -180,20 +184,26 @@ function BrainMapModal({
     }
   }
 
+  // Brain Map data — temporarily unused while the Brain Map tab is hidden, kept for later re-enable
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [graphData, setGraphData] = useState<GraphData | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loading, setLoading]     = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [error, setError]         = useState(false);
 
   const [kgData, setKgData]       = useState<KnowledgeGraphData | null>(null);
   const [kgLoading, setKgLoading] = useState(false);
   const [kgError, setKgError]     = useState(false);
 
+  /* Brain Map tab is temporarily hidden — keep the fetch for later re-enable
   useEffect(() => {
     api.getBrainGraph()
       .then((d) => setGraphData(d))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
+  */
 
   useEffect(() => {
     if (tab !== "knowledge" || kgData || kgLoading) return;
@@ -215,11 +225,16 @@ function BrainMapModal({
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2.5">
+          {/* Brain Map header — temporarily hidden
           <IconBrain size={18} className="text-scarlet" />
           <span className="font-sans text-[15px] font-semibold text-ink">Your Brain Map</span>
+          */}
+          <IconNetwork size={18} className="text-scarlet" />
+          <span className="font-sans text-[15px] font-semibold text-ink">Your Knowledge Graph</span>
         </div>
 
         <div className="flex items-center gap-5">
+          {/* Brain Map / Knowledge Graph tab switcher — temporarily hidden while Brain Map is disabled
           <div className="flex items-center gap-1 bg-fog/5 rounded-md p-0.5">
             <button
               onClick={() => setTab("brain")}
@@ -248,6 +263,7 @@ function BrainMapModal({
                 <span className="font-sans text-[12px] text-fog">{l.label}</span>
               </div>
             ))}
+          */}
         </div>
 
         <button onClick={onClose} className="text-fog/60 hover:text-ink transition-colors p-1">
@@ -257,6 +273,7 @@ function BrainMapModal({
 
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[70%] flex-shrink-0 relative overflow-hidden bg-[#0d0d0d]">
+          {/* Brain Map tab content — temporarily hidden, keep for later re-enable
           {tab === "brain" && (
             <>
               {loading && (
@@ -280,6 +297,7 @@ function BrainMapModal({
               </div>
             </>
           )}
+          */}
           {tab === "knowledge" && (
             <>
               {kgLoading && (
@@ -418,7 +436,6 @@ export default function SessionSidebar() {
   async function handleSignOut() {
     localStorage.removeItem("dm_token");
     localStorage.removeItem("dm_uid");
-    localStorage.removeItem("dm_calibration");
     useDebate.setState({ token: null, userId: null, screen: "landing" });
     await signOut({ redirectUrl: "/" });
   }
